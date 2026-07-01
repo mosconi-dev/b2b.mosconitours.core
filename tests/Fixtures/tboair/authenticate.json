@@ -1,0 +1,13 @@
+{
+    "Agency": {
+        "TotalAailableLimit": 0.0,
+        "Currency": "",
+        "LocalCurrency": "PHP",
+        "LocalCurrencyROE": 55.8019665161
+    },
+    "IsSuccess": true,
+    "Errors": [],
+    "Alerts": [],
+    "TokenId": "test-token-abc-123",
+    "TrackingId": "track-xyz-789"
+}

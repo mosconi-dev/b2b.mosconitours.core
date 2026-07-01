@@ -1,0 +1,65 @@
+{
+    "Response": {
+        "ResponseStatus": 1,
+        "Error": { "ErrorCode": 0, "ErrorMessage": "" },
+        "TraceId": "trace-0001",
+        "Origin": "MNL",
+        "Destination": "MPH",
+        "Results": [
+            [
+                {
+                    "ResultIndex": "OB1",
+                    "Source": 4,
+                    "IsLCC": false,
+                    "IsRefundable": true,
+                    "Fare": { "Currency": "PHP", "BaseFare": 3500.0, "Tax": 800.0, "OfferedFare": 4300.0, "PublishedFare": 4500.0 },
+                    "Segments": [
+                        [
+                            {
+                                "TripIndicator": 1,
+                                "Airline": { "AirlineCode": "PR", "AirlineName": "Philippine Airlines", "FlightNumber": "2782", "FareClass": "E" },
+                                "Origin": { "Airport": { "AirportCode": "MNL", "AirportName": "Ninoy Aquino Intl", "Terminal": "2", "CityCode": "MNL", "CityName": "Manila" }, "DepTime": "2026-07-01T06:00:00" },
+                                "Destination": { "Airport": { "AirportCode": "MPH", "AirportName": "Godofredo P. Ramos", "Terminal": "", "CityCode": "MPH", "CityName": "Caticlan" }, "ArrTime": "2026-07-01T07:15:00" },
+                                "Duration": 75,
+                                "CabinClass": 2,
+                                "Baggage": "20 KG",
+                                "CabinBaggage": "7 KG"
+                            }
+                        ]
+                    ]
+                },
+                {
+                    "ResultIndex": "OB2",
+                    "Source": 4,
+                    "IsLCC": true,
+                    "IsRefundable": false,
+                    "Fare": { "Currency": "PHP", "BaseFare": 2200.0, "Tax": 600.0, "OfferedFare": 2800.0, "PublishedFare": 2900.0 },
+                    "Segments": [
+                        [
+                            {
+                                "TripIndicator": 1,
+                                "Airline": { "AirlineCode": "5J", "AirlineName": "Cebu Pacific", "FlightNumber": "565", "FareClass": "Y" },
+                                "Origin": { "Airport": { "AirportCode": "MNL", "AirportName": "Ninoy Aquino Intl", "Terminal": "3", "CityCode": "MNL", "CityName": "Manila" }, "DepTime": "2026-07-01T06:00:00" },
+                                "Destination": { "Airport": { "AirportCode": "CEB", "AirportName": "Mactan-Cebu Intl", "Terminal": "2", "CityCode": "CEB", "CityName": "Cebu" }, "ArrTime": "2026-07-01T08:00:00" },
+                                "Duration": 120,
+                                "CabinClass": 2,
+                                "Baggage": "0 KG",
+                                "CabinBaggage": "7 KG"
+                            },
+                            {
+                                "TripIndicator": 1,
+                                "Airline": { "AirlineCode": "5J", "AirlineName": "Cebu Pacific", "FlightNumber": "891", "FareClass": "Y" },
+                                "Origin": { "Airport": { "AirportCode": "CEB", "AirportName": "Mactan-Cebu Intl", "Terminal": "2", "CityCode": "CEB", "CityName": "Cebu" }, "DepTime": "2026-07-01T09:30:00" },
+                                "Destination": { "Airport": { "AirportCode": "MPH", "AirportName": "Godofredo P. Ramos", "Terminal": "", "CityCode": "MPH", "CityName": "Caticlan" }, "ArrTime": "2026-07-01T10:20:00" },
+                                "Duration": 50,
+                                "CabinClass": 2,
+                                "Baggage": "0 KG",
+                                "CabinBaggage": "7 KG"
+                            }
+                        ]
+                    ]
+                }
+            ]
+        ]
+    }
+}

@@ -1,0 +1,28 @@
+{
+    "TraceId": "trace-0001",
+    "Origin": "MNL",
+    "Destination": "MPH",
+    "Results": [
+        {
+            "ResultIndex": "OB1",
+            "Source": 4,
+            "IsLCC": false,
+            "IsRefundable": true,
+            "Fare": { "Currency": "PHP", "BaseFare": 3500.0, "Tax": 800.0, "OfferedFare": 4300.0, "PublishedFare": 4500.0 },
+            "Segments": [
+                [
+                    {
+                        "TripIndicator": 1,
+                        "Airline": { "AirlineCode": "PR", "AirlineName": "Philippine Airlines", "FlightNumber": "2782", "FareClass": "E" },
+                        "Origin": { "Airport": { "AirportCode": "MNL", "AirportName": "Ninoy Aquino Intl", "Terminal": "2", "CityCode": "MNL", "CityName": "Manila" }, "DepTime": "2026-07-01T06:00:00" },
+                        "Destination": { "Airport": { "AirportCode": "MPH", "AirportName": "Godofredo P. Ramos", "Terminal": "", "CityCode": "MPH", "CityName": "Caticlan" }, "ArrTime": "2026-07-01T07:15:00" },
+                        "Duration": 75,
+                        "CabinClass": 2,
+                        "Baggage": "20 KG",
+                        "CabinBaggage": "7 KG"
+                    }
+                ]
+            ]
+        }
+    ]
+}
