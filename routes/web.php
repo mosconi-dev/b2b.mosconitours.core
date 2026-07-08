@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\FlightController;
@@ -48,6 +49,16 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
         Route::patch('/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('toggle-active')->middleware('can:toggleActive,user');
         Route::put('/{user}/password', [UserController::class, 'resetPassword'])->name('password');
         Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy')->middleware('can:delete,user');
+    });
+
+    Route::prefix('roles')->name('roles.')->group(function () {
+        Route::get('/', [RoleController::class, 'index'])->name('index')->middleware('can:role.view');
+        Route::post('/', [RoleController::class, 'store'])->name('store');
+        Route::get('/{role}/edit', [RoleController::class, 'edit'])->name('edit')->middleware('can:role.update');
+        Route::put('/{role}', [RoleController::class, 'update'])->name('update');
+        Route::put('/{role}/permissions', [RoleController::class, 'syncPermissions'])->name('permissions');
+        Route::post('/{role}/duplicate', [RoleController::class, 'duplicate'])->name('duplicate');
+        Route::delete('/{role}', [RoleController::class, 'destroy'])->name('destroy')->middleware('can:delete,role');
     });
 });
 

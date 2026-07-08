@@ -463,4 +463,24 @@ Alpine.data('flightSearch', (config = {}) => ({
     },
 }));
 
+// Role permission grid: tracks selected permission IDs and per-module select-all.
+Alpine.data('rolePermissions', (config = {}) => ({
+    selected: (config.selected ?? []).map(Number),
+
+    allChecked(ids) {
+        return ids.length > 0 && ids.every((id) => this.selected.includes(id));
+    },
+
+    someChecked(ids) {
+        const n = ids.filter((id) => this.selected.includes(id)).length;
+        return n > 0 && n < ids.length;
+    },
+
+    toggleGroup(ids) {
+        this.selected = this.allChecked(ids)
+            ? this.selected.filter((id) => !ids.includes(id))
+            : [...new Set([...this.selected, ...ids])];
+    },
+}));
+
 Alpine.start();
