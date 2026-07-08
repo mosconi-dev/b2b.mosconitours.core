@@ -61,6 +61,8 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        Auth::user()->forceFill(['last_login_at' => now()])->saveQuietly();
+
         RateLimiter::clear($this->throttleKey());
     }
 

@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\FlightController;
 use App\Http\Controllers\ProfileController;
@@ -24,6 +26,29 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Administration
+|--------------------------------------------------------------------------
+| Every route is gated by a registry permission (can:<module>.<action>).
+| Per-instance rules (self-action) are enforced by the UserPolicy via
+| can:<ability>,<model> middleware.
+*/
+Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', AdminDashboardController::class)->name('dashboard')->middleware('can:admin.access');
+
+    Route::prefix('users')->name('users.')->group(function () {
+        Route::get('/', [UserController::class, 'index'])->name('index')->middleware('can:user.view');
+        Route::get('/create', [UserController::class, 'create'])->name('create')->middleware('can:user.create');
+        Route::post('/', [UserController::class, 'store'])->name('store');
+        Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit')->middleware('can:user.update');
+        Route::put('/{user}', [UserController::class, 'update'])->name('update');
+        Route::patch('/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('toggle-active')->middleware('can:toggleActive,user');
+        Route::put('/{user}/password', [UserController::class, 'resetPassword'])->name('password');
+        Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy')->middleware('can:delete,user');
+    });
 });
 
 require __DIR__.'/auth.php';
