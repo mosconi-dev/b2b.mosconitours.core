@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Str;
 
 #[Fillable([
     'user_id', 'event', 'auditable_type', 'auditable_id',
@@ -43,5 +44,23 @@ class AuditLog extends Model
     public function auditable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Human-readable event, e.g. "user.deactivated" -> "User Deactivated".
+     */
+    public function label(): string
+    {
+        return Str::headline(str_replace('.', ' ', $this->event));
+    }
+
+    /**
+     * The affected record as a short label, e.g. "User #5".
+     */
+    public function target(): ?string
+    {
+        return $this->auditable_type
+            ? class_basename($this->auditable_type).' #'.$this->auditable_id
+            : null;
     }
 }

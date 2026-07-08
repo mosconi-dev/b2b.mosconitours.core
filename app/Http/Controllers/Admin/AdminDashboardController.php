@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -19,6 +20,7 @@ class AdminDashboardController extends Controller
                 ['label' => 'Permissions', 'value' => Permission::count(), 'sub' => 'across all modules', 'tone' => 'text-gray-500'],
                 ['label' => 'Inactive Users', 'value' => User::where('is_active', false)->count(), 'sub' => 'deactivated', 'tone' => 'text-amber-600'],
             ],
+            'recentActivity' => AuditLog::with('user:id,name')->latest('created_at')->latest('id')->limit(8)->get(),
         ]);
     }
 }

@@ -41,4 +41,31 @@
             @endcan
         @endforeach
     </div>
+
+    {{-- Recent activity --}}
+    @can('audit.view')
+        <div class="mt-8 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                <h2 class="text-base font-semibold text-brand-900">Recent Activity</h2>
+                <a href="{{ route('admin.audit-logs.index') }}" class="text-sm font-medium text-blue-600 hover:text-blue-700">View all &rarr;</a>
+            </div>
+            <ul class="divide-y divide-gray-100">
+                @forelse ($recentActivity as $log)
+                    <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                        <div class="min-w-0">
+                            <span class="font-medium text-brand-900">{{ $log->label() }}</span>
+                            @if ($log->target())
+                                <span class="text-gray-400">· {{ $log->target() }}</span>
+                            @endif
+                        </div>
+                        <div class="shrink-0 text-xs text-gray-400">
+                            {{ $log->user?->name ?? 'System' }} · {{ $log->created_at?->diffForHumans() }}
+                        </div>
+                    </li>
+                @empty
+                    <li class="px-5 py-8 text-center text-sm text-gray-500">No activity recorded yet.</li>
+                @endforelse
+            </ul>
+        </div>
+    @endcan
 </x-app-layout>

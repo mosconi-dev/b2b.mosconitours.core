@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\FlightController;
@@ -66,6 +68,9 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
         Route::get('/', [PermissionController::class, 'index'])->name('index')->middleware('can:permission.view');
         Route::post('/sync', [PermissionController::class, 'sync'])->name('sync')->middleware('can:permission.sync');
     });
+
+    Route::get('audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index')->middleware('can:audit.view');
+    Route::get('settings', [SettingController::class, 'index'])->name('settings.index')->middleware('can:setting.view');
 });
 
 require __DIR__.'/auth.php';
