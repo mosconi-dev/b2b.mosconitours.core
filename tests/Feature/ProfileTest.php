@@ -76,7 +76,9 @@ class ProfileTest extends TestCase
             ->assertRedirect('/');
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        // Users are soft-deleted to preserve history; the account is trashed
+        // (logged out and excluded from auth), not purged from the database.
+        $this->assertSoftDeleted($user);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account(): void
