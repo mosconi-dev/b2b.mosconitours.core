@@ -3,14 +3,27 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
 class FlightSearchCacheTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithRbac, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(PermissionSeeder::class);
+    }
+
+    private function flightUser(): User
+    {
+        return $this->userWith(['flight.view', 'flight.search']);
+    }
 
     private function fixture(string $name): array
     {
@@ -48,7 +61,7 @@ class FlightSearchCacheTest extends TestCase
     public function test_identical_search_is_served_from_cache(): void
     {
         $this->fakeOk();
-        $user = User::factory()->create();
+        $user = $this->flightUser();
 
         $first = $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk()->json();
         $second = $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk()->json();
@@ -60,7 +73,7 @@ class FlightSearchCacheTest extends TestCase
     public function test_different_search_hits_api_again(): void
     {
         $this->fakeOk();
-        $user = User::factory()->create();
+        $user = $this->flightUser();
 
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
         $this->actingAs($user)->postJson('/flights/search', $this->payload([
@@ -76,8 +89,8 @@ class FlightSearchCacheTest extends TestCase
     {
         $this->fakeOk();
 
-        $this->actingAs(User::factory()->create())->postJson('/flights/search', $this->payload())->assertOk();
-        $this->actingAs(User::factory()->create())->postJson('/flights/search', $this->payload())->assertOk();
+        $this->actingAs($this->flightUser())->postJson('/flights/search', $this->payload())->assertOk();
+        $this->actingAs($this->flightUser())->postJson('/flights/search', $this->payload())->assertOk();
 
         $this->assertSame(2, $this->searchCalls()); // different users never share a cache entry
     }
@@ -88,7 +101,7 @@ class FlightSearchCacheTest extends TestCase
             'xmloutapi.tboair.com/*' => Http::response($this->fixture('authenticate.json'), 200),
             'api-stage.tboair.com/*' => Http::response('', 500),
         ]);
-        $user = User::factory()->create();
+        $user = $this->flightUser();
 
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertStatus(502);
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertStatus(502);

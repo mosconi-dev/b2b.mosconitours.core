@@ -50,6 +50,19 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // Deactivated accounts must not hold a session.
+        if (! Auth::user()->is_active) {
+            Auth::logout();
+
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => 'Your account has been deactivated.',
+            ]);
+        }
+
+        Auth::user()->forceFill(['last_login_at' => now()])->saveQuietly();
+
         RateLimiter::clear($this->throttleKey());
     }
 

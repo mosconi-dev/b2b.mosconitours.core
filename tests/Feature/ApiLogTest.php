@@ -4,13 +4,26 @@ namespace Tests\Feature;
 
 use App\Models\TboAirApiLog;
 use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
 class ApiLogTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithRbac, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(PermissionSeeder::class);
+    }
+
+    private function apiUser(): User
+    {
+        return $this->userWith(['flight.view', 'flight.search', 'apilog.view']);
+    }
 
     private function fixture(string $name): array
     {
@@ -43,7 +56,7 @@ class ApiLogTest extends TestCase
     public function test_search_records_auth_and_search_logs(): void
     {
         $this->fakeOk();
-        $user = User::factory()->create();
+        $user = $this->apiUser();
 
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
 
@@ -56,7 +69,7 @@ class ApiLogTest extends TestCase
     {
         $this->fakeOk();
 
-        $this->actingAs(User::factory()->create())->postJson('/flights/search', $this->payload())->assertOk();
+        $this->actingAs($this->apiUser())->postJson('/flights/search', $this->payload())->assertOk();
 
         $auth = TboAirApiLog::where('type', 'authenticate')->firstOrFail();
         $this->assertSame('********', $auth->request['Password']);
@@ -69,7 +82,7 @@ class ApiLogTest extends TestCase
             'api-stage.tboair.com/*' => Http::response('', 500),
         ]);
 
-        $this->actingAs(User::factory()->create())->postJson('/flights/search', $this->payload())->assertStatus(502);
+        $this->actingAs($this->apiUser())->postJson('/flights/search', $this->payload())->assertStatus(502);
 
         $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'successful' => false, 'status_code' => 500]);
     }
@@ -77,7 +90,7 @@ class ApiLogTest extends TestCase
     public function test_logs_page_renders_with_entries(): void
     {
         $this->fakeOk();
-        $user = User::factory()->create();
+        $user = $this->apiUser();
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
 
         $this->actingAs($user)->get('/api-logs')
@@ -91,10 +104,17 @@ class ApiLogTest extends TestCase
         $this->get('/api-logs')->assertRedirect('/login');
     }
 
+    public function test_logs_page_is_forbidden_without_apilog_permission(): void
+    {
+        $this->actingAs($this->userWith(['flight.view']))
+            ->get('/api-logs')
+            ->assertForbidden();
+    }
+
     public function test_log_detail_returns_response_json(): void
     {
         $this->fakeOk();
-        $user = User::factory()->create();
+        $user = $this->apiUser();
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
 
         $log = TboAirApiLog::where('type', 'search')->firstOrFail();
