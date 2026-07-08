@@ -26,7 +26,7 @@ class TboAirService
         } catch (TboAirException $e) {
             // Token may have expired before its cached TTL — re-auth once.
             if ($e->isAuthError()) {
-                Cache::forget(config('tboair.cache_key'));
+                Cache::forget($this->cacheKey());
 
                 return $this->doSearch($input, $this->token());
             }
@@ -38,10 +38,23 @@ class TboAirService
     public function token(): string
     {
         return Cache::remember(
-            config('tboair.cache_key'),
+            $this->cacheKey(),
             config('tboair.token_ttl'),
             fn (): string => $this->authenticate(),
         );
+    }
+
+    public function environment(): string
+    {
+        return $this->client->environment();
+    }
+
+    /**
+     * Token cache key, namespaced per environment so test and live never collide.
+     */
+    public function cacheKey(): string
+    {
+        return config('tboair.cache_key').':'.$this->client->environment();
     }
 
     private function authenticate(): string
@@ -104,7 +117,7 @@ class TboAirService
             'DirectFlight' => false,
             'OneStopFlight' => false,
             'JourneyType' => $input->tripType->journeyType(),
-            'EndUserIp' => config('tboair.ip_address'),
+            'EndUserIp' => $this->client->ipAddress(),
             'TokenId' => $token,
             'PreferredAirlines' => [],
             'Sources' => [],

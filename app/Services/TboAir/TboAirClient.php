@@ -16,6 +16,19 @@ class TboAirClient
     public function __construct(private readonly array $config) {}
 
     /**
+     * The resolved environment this client is bound to ("test"/"live").
+     */
+    public function environment(): string
+    {
+        return $this->config['environment'] ?? 'test';
+    }
+
+    public function ipAddress(): string
+    {
+        return $this->config['ip_address'] ?? '127.0.0.1';
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function authenticate(): array
