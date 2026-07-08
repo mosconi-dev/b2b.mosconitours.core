@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
@@ -59,6 +60,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
         Route::put('/{role}/permissions', [RoleController::class, 'syncPermissions'])->name('permissions');
         Route::post('/{role}/duplicate', [RoleController::class, 'duplicate'])->name('duplicate');
         Route::delete('/{role}', [RoleController::class, 'destroy'])->name('destroy')->middleware('can:delete,role');
+    });
+
+    Route::prefix('permissions')->name('permissions.')->group(function () {
+        Route::get('/', [PermissionController::class, 'index'])->name('index')->middleware('can:permission.view');
+        Route::post('/sync', [PermissionController::class, 'sync'])->name('sync')->middleware('can:permission.sync');
     });
 });
 
