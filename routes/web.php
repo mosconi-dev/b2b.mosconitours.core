@@ -20,10 +20,10 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('/flights', [FlightController::class, 'index'])->name('flights');
-    Route::post('/flights/search', [FlightController::class, 'search'])->name('flights.search');
-    Route::get('/api-logs', [ApiLogController::class, 'index'])->name('api-logs');
-    Route::get('/api-logs/{apiLog}', [ApiLogController::class, 'show'])->name('api-logs.show')->whereNumber('apiLog');
+    Route::get('/flights', [FlightController::class, 'index'])->name('flights')->middleware('can:flight.view');
+    Route::post('/flights/search', [FlightController::class, 'search'])->name('flights.search')->middleware('can:flight.search');
+    Route::get('/api-logs', [ApiLogController::class, 'index'])->name('api-logs')->middleware('can:apilog.view');
+    Route::get('/api-logs/{apiLog}', [ApiLogController::class, 'show'])->name('api-logs.show')->whereNumber('apiLog')->middleware('can:apilog.view');
 });
 
 Route::middleware('auth')->group(function () {

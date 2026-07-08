@@ -3,14 +3,27 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
 class FlightSearchTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithRbac, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(PermissionSeeder::class);
+    }
+
+    private function flightUser(): User
+    {
+        return $this->userWith(['flight.view', 'flight.search']);
+    }
 
     private function authFixture(): array
     {
@@ -45,11 +58,20 @@ class FlightSearchTest extends TestCase
         ], $overrides);
     }
 
+    public function test_search_is_forbidden_without_flight_permission(): void
+    {
+        $this->fakeOk();
+
+        $this->actingAs($this->userWith(['user.view']))
+            ->postJson('/flights/search', $this->payload())
+            ->assertForbidden();
+    }
+
     public function test_search_returns_normalized_results(): void
     {
         $this->fakeOk();
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($this->flightUser())
             ->postJson('/flights/search', $this->payload())
             ->assertOk()
             ->assertJsonStructure([
@@ -73,7 +95,7 @@ class FlightSearchTest extends TestCase
     {
         $this->fakeOk();
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($this->flightUser())
             ->postJson('/flights/search', $this->payload(['cabin' => 'business']))
             ->assertOk();
 
@@ -98,7 +120,7 @@ class FlightSearchTest extends TestCase
     public function test_token_is_cached_across_searches(): void
     {
         $this->fakeOk();
-        $user = User::factory()->create();
+        $user = $this->flightUser();
 
         // Two DIFFERENT searches (different dates) so both bypass the per-user
         // result cache and genuinely reach the service, sharing the token.
@@ -123,7 +145,7 @@ class FlightSearchTest extends TestCase
                 ->push($this->searchFixture(), 200),
         ]);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($this->flightUser())
             ->postJson('/flights/search', $this->payload())
             ->assertOk();
 
@@ -136,7 +158,7 @@ class FlightSearchTest extends TestCase
     {
         $this->fakeOk();
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($this->flightUser())
             ->postJson('/flights/search', $this->payload([
                 'segments' => [
                     ['origin' => '', 'dest' => 'Caticlan (MPH)', 'departure' => now()->addWeek()->toDateString()],
@@ -153,7 +175,7 @@ class FlightSearchTest extends TestCase
             'api-stage.tboair.com/*' => Http::response('', 500),
         ]);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($this->flightUser())
             ->postJson('/flights/search', $this->payload())
             ->assertStatus(502);
     }
@@ -162,7 +184,7 @@ class FlightSearchTest extends TestCase
     {
         $this->fakeOk();
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($this->flightUser())
             ->postJson('/flights/search', $this->payload([
                 'tripType' => 'round',
                 'returnDate' => now()->addWeeks(2)->toDateString(),
