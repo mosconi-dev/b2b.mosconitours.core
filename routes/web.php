@@ -29,6 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');
+        Route::get('/create', [BookingController::class, 'create'])->name('create')->middleware('can:booking.create');
         Route::post('/', [BookingController::class, 'store'])->name('store')->middleware('can:booking.create');
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show')->whereNumber('booking')->middleware('can:booking.view');
     });

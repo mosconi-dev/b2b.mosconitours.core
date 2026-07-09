@@ -55,6 +55,46 @@ class BookingTest extends TestCase
         ], $overrides);
     }
 
+    public function test_create_renders_the_wizard(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', [
+                'traceId' => 'trace-abc-123',
+                'resultIndex' => 'OB1',
+                'oldFare' => 6000,
+                'search' => 'Manila (MNL) → Cebu (CEB) · 1 Pax',
+            ]))
+            ->assertOk()
+            ->assertSee('Guest Details')                 // stepper labels
+            ->assertSee('Payment')
+            ->assertSee('Confirmation')
+            ->assertSee('Fare price updated')            // the in-wizard price-change gate
+            ->assertSee('Manila (MNL) → Cebu (CEB)');    // the carried search-context bar
+    }
+
+    public function test_create_requires_booking_create_permission(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->userWith(['booking.view']))
+            ->get(route('bookings.create', ['traceId' => 'x', 'resultIndex' => 'y']))
+            ->assertForbidden();
+    }
+
+    public function test_create_redirects_to_search_when_the_fare_is_unavailable(): void
+    {
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*FareQuote*' => Http::response('', 504),
+        ]);
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', ['traceId' => 'x', 'resultIndex' => 'y']))
+            ->assertRedirect(route('flights'));
+    }
+
     public function test_store_requires_booking_create_permission(): void
     {
         $this->fakeQuote();

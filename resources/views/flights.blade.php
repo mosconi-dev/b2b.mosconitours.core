@@ -9,12 +9,15 @@
         <p class="mt-1 text-sm text-gray-500">Find and compare flights for your booking.</p>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', fareQuoteUrl: '{{ route('flights.fare-quote') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', ssrUrl: '{{ route('flights.ssr') }}', bookingUrl: '{{ route('bookings.store') }}' })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}' })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}
-        <div class="space-y-8" :class="searched ? 'lg:col-span-12' : 'lg:col-span-9'">
+        <div class="space-y-5" :class="searched ? 'lg:col-span-12' : 'lg:col-span-9'">
 
+            {{-- Search header: the full form or, once searched, the collapsed summary bar.
+                 Wrapped as one block so the summary sits as tight under the page title as the form does. --}}
+            <div>
             {{-- Full search form --}}
             <form x-ref="form" x-show="!searched || !collapsed" @submit.prevent="submit"
                   class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
@@ -242,6 +245,7 @@
                     Edit search
                 </button>
             </div>
+            </div>{{-- /search header --}}
 
             {{-- Recent searches (sample data, hidden once a search runs) --}}
             <section x-show="!searched && recent.length" x-cloak>
@@ -331,6 +335,11 @@
 
             {{-- Results --}}
             <section x-show="searched" x-cloak>
+                {{-- Booking progress — Select Flight is the current step here --}}
+                <div class="mb-6 rounded-xl border border-gray-200 bg-white px-4 py-5 shadow-sm">
+                    @include('bookings._stepper', ['current' => 1])
+                </div>
+
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
 
                     {{-- Filter sidebar --}}
@@ -384,16 +393,18 @@
                                 </div>
                                 <input type="range" :min="priceBounds.min" :max="priceBounds.max" x-model.number="filters.maxPrice" class="w-full accent-blue-600">
                             </div>
+
+                            <div class="mt-4 border-t border-gray-100 pt-3">
+                                <p x-show="!loading" x-cloak class="text-xs text-gray-500">
+                                    <span class="font-semibold text-brand-900" x-text="visibleResults.length"></span> of <span x-text="results.length"></span> flights
+                                </p>
+                                <p x-show="traceId" x-cloak class="mt-0.5 truncate text-[10px] text-gray-300">Trace <span x-text="traceId"></span></p>
+                            </div>
                         </div>
                     </aside>
 
                     {{-- Results list --}}
-                    <div class="space-y-4 lg:col-span-3">
-
-                        <div x-show="!loading" class="flex items-center justify-between text-sm text-gray-500">
-                            <p><span class="font-semibold text-brand-900" x-text="visibleResults.length"></span> of <span x-text="results.length"></span> flights</p>
-                            <p x-show="traceId" x-cloak class="text-xs text-gray-300">Trace <span x-text="traceId"></span></p>
-                        </div>
+                    <div class="lg:col-span-3">
 
                         {{-- Loading skeletons --}}
                         <div x-show="loading" class="space-y-4">
@@ -421,6 +432,7 @@
                         </div>
 
                         {{-- Result cards --}}
+                        <div class="flex flex-col gap-4">
                         <template x-for="offer in visibleResults" :key="offer.resultIndex">
                             <div x-data="{ expanded: false }" class="rounded-xl border border-gray-200 bg-white shadow-sm">
                                 <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
@@ -464,15 +476,19 @@
                                             <p class="text-[11px] text-gray-400">total fare</p>
                                             <p class="text-lg font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(offer.price.offeredFare)"></span></p>
                                         </div>
-                                        <button type="button" @click="selectOffer(offer)"
-                                                :disabled="selecting === offer.resultIndex"
-                                                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
-                                            <svg x-show="selecting === offer.resultIndex" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                                            </svg>
-                                            <span x-text="selecting === offer.resultIndex ? 'Pricing…' : 'Select'"></span>
-                                        </button>
+                                        @can('booking.create')
+                                            <button type="button" @click="selectOffer(offer)"
+                                                    :disabled="selecting === offer.resultIndex"
+                                                    class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                                                <svg x-show="selecting === offer.resultIndex" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                                </svg>
+                                                <span x-text="selecting === offer.resultIndex ? 'Pricing…' : 'Select'"></span>
+                                            </button>
+                                        @else
+                                            <button type="button" disabled title="You don't have booking permission" class="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-white">Select</button>
+                                        @endcan
                                     </div>
                                 </div>
 
@@ -545,6 +561,7 @@
                                 </div>
                             </div>
                         </template>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -608,168 +625,5 @@
             </section>
         </div>
 
-        {{-- Fare quote / rules modal (FareQuote → confirm price before booking) --}}
-        <div x-show="quoteOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center sm:items-center" @keydown.escape.window="closeQuote()">
-            <div class="absolute inset-0 bg-black/40" @click="closeQuote()"></div>
-            <div class="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl"
-                 x-transition:enter="transition ease-out duration-200"
-                 x-transition:enter-start="opacity-0 translate-y-4"
-                 x-transition:enter-end="opacity-100 translate-y-0">
-
-                <div class="flex items-start justify-between">
-                    <div>
-                        <h2 class="text-base font-semibold text-brand-900">Confirm fare</h2>
-                        <p class="mt-0.5 text-sm text-gray-500" x-show="quoteOffer" x-cloak>
-                            <span x-text="quoteOffer?.airlineName || quoteOffer?.airlineCode"></span> ·
-                            <span x-text="quoteOffer?.departure?.code"></span> → <span x-text="quoteOffer?.arrival?.code"></span>
-                        </p>
-                    </div>
-                    <button type="button" @click="closeQuote()" class="rounded-md p-1 text-gray-400 transition hover:text-gray-600">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                </div>
-
-                {{-- Loading --}}
-                <div x-show="selecting && !quote && !quoteError" class="py-10 text-center text-sm text-gray-500">Pricing this fare…</div>
-
-                {{-- Error --}}
-                <div x-show="quoteError" x-cloak class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" x-text="quoteError"></div>
-
-                {{-- Quote --}}
-                <div x-show="quote && step === 'quote'" x-cloak class="mt-4 space-y-4">
-                    <div x-show="quote?.isPriceChanged" x-cloak class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        <strong>Price updated.</strong> The fare changed since your search — the confirmed total is below.
-                    </div>
-
-                    <div class="flex items-end justify-between rounded-lg bg-gray-50 px-4 py-3">
-                        <span class="text-sm text-gray-500">Confirmed total</span>
-                        <span class="text-xl font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote?.price?.offeredFare)"></span></span>
-                    </div>
-
-                    <div class="flex flex-wrap gap-2 text-xs">
-                        <span x-show="quote?.isLcc" x-cloak class="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">Low-cost</span>
-                        <span x-show="quote?.isRefundable" x-cloak class="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">Refundable</span>
-                        <span x-show="quote && !quote.isRefundable" x-cloak class="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-500">Non-refundable</span>
-                        <span x-show="quote?.isPassportMandatory" x-cloak class="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">Passport required</span>
-                    </div>
-
-                    <div x-show="quote?.fareBreakdown?.length" x-cloak>
-                        <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Fare breakdown</p>
-                        <div class="divide-y divide-gray-100 rounded-lg border border-gray-100 text-sm">
-                            <template x-for="(b, i) in quote.fareBreakdown" :key="i">
-                                <div class="flex items-center justify-between px-3 py-2">
-                                    <span class="text-gray-600"><span x-text="b.count"></span> × <span x-text="b.passengerType"></span></span>
-                                    <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money((b.baseFare + b.tax) * b.count)"></span></span>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-
-                    <div>
-                        <button type="button" @click="loadRules()" x-show="rules === null && !rulesLoading" class="text-sm font-medium text-blue-600 hover:text-blue-700">View fare rules</button>
-                        <p x-show="rulesLoading" x-cloak class="text-sm text-gray-500">Loading fare rules…</p>
-                        <p x-show="rulesError" x-cloak class="text-sm text-red-600" x-text="rulesError"></p>
-                        <div x-show="rules && rules.length" x-cloak class="space-y-2">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fare rules</p>
-                            <template x-for="(r, i) in rules" :key="i">
-                                <div class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-                                    <p class="font-semibold text-gray-700"><span x-text="r.origin"></span> → <span x-text="r.destination"></span> <span x-show="r.airline" x-text="'· ' + r.airline"></span></p>
-                                    <p class="mt-1 whitespace-pre-line" x-text="r.detail"></p>
-                                </div>
-                            </template>
-                        </div>
-                        <p x-show="rules && rules.length === 0" x-cloak class="text-sm text-gray-500">No fare rules provided.</p>
-                    </div>
-
-                    <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
-                        <button type="button" @click="closeQuote()" class="text-sm font-medium text-gray-600 hover:text-gray-800">Close</button>
-                        @can('booking.create')
-                            <button type="button" @click="startPassengers()" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
-                                Continue to booking
-                            </button>
-                        @else
-                            <button type="button" disabled title="You don't have booking permission" class="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-white">
-                                Continue to booking
-                            </button>
-                        @endcan
-                    </div>
-                </div>
-
-                {{-- Passenger details step --}}
-                <div x-show="quote && step === 'passengers'" x-cloak class="mt-4 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm font-medium text-brand-900">Passenger details</p>
-                        <div class="text-right">
-                            <span class="text-sm font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(grandTotal)"></span></span>
-                            <p x-show="ancillaryTotal > 0" x-cloak class="text-[11px] text-gray-400">incl. add-ons <span x-text="currency"></span> <span x-text="money(ancillaryTotal)"></span></p>
-                        </div>
-                    </div>
-
-                    <p x-show="ssrLoading" x-cloak class="text-xs text-gray-500">Loading add-ons…</p>
-                    <p x-show="quote?.isPassportMandatory" x-cloak class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Passport details are required for every passenger on this fare.</p>
-                    <div x-show="bookingError" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" x-text="bookingError"></div>
-
-                    <div class="space-y-3">
-                        <template x-for="(p, i) in passengers" :key="i">
-                            <div class="rounded-lg border border-gray-200 p-3">
-                                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Passenger <span x-text="i + 1"></span> · <span x-text="p.type"></span></p>
-                                <div class="grid grid-cols-2 gap-2 sm:grid-cols-6">
-                                    <select x-model="p.title" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-1">
-                                        <option>Mr</option><option>Mrs</option><option>Ms</option><option>Mstr</option><option>Miss</option>
-                                    </select>
-                                    <input type="text" x-model="p.firstName" placeholder="First name" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
-                                    <input type="text" x-model="p.lastName" placeholder="Last name" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3" />
-                                    <select x-model="p.gender" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2">
-                                        <option value="">Gender</option><option value="M">Male</option><option value="F">Female</option>
-                                    </select>
-                                    <input type="date" x-model="p.dateOfBirth" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-4" />
-                                </div>
-                                <div x-show="quote?.isPassportMandatory" x-cloak class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-6">
-                                    <input type="text" x-model="p.passportNo" placeholder="Passport no." class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
-                                    <input type="date" x-model="p.passportExpiry" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
-                                    <input type="text" x-model="p.nationality" maxlength="2" placeholder="Nat. (PH)" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm uppercase sm:col-span-2" />
-                                </div>
-
-                                {{-- Ancillaries (LCC) --}}
-                                <div x-show="ssr && (ssr.baggage.length || ssr.meals.length)" x-cloak class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-6">
-                                    <select x-show="ssr && ssr.baggage.length && p.type !== 'Infant'" x-model="p.baggage" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3">
-                                        <option value="">No extra baggage</option>
-                                        <template x-for="b in (ssr?.baggage ?? [])" :key="b.code">
-                                            <option :value="b.code" x-text="b.label + ' — ' + currency + ' ' + money(b.price)"></option>
-                                        </template>
-                                    </select>
-                                    <select x-show="ssr && ssr.meals.length" x-model="p.meal" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3">
-                                        <option value="">No meal</option>
-                                        <template x-for="m in (ssr?.meals ?? [])" :key="m.code">
-                                            <option :value="m.code" x-text="m.label + ' — ' + currency + ' ' + money(m.price)"></option>
-                                        </template>
-                                    </select>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-
-                    <div>
-                        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Contact</p>
-                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <input type="email" x-model="contact.email" placeholder="Email" class="rounded-lg border-gray-300 py-1.5 text-sm" />
-                            <input type="tel" x-model="contact.phone" placeholder="Phone" class="rounded-lg border-gray-300 py-1.5 text-sm" />
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
-                        <button type="button" @click="backToQuote()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
-                        <button type="button" @click="createBooking()" :disabled="bookingSubmitting"
-                                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
-                            <svg x-show="bookingSubmitting" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                            </svg>
-                            <span x-text="bookingSubmitting ? 'Creating…' : 'Create booking'"></span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </x-app-layout>

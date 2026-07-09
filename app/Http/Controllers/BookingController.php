@@ -6,7 +6,9 @@ use App\Http\Requests\StoreBookingRequest;
 use App\Models\Booking;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
+use App\Services\TboAir\TboAirService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,6 +30,49 @@ class BookingController extends Controller
         abort_unless($booking->user_id === $request->user()->id, 403);
 
         return view('bookings.show', compact('booking'));
+    }
+
+    /**
+     * The multi-step booking wizard (Select Flight → Guest Details → Add-ons →
+     * Payment → Confirmation). Re-fetches the binding fare (+ SSR for LCC) server-side
+     * to render the flight/price and add-on options; sends the user back to search if
+     * the fare has expired.
+     */
+    public function create(Request $request, TboAirService $service): View|RedirectResponse
+    {
+        $data = $request->validate([
+            'traceId' => ['required', 'string', 'max:255'],
+            'resultIndex' => ['required', 'string', 'max:8192'],
+            'oldFare' => ['nullable', 'numeric'], // the searched fare, for the price-change diff
+        ]);
+
+        $selection = new SelectionInput($data['traceId'], $data['resultIndex']);
+
+        try {
+            $quote = $service->fareQuote($selection);
+            $ssr = $quote->isLcc ? $service->ssr($selection) : null;
+        } catch (TboAirException $e) {
+            report($e);
+
+            return redirect()->route('flights')->with('status', $e->isTimeout()
+                ? 'The flight provider timed out. Please search again.'
+                : 'That fare is no longer available — please search again.');
+        }
+
+        return view('bookings.create', [
+            'traceId' => $selection->traceId,
+            'resultIndex' => $selection->resultIndex,
+            'quote' => $quote->toArray(),
+            'ssr' => $ssr?->toArray(),
+            'oldFare' => (float) ($data['oldFare'] ?? 0),
+            'search' => (string) $request->query('search', ''),
+            'editUrl' => route('flights', array_filter(['q' => $request->query('q')])),
+            'summary' => [
+                'airline' => (string) $request->query('airline', ''),
+                'from' => (string) $request->query('from', ''),
+                'to' => (string) $request->query('to', ''),
+            ],
+        ]);
     }
 
     /**

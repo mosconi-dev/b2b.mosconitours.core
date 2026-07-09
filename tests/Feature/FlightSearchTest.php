@@ -58,13 +58,13 @@ class FlightSearchTest extends TestCase
         ], $overrides);
     }
 
-    public function test_flights_page_renders_with_the_fare_modal(): void
+    public function test_flights_page_renders(): void
     {
         $this->actingAs($this->flightUser())
             ->get(route('flights'))
             ->assertOk()
             ->assertSee('Search a Flight')
-            ->assertSee('Confirm fare'); // the FareQuote modal markup compiled
+            ->assertSee('Popular destinations');
     }
 
     public function test_a_provider_gateway_timeout_returns_a_clear_message(): void

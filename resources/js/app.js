@@ -122,6 +122,25 @@ Alpine.data('airportField', (segment, field, airports) => ({
 }));
 
 /**
+ * POST JSON with the CSRF token and get back { ok, data }. Shared by the search
+ * modal and the booking wizard.
+ */
+async function postJson(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+        },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+}
+
+/**
  * flightSearch — state + behaviour for the flight search form and results.
  */
 Alpine.data('flightSearch', (config = {}) => ({
@@ -136,10 +155,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     // --- injected from the blade ---
     airports: config.airports ?? [],
     searchUrl: config.searchUrl ?? '',
-    fareQuoteUrl: config.fareQuoteUrl ?? '',
-    fareRuleUrl: config.fareRuleUrl ?? '',
-    ssrUrl: config.ssrUrl ?? '',
-    bookingUrl: config.bookingUrl ?? '',
+    bookingCreateUrl: config.bookingCreateUrl ?? '',
 
     // --- results state ---
     searched: false,
@@ -152,26 +168,8 @@ Alpine.data('flightSearch', (config = {}) => ({
     sort: 'price',
     filters: { stops: [], airlines: [], maxPrice: null },
 
-    // --- fare selection (Phase 1: FareQuote / FareRule) ---
-    selecting: null, // resultIndex currently being priced
-    quoteOpen: false,
-    quote: null,
-    quoteOffer: null,
-    quoteError: null,
-    rules: null,
-    rulesLoading: false,
-    rulesError: null,
-
-    // --- passenger entry (Phase 2: create booking) ---
-    step: 'quote', // 'quote' | 'passengers'
-    passengers: [],
-    contact: { email: '', phone: '' },
-    bookingSubmitting: false,
-    bookingError: null,
-
-    // --- ancillaries (Phase 3: SSR baggage / meals, LCC only) ---
-    ssr: null,
-    ssrLoading: false,
+    // --- fare selection ---
+    selecting: null, // resultIndex being handed off to the wizard (loading state)
 
     // Sample recent searches (display only — clicking one re-fills the form).
     recent: [
@@ -329,166 +327,25 @@ Alpine.data('flightSearch', (config = {}) => ({
         this.collapsed = false;
     },
 
-    // ----- fare selection (FareQuote / FareRule) -----
-    async postJson(url, body) {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-            },
-            body: JSON.stringify(body),
+    // ----- fare selection -----
+    // Select hands off to the full-page wizard, which does the single re-price
+    // (FareQuote) and shows a price-change gate if the fare changed. We pass the
+    // searched fare (oldFare) so the wizard can show the before/after difference.
+    selectOffer(offer) {
+        if (! this.traceId || this.selecting) return;
+        this.selecting = offer.resultIndex; // brief loading state while we navigate away
+
+        const params = new URLSearchParams({
+            traceId: this.traceId,
+            resultIndex: offer.resultIndex,
+            oldFare: Number(offer.price?.offeredFare) || 0,
+            airline: offer.airlineName || offer.airlineCode || '',
+            from: offer.departure?.code || '',
+            to: offer.arrival?.code || '',
+            search: this.summary || '', // carried to the wizard's search-context bar
+            q: new URLSearchParams(window.location.search).get('q') || '', // so "Edit search" restores it
         });
-        const data = await res.json().catch(() => ({}));
-        return { ok: res.ok, data };
-    },
-
-    // Re-price the selected offer (FareQuote) and open the confirmation modal.
-    async selectOffer(offer) {
-        if (! this.traceId) return;
-        this.selecting = offer.resultIndex;
-        this.quote = null;
-        this.quoteError = null;
-        this.rules = null;
-        this.rulesError = null;
-        this.quoteOffer = offer;
-        this.quoteOpen = true;
-        this.step = 'quote';
-        this.bookingError = null;
-        this.ssr = null;
-
-        try {
-            const { ok, data } = await this.postJson(this.fareQuoteUrl, {
-                traceId: this.traceId,
-                resultIndex: offer.resultIndex,
-            });
-            if (! ok) {
-                this.quoteError = data.message || 'We could not price this fare. Please search again.';
-                return;
-            }
-            this.quote = data;
-        } catch (e) {
-            this.quoteError = 'Network error. Please try again.';
-        } finally {
-            this.selecting = null;
-        }
-    },
-
-    // Load fare rules for the offer shown in the modal (FareRule), on demand.
-    async loadRules() {
-        if (! this.quoteOffer || this.rulesLoading) return;
-        this.rulesLoading = true;
-        this.rulesError = null;
-
-        try {
-            const { ok, data } = await this.postJson(this.fareRuleUrl, {
-                traceId: this.traceId,
-                resultIndex: this.quoteOffer.resultIndex,
-            });
-            if (! ok) {
-                this.rulesError = data.message || 'We could not load the fare rules.';
-                return;
-            }
-            this.rules = data.rules ?? [];
-        } catch (e) {
-            this.rulesError = 'Network error. Please try again.';
-        } finally {
-            this.rulesLoading = false;
-        }
-    },
-
-    closeQuote() {
-        this.quoteOpen = false;
-    },
-
-    // Build one passenger row per person in the fare breakdown, then show the form.
-    startPassengers() {
-        const list = [];
-        (this.quote?.fareBreakdown ?? []).forEach((b) => {
-            const n = Number(b.count) || 0;
-            for (let i = 0; i < n; i++) {
-                list.push(this.blankPassenger(b.passengerType || 'Adult'));
-            }
-        });
-        if (! list.length) list.push(this.blankPassenger('Adult'));
-
-        this.passengers = list;
-        this.bookingError = null;
-        this.step = 'passengers';
-
-        // Fetch add-ons (baggage/meals) for LCC fares.
-        if (this.quote?.isLcc && ! this.ssr) this.loadSsr();
-    },
-
-    blankPassenger(type) {
-        return { type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '' };
-    },
-
-    async loadSsr() {
-        if (this.ssrLoading) return;
-        this.ssrLoading = true;
-        try {
-            const { ok, data } = await this.postJson(this.ssrUrl, {
-                traceId: this.traceId,
-                resultIndex: this.quoteOffer?.resultIndex,
-            });
-            this.ssr = ok ? { baggage: data.baggage ?? [], meals: data.meals ?? [] } : { baggage: [], meals: [] };
-        } catch (e) {
-            this.ssr = { baggage: [], meals: [] };
-        } finally {
-            this.ssrLoading = false;
-        }
-    },
-
-    ssrPrice(list, code) {
-        if (! code || ! list) return 0;
-        const opt = list.find((o) => o.code === code);
-        return opt ? Number(opt.price) || 0 : 0;
-    },
-
-    get ancillaryTotal() {
-        if (! this.ssr) return 0;
-        return this.passengers.reduce(
-            (sum, p) => sum + this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal),
-            0,
-        );
-    },
-
-    get grandTotal() {
-        return (Number(this.quote?.price?.offeredFare) || 0) + this.ancillaryTotal;
-    },
-
-    backToQuote() {
-        this.step = 'quote';
-    },
-
-    async createBooking() {
-        if (this.bookingSubmitting) return;
-        this.bookingSubmitting = true;
-        this.bookingError = null;
-
-        try {
-            const { ok, data } = await this.postJson(this.bookingUrl, {
-                traceId: this.traceId,
-                resultIndex: this.quoteOffer?.resultIndex,
-                contact: this.contact,
-                passengers: this.passengers,
-            });
-            if (! ok) {
-                this.bookingError =
-                    data.message ||
-                    (data.errors ? Object.values(data.errors)[0][0] : null) ||
-                    'We could not create the booking. Please check the details and try again.';
-                return;
-            }
-            window.location = data.redirect;
-        } catch (e) {
-            this.bookingError = 'Network error. Please try again.';
-        } finally {
-            this.bookingSubmitting = false;
-        }
+        window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
 
     // Restore a search from the URL (?q=…) on page load, then re-run it.
@@ -605,7 +462,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     formatTime(iso) {
         if (! iso) return '—';
         const d = new Date(iso);
-        return isNaN(d) ? iso : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return isNaN(d) ? iso : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     },
 
     formatDate(iso) {
@@ -667,6 +524,128 @@ Alpine.data('rolePermissions', (config = {}) => ({
         this.selected = this.allChecked(ids)
             ? this.selected.filter((id) => !ids.includes(id))
             : [...new Set([...this.selected, ...ids])];
+    },
+}));
+
+// bookingWizard — the full-page Select Flight → Guest Details → Add-ons → Payment
+// → Confirmation flow. Fare + SSR are injected (fetched server-side); it posts to
+// /bookings on completion.
+Alpine.data('bookingWizard', (config = {}) => ({
+    traceId: config.traceId ?? '',
+    resultIndex: config.resultIndex ?? '',
+    quote: config.quote ?? {},
+    ssr: config.ssr ?? { baggage: [], meals: [] },
+    summary: config.summary ?? {},
+    oldFare: Number(config.oldFare) || 0,
+    bookingUrl: config.bookingUrl ?? '',
+    flightsUrl: config.flightsUrl ?? '',
+
+    step: 2, // 1 = Select Flight (already done); wizard starts at Guest Details
+    priceGateOpen: false, // shown on load if the re-price differs from the searched fare
+    passengers: [],
+    contact: { email: '', phone: '' },
+    submitting: false,
+    error: null,
+    reference: null,
+    showUrl: '#',
+
+    init() {
+        if (! this.ssr) this.ssr = { baggage: [], meals: [] };
+        this.passengers = this.buildPassengers();
+        // The wizard's own FareQuote is the single re-price; gate the flow if it changed.
+        if (this.quote?.isPriceChanged) this.priceGateOpen = true;
+    },
+
+    get priceDiff() {
+        return (Number(this.quote?.price?.offeredFare) || 0) - this.oldFare;
+    },
+
+    acceptPrice() {
+        this.priceGateOpen = false;
+    },
+
+    declinePrice() {
+        window.location = this.flightsUrl;
+    },
+
+    get currency() {
+        return this.quote?.price?.currency ?? 'PHP';
+    },
+
+    buildPassengers() {
+        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '' });
+        const list = [];
+        (this.quote?.fareBreakdown ?? []).forEach((b) => {
+            const n = Number(b.count) || 0;
+            for (let i = 0; i < n; i++) list.push(blank(b.passengerType || 'Adult'));
+        });
+        if (! list.length) list.push(blank('Adult'));
+        return list;
+    },
+
+    get hasSsr() {
+        return !! (this.ssr && (this.ssr.baggage.length || this.ssr.meals.length));
+    },
+
+    get canProceedGuests() {
+        return this.passengers.every((p) => p.firstName.trim() && p.lastName.trim()) &&
+            this.contact.email.trim() && this.contact.phone.trim();
+    },
+
+    next() {
+        if (this.step < 4) this.step++;
+    },
+
+    back() {
+        if (this.step > 2) this.step--;
+    },
+
+    ssrPrice(list, code) {
+        if (! code || ! list) return 0;
+        const opt = list.find((o) => o.code === code);
+        return opt ? Number(opt.price) || 0 : 0;
+    },
+
+    get ancillaryTotal() {
+        if (! this.ssr) return 0;
+        return this.passengers.reduce(
+            (sum, p) => sum + this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal),
+            0,
+        );
+    },
+
+    get grandTotal() {
+        return (Number(this.quote?.price?.offeredFare) || 0) + this.ancillaryTotal;
+    },
+
+    money(amount) {
+        return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    },
+
+    async complete() {
+        if (this.submitting) return;
+        this.submitting = true;
+        this.error = null;
+
+        const { ok, data } = await postJson(this.bookingUrl, {
+            traceId: this.traceId,
+            resultIndex: this.resultIndex,
+            contact: this.contact,
+            passengers: this.passengers,
+        });
+
+        this.submitting = false;
+        if (! ok) {
+            this.error =
+                data.message ||
+                (data.errors ? Object.values(data.errors)[0][0] : null) ||
+                'We could not complete the booking. Please check the details and try again.';
+            return;
+        }
+
+        this.reference = data.reference;
+        this.showUrl = data.redirect ?? '#';
+        this.step = 5;
     },
 }));
 
