@@ -40,82 +40,80 @@
                     </div>
                 @endif
 
-                <form method="POST" action="{{ route('admin.settings.tbo.update') }}" class="mt-5 space-y-5">
+                <form method="POST" action="{{ route('admin.settings.tbo.update') }}" class="mt-5">
                     @csrf
                     @method('PUT')
 
-                    <div>
-                        <x-input-label for="environment" value="Global environment" />
+                    <x-input-label for="environment" value="Global environment" />
+                    <div class="mt-1 flex gap-2">
                         <select id="environment" name="environment"
-                                class="mt-1 block w-full rounded-lg border-gray-300 py-2 pl-3.5 pr-8 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                class="block w-full rounded-lg border-gray-300 py-2 pl-3.5 pr-8 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                             <option value="test" @selected($globalEnvironment === 'test')>Test (staging)</option>
                             <option value="live" @selected($globalEnvironment === 'live')>Live (production)</option>
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">The platform default. A per-user override can take precedence.</p>
-                        <x-input-error :messages="$errors->get('environment')" class="mt-2" />
-                    </div>
-
-                    <div>
-                        <x-input-label for="cache_key" value="Token cache key (base)" />
-                        <x-text-input id="cache_key" name="cache_key" type="text" class="mt-1 block w-full font-mono"
-                                      :value="old('cache_key', $cacheKey)" required />
-                        <p class="mt-1 text-xs text-gray-500">
-                            Effective key is <code class="rounded bg-gray-100 px-1">{{ $cacheKey }}:{env}</code>.
-                            Changing it invalidates cached tokens (they re-authenticate on next call).
-                        </p>
-                        <x-input-error :messages="$errors->get('cache_key')" class="mt-2" />
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                            <x-input-label for="ttl_test" value="Test token TTL (seconds)" />
-                            <x-text-input id="ttl_test" name="ttl_test" type="number" min="60" max="86400"
-                                          class="mt-1 block w-full" :value="old('ttl_test', $ttlTest)" required />
-                            <x-input-error :messages="$errors->get('ttl_test')" class="mt-2" />
-                        </div>
-                        <div>
-                            <x-input-label for="ttl_live" value="Live token TTL (seconds)" />
-                            <x-text-input id="ttl_live" name="ttl_live" type="number" min="60" max="86400"
-                                          class="mt-1 block w-full" :value="old('ttl_live', $ttlLive)" required />
-                            <x-input-error :messages="$errors->get('ttl_live')" class="mt-2" />
-                        </div>
-                    </div>
-                    <p class="text-xs text-gray-500">
-                        How long an authenticated token is cached before re-authenticating (60s–86400s; token validity is ~24h).
-                        Keep a short live TTL so a quick live test expires on its own. Saving flushes any token whose TTL changed.
-                    </p>
-
-                    <div class="flex justify-end border-t border-gray-100 pt-5">
-                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
-                            Save Settings
+                        <button type="submit" class="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                            Save
                         </button>
                     </div>
+                    <p class="mt-1 text-xs text-gray-500">The platform default. A per-user override can take precedence.</p>
+                    <x-input-error :messages="$errors->get('environment')" class="mt-2" />
                 </form>
 
                 <div class="mt-6 border-t border-gray-100 pt-5">
-                    <h3 class="text-sm font-semibold text-brand-900">Cached tokens</h3>
-                    <p class="mt-1 text-xs text-gray-500">Force a re-authentication by flushing the cached TBO token for an environment.</p>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    <h3 class="text-sm font-semibold text-brand-900">Environments</h3>
+                    <p class="mt-1 text-xs text-gray-500">
+                        Per environment: the cached TokenId and how long it's cached — the two go together. Paste a TokenId
+                        <strong>with</strong> a TTL (max 86400s) to reuse a session, or <strong>clear both and Save</strong> to
+                        force a fresh login on the next call. (Flush clears the token in one click.)
+                    </p>
+                    <div class="mt-3 space-y-3">
                         @foreach (['test', 'live'] as $env)
-                            <form method="POST" action="{{ route('admin.settings.tbo.flush', $env) }}">
-                                @csrf
-                                <button type="submit" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
-                                    Flush {{ $env }} token
-                                </button>
-                            </form>
+                            @php($bag = $errors->getBag('tbo_'.$env))
+                            <div class="rounded-lg border border-gray-200 p-4">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-semibold uppercase tracking-wide {{ $env === 'live' ? 'text-red-600' : 'text-gray-500' }}">{{ $env }}</span>
+                                    <form method="POST" action="{{ route('admin.settings.tbo.flush', $env) }}">
+                                        @csrf
+                                        <button type="submit" class="text-xs font-medium text-red-600 transition hover:text-red-700">Flush</button>
+                                    </form>
+                                </div>
+
+                                <form method="POST" action="{{ route('admin.settings.tbo.env', $env) }}" class="mt-3 space-y-3">
+                                    @csrf
+                                    @method('PUT')
+
+                                    <div>
+                                        <x-input-label :for="$env.'_ttl'" value="Token TTL (seconds)" />
+                                        <x-text-input :id="$env.'_ttl'" name="ttl" type="number" max="86400"
+                                                      class="mt-1 block w-full" :value="old('ttl', $environments[$env]['ttl'])" />
+                                        <x-input-error :messages="$bag->get('ttl')" class="mt-2" />
+                                    </div>
+
+                                    <div>
+                                        <x-input-label :for="$env.'_token'" value="Cached TokenId" />
+                                        <div class="mt-1 flex gap-2">
+                                            <input type="text" :id="$env.'_token'" name="token" value="{{ $environments[$env]['token'] }}"
+                                                   placeholder="{{ $environments[$env]['token'] ? '' : 'No cached token — paste one to reuse…' }}"
+                                                   class="block w-full rounded-lg border-gray-300 py-1.5 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                                            <button type="submit" class="shrink-0 rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                                                Save
+                                            </button>
+                                        </div>
+                                        <x-input-error :messages="$bag->get('token')" class="mt-2" />
+                                    </div>
+                                </form>
+                            </div>
                         @endforeach
                     </div>
+                    <p class="mt-2 text-xs text-gray-400">
+                        A shorter TTL applies from the next authentication. A pasted token must still be valid and your
+                        requests must exit the TBO-whitelisted IP.
+                    </p>
                 </div>
             @else
-                <dl class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                    <div>
-                        <dt class="text-gray-500">Global environment</dt>
-                        <dd class="font-medium text-brand-900">{{ $globalEnvironment }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-gray-500">Token cache key</dt>
-                        <dd class="font-mono text-brand-900">{{ $cacheKey }}:{env}</dd>
-                    </div>
+                <dl class="mt-4 text-sm">
+                    <dt class="text-gray-500">Global environment</dt>
+                    <dd class="font-medium text-brand-900">{{ $globalEnvironment }}</dd>
                 </dl>
                 <p class="mt-4 text-xs text-gray-400">You need the “Supplier · TBO · Use Live / Manage” permission to change these.</p>
             @endcan

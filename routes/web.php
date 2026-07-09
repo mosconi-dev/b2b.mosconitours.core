@@ -74,6 +74,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     Route::prefix('settings')->name('settings.')->group(function () {
         Route::get('/', [SettingController::class, 'index'])->name('index')->middleware('can:setting.view');
         Route::put('/tbo', [SettingController::class, 'update'])->name('tbo.update')->middleware('can:supplier.tbo.manage');
+        Route::put('/tbo/env/{env}', [SettingController::class, 'updateEnvironment'])->name('tbo.env')
+            ->whereIn('env', ['test', 'live'])->middleware('can:supplier.tbo.manage');
         Route::post('/tbo/flush/{env}', [SettingController::class, 'flushToken'])->name('tbo.flush')
             ->whereIn('env', ['test', 'live'])->middleware('can:supplier.tbo.manage');
     });

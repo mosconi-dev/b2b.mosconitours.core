@@ -19,10 +19,6 @@ class UpdateTboSettingsRequest extends FormRequest
     {
         return [
             'environment' => ['required', Rule::in(['test', 'live'])],
-            'cache_key' => ['required', 'string', 'max:128'],
-            // Floor avoids hammering TBO auth; ceiling stays within the ~24h token validity.
-            'ttl_test' => ['required', 'integer', 'min:60', 'max:86400'],
-            'ttl_live' => ['required', 'integer', 'min:60', 'max:86400'],
         ];
     }
 }

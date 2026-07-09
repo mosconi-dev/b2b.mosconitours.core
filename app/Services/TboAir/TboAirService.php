@@ -64,13 +64,10 @@ class TboAirService
 
     /**
      * Token cache key, namespaced per environment so test and live never collide.
-     * The base key is admin-overridable (Settings), falling back to config.
      */
     public function cacheKey(): string
     {
-        $base = $this->settings->get('tbo.cache_key') ?: config('tboair.cache_key');
-
-        return $base.':'.$this->client->environment();
+        return config('tboair.cache_key').':'.$this->client->environment();
     }
 
     private function authenticate(): string

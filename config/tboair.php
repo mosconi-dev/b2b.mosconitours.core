@@ -30,8 +30,8 @@ return [
 
         'test' => [
             'credentials' => [
-                'username' => env('TBOAIR_TEST_USERNAME', env('TBOAIR_USERNAME')),
-                'password' => env('TBOAIR_TEST_PASSWORD', env('TBOAIR_PASSWORD')),
+                'username' => env('TBOAIR_TEST_USERNAME'),
+                'password' => env('TBOAIR_TEST_PASSWORD'),
                 'ip_address' => env('TBOAIR_IP_ADDRESS', '127.0.0.1'),
             ],
             'endpoints' => [
