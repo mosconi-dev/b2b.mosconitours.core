@@ -100,6 +100,10 @@ return [
     // this window are served from cache; after it, the search auto re-runs.
     'search_cache_ttl' => (int) env('TBOAIR_SEARCH_CACHE_TTL', 300), // 5 min
 
+    // How long a user's recent-search shortcuts are kept (seconds). Per-user,
+    // so the list follows them across devices until it expires.
+    'recent_ttl' => (int) env('TBOAIR_RECENT_TTL', 86400), // 1 day
+
     'timeout' => (int) env('TBOAIR_TIMEOUT', 300),
 
     'connect_timeout' => (int) env('TBOAIR_CONNECT_TIMEOUT', 10),

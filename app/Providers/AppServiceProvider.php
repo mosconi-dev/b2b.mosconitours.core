@@ -6,6 +6,7 @@ use App\Services\Rbac\AuditLogger;
 use App\Services\Rbac\PermissionRegistry;
 use App\Services\Settings\Settings;
 use App\Services\TboAir\FlightSearchCache;
+use App\Services\TboAir\RecentSearchStore;
 use App\Services\TboAir\TboAirClient;
 use App\Services\TboAir\TboAirConfig;
 use App\Services\TboAir\TboEnvironmentResolver;
@@ -32,6 +33,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(FlightSearchCache::class, fn () => new FlightSearchCache((int) config('tboair.search_cache_ttl')));
+
+        $this->app->singleton(RecentSearchStore::class, fn () => new RecentSearchStore((int) config('tboair.recent_ttl')));
 
         // One registry instance per request so its normalized module cache is shared.
         $this->app->singleton(PermissionRegistry::class);

@@ -22,6 +22,7 @@ Route::get('/dashboard', function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/flights', [FlightController::class, 'index'])->name('flights')->middleware('can:flight.view');
+    Route::post('/flights/recent', [FlightController::class, 'recent'])->name('flights.recent')->middleware('can:flight.view');
     Route::post('/flights/search', [FlightController::class, 'search'])->name('flights.search')->middleware('can:flight.search');
     Route::post('/flights/fare-quote', [FlightController::class, 'fareQuote'])->name('flights.fare-quote')->middleware('can:flight.search');
     Route::post('/flights/fare-rule', [FlightController::class, 'fareRule'])->name('flights.fare-rule')->middleware('can:flight.search');

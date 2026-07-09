@@ -9,7 +9,7 @@
         <p class="mt-1 text-sm text-gray-500">Find and compare flights for your booking.</p>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}' })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}', recentUrl: '{{ route('flights.recent') }}', recent: @js($recent) })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}

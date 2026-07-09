@@ -72,6 +72,10 @@ const CABIN_LABELS = {
     first: 'First Class',
 };
 
+// Recent searches are capped so the list stays a quick shortcut rather than an
+// archive; the server-side cache is bounded to the same size.
+const RECENT_MAX = 6;
+
 // Compact, URL-safe encoding of the search params for the `?q=` token — the
 // same tidy, opaque look as Google Flights' `tfs` param (theirs is a base64
 // protobuf; ours is base64url JSON).
@@ -156,6 +160,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     airports: config.airports ?? [],
     searchUrl: config.searchUrl ?? '',
     bookingCreateUrl: config.bookingCreateUrl ?? '',
+    recentUrl: config.recentUrl ?? '',
 
     // --- results state ---
     searched: false,
@@ -171,42 +176,10 @@ Alpine.data('flightSearch', (config = {}) => ({
     // --- fare selection ---
     selecting: null, // resultIndex being handed off to the wizard (loading state)
 
-    // Sample recent searches (display only — clicking one re-fills the form).
-    recent: [
-        {
-            id: 1,
-            tripType: 'round',
-            cabin: 'economy',
-            pax: { adults: 2, children: 0, infants: 0 },
-            segments: [{ origin: 'Manila (MNL)', dest: 'Cebu (CEB)', departure: '2026-06-30' }],
-            returnDate: '2026-07-04',
-            routeText: 'Manila (MNL) → Cebu (CEB)',
-            dateText: 'Jun 30 – Jul 4',
-            metaText: '2 Pax · Economy',
-        },
-        {
-            id: 2,
-            tripType: 'oneway',
-            cabin: 'business',
-            pax: { adults: 1, children: 0, infants: 0 },
-            segments: [{ origin: 'Manila (MNL)', dest: 'Singapore (SIN)', departure: '2026-07-12' }],
-            returnDate: '',
-            routeText: 'Manila (MNL) → Singapore (SIN)',
-            dateText: 'Jul 12',
-            metaText: '1 Pax · Business',
-        },
-        {
-            id: 3,
-            tripType: 'round',
-            cabin: 'economy',
-            pax: { adults: 2, children: 1, infants: 0 },
-            segments: [{ origin: 'Manila (MNL)', dest: 'Caticlan (MPH)', departure: '2026-08-02' }],
-            returnDate: '2026-08-09',
-            routeText: 'Manila (MNL) → Caticlan (MPH)',
-            dateText: 'Aug 2 – Aug 9',
-            metaText: '3 Pax · Economy',
-        },
-    ],
+    // Recent searches — real per-user history seeded from the server-side cache
+    // (injected by the blade) and appended after each successful search. Clicking
+    // one re-fills the form.
+    recent: config.recent ?? [],
 
     // ----- passengers / cabin -----
     get totalPax() {
@@ -315,6 +288,7 @@ Alpine.data('flightSearch', (config = {}) => ({
             this.currency = data.currency ?? 'PHP';
             this.resetFilters();
             this.syncUrl();
+            this.recordRecent();
         } catch (e) {
             this.results = [];
             this.error = 'Network error. Please try again.';
@@ -492,7 +466,7 @@ Alpine.data('flightSearch', (config = {}) => ({
         return `${stops} stop${stops > 1 ? 's' : ''}`;
     },
 
-    // ----- recent searches (sample data) -----
+    // ----- recent searches (per-user history in the server cache) -----
     applySearch(item) {
         this.tripType = item.tripType;
         this.cabin = item.cabin;
@@ -507,10 +481,78 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     removeRecent(id) {
         this.recent = this.recent.filter((r) => r.id !== id);
+        this.saveRecent();
     },
 
     clearRecent() {
         this.recent = [];
+        this.saveRecent();
+    },
+
+    // Persist the list to the per-user cache (fire-and-forget — history is a
+    // best-effort convenience, so a failed write is silently ignored).
+    saveRecent() {
+        if (! this.recentUrl) return;
+        postJson(this.recentUrl, { recent: this.recent }).catch(() => {});
+    },
+
+    // Snapshot the current (successful) search and push it to the top of the
+    // list. The dedup key doubles as the entry id, so re-running an identical
+    // search just bumps it rather than duplicating.
+    recordRecent() {
+        const seg = this.segments[0] ?? {};
+        if (! seg.origin || ! seg.dest) return; // ignore incomplete forms
+
+        const params = {
+            tripType: this.tripType,
+            cabin: this.cabin,
+            pax: { ...this.pax },
+            segments: this.segments.map((s) => ({ origin: s.origin, dest: s.dest, departure: s.departure })),
+            returnDate: this.tripType === 'round' ? this.returnDate : '',
+        };
+
+        const id = this.recentKey(params);
+        const entry = {
+            id,
+            ...params,
+            routeText: this.recentRoute(params),
+            dateText: this.recentDates(params),
+            metaText: `${this.totalPax} Pax · ${this.cabinLabel}`,
+        };
+
+        this.recent = [entry, ...this.recent.filter((r) => r.id !== id)].slice(0, RECENT_MAX);
+        this.saveRecent();
+    },
+
+    recentKey(p) {
+        return [
+            p.tripType,
+            p.cabin,
+            p.pax.adults,
+            p.pax.children,
+            p.pax.infants,
+            p.returnDate || '',
+            ...p.segments.map((s) => `${s.origin}>${s.dest}@${s.departure}`),
+        ].join('~');
+    },
+
+    recentRoute(p) {
+        const seg = p.segments;
+        if (p.tripType === 'multi' && seg.length > 1) {
+            return [seg[0].origin, ...seg.map((s) => s.dest)].filter(Boolean).join(' → ');
+        }
+        return `${seg[0]?.origin || '—'} → ${seg[0]?.dest || '—'}`;
+    },
+
+    recentDates(p) {
+        const dep = this.formatDate(p.segments[0]?.departure);
+        if (p.tripType === 'round' && p.returnDate) {
+            return `${dep} – ${this.formatDate(p.returnDate)}`;
+        }
+        if (p.tripType === 'multi' && p.segments.length > 1) {
+            return `${dep} +${p.segments.length - 1}`;
+        }
+        return dep;
     },
 }));
 

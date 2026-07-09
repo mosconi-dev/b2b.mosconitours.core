@@ -4,17 +4,35 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\FareDetailRequest;
 use App\Http\Requests\SearchFlightsRequest;
+use App\Http\Requests\StoreRecentSearchesRequest;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\FlightSearchCache;
+use App\Services\TboAir\RecentSearchStore;
 use App\Services\TboAir\TboAirService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 class FlightController extends Controller
 {
-    public function index(): View
+    public function index(Request $request, RecentSearchStore $recent): View
     {
-        return view('flights');
+        return view('flights', [
+            'recent' => $recent->get($request->user()->id),
+        ]);
+    }
+
+    /**
+     * Persist the user's recent-search shortcuts (cached, per-user, ~1 day). The
+     * client owns the list shape (dedup/order/cap) and pushes the whole array on
+     * each change; we validate and store it.
+     */
+    public function recent(StoreRecentSearchesRequest $request, RecentSearchStore $store): Response
+    {
+        $store->put($request->user()->id, $request->validated()['recent']);
+
+        return response()->noContent();
     }
 
     public function search(SearchFlightsRequest $request, TboAirService $service, FlightSearchCache $cache): JsonResponse
