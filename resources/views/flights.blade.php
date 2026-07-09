@@ -406,8 +406,10 @@
                     {{-- Results list --}}
                     <div class="lg:col-span-3">
 
-                        {{-- Loading skeletons --}}
-                        <div x-show="loading" class="space-y-4">
+                        {{-- Loading skeletons — flex+gap (not space-y) so the x-for
+                             <template> sibling doesn't leak a top margin onto the first
+                             card, which would drop it below the Filters card. --}}
+                        <div x-show="loading" class="flex flex-col gap-4">
                             <template x-for="i in 4" :key="i">
                                 <div class="h-28 animate-pulse rounded-xl border border-gray-200 bg-white"></div>
                             </template>

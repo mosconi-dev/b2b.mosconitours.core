@@ -352,7 +352,8 @@ Alpine.data('flightSearch', (config = {}) => ({
     // Within the cache window this is a cache hit (no API); otherwise it
     // auto re-runs the search. Alpine calls init() automatically.
     init() {
-        const q = new URLSearchParams(window.location.search).get('q');
+        const urlParams = new URLSearchParams(window.location.search);
+        const q = urlParams.get('q');
         if (! q) return;
 
         let p = null;
@@ -380,6 +381,12 @@ Alpine.data('flightSearch', (config = {}) => ({
         }
 
         this.submit();
+
+        // Arriving from the booking wizard's "Edit search" (?edit=1): keep the form
+        // open above the results so the search can be changed straight away — the same
+        // state as clicking the in-page "Edit search" button. submit() sets collapsed
+        // synchronously before it awaits, so reopening here wins.
+        if (urlParams.get('edit')) this.collapsed = false;
     },
 
     // Reflect the current search in the URL so a refresh / shared link restores it.
@@ -544,6 +551,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
     priceGateOpen: false, // shown on load if the re-price differs from the searched fare
     passengers: [],
     contact: { email: '', phone: '' },
+    guestTab: 'contact', // active Guest-details sub-section: 'contact' or a passenger index
     submitting: false,
     error: null,
     reference: null,
@@ -590,6 +598,47 @@ Alpine.data('bookingWizard', (config = {}) => ({
     get canProceedGuests() {
         return this.passengers.every((p) => p.firstName.trim() && p.lastName.trim()) &&
             this.contact.email.trim() && this.contact.phone.trim();
+    },
+
+    // Guest-details sub-sections: contact first, then one per passenger.
+    get guestOrder() {
+        return ['contact', ...this.passengers.map((_, i) => i)];
+    },
+
+    get guestActiveIndex() {
+        return this.guestOrder.indexOf(this.guestTab);
+    },
+
+    get guestIsLast() {
+        return this.guestActiveIndex === this.guestOrder.length - 1;
+    },
+
+    get contactComplete() {
+        return !! (this.contact.email.trim() && this.contact.phone.trim());
+    },
+
+    passengerComplete(p) {
+        return !! (p && p.firstName.trim() && p.lastName.trim());
+    },
+
+    get currentSectionComplete() {
+        return this.guestTab === 'contact'
+            ? this.contactComplete
+            : this.passengerComplete(this.passengers[this.guestTab]);
+    },
+
+    guestAdvance() {
+        if (! this.guestIsLast) {
+            this.guestTab = this.guestOrder[this.guestActiveIndex + 1];
+        } else if (this.canProceedGuests) {
+            this.next();
+        }
+    },
+
+    guestRetreat() {
+        if (this.guestActiveIndex > 0) {
+            this.guestTab = this.guestOrder[this.guestActiveIndex - 1];
+        }
     },
 
     next() {

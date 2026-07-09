@@ -15,9 +15,10 @@
             'flightsUrl' => route('flights'),
          ]))">
 
-        {{-- Search context — carried from the flights search (same bar as the Select Flight step) --}}
+        {{-- Search context — carried from the flights search (same bar as the Select Flight step).
+             Only relevant while choosing guests; hidden from Add-ons onward. --}}
         @if ($search)
-            <div class="mb-6 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div x-show="step === 2" x-cloak class="mb-6 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex min-w-0 items-center gap-3">
                     <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -63,42 +64,124 @@
         </div>
 
         {{-- ============ Step 2 · Guest Details ============ --}}
-        <section x-show="step === 2" x-cloak class="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 class="text-base font-semibold text-brand-900">Guest details</h2>
-            <p x-show="quote.isPassportMandatory" x-cloak class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Passport details are required for every guest on this fare.</p>
+        {{-- Left rail lists the sections (Contact + each guest); the form card on the
+             right shows only the active one, keeping fields at a readable width. --}}
+        <section x-show="step === 2" x-cloak class="grid grid-cols-1 gap-6 lg:grid-cols-4">
 
-            <template x-for="(p, i) in passengers" :key="i">
-                <div class="rounded-lg border border-gray-200 p-3">
-                    <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Guest <span x-text="i + 1"></span> · <span x-text="p.type"></span></p>
-                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-6">
-                        <select x-model="p.title" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-1">
-                            <option>Mr</option><option>Mrs</option><option>Ms</option><option>Mstr</option><option>Miss</option>
-                        </select>
-                        <input type="text" x-model="p.firstName" placeholder="First name" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
-                        <input type="text" x-model="p.lastName" placeholder="Last name" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3" />
-                        <select x-model="p.gender" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2">
-                            <option value="">Gender</option><option value="M">Male</option><option value="F">Female</option>
-                        </select>
-                        <input type="date" x-model="p.dateOfBirth" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-4" />
+            {{-- Section rail --}}
+            <aside class="lg:col-span-1">
+                <div class="rounded-xl border border-gray-200 bg-white p-2 shadow-sm lg:sticky lg:top-20">
+                    <p class="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Sections</p>
+
+                    <button type="button" @click="guestTab = 'contact'"
+                            class="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition"
+                            :class="guestTab === 'contact' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'">
+                        <span>Contact details</span>
+                        <svg x-show="contactComplete" x-cloak class="h-4 w-4 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    </button>
+
+                    <template x-for="(p, i) in passengers" :key="i">
+                        <button type="button" @click="guestTab = i"
+                                class="mt-1 flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition"
+                                :class="guestTab === i ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'">
+                            <span class="truncate">Guest <span x-text="i + 1"></span> <span class="text-gray-400" x-text="'· ' + p.type"></span></span>
+                            <svg x-show="passengerComplete(p)" x-cloak class="h-4 w-4 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                        </button>
+                    </template>
+                </div>
+            </aside>
+
+            {{-- Active section form --}}
+            <div class="lg:col-span-3">
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+
+                    {{-- Contact details --}}
+                    <div x-show="guestTab === 'contact'" class="space-y-4">
+                        <div>
+                            <h2 class="text-base font-semibold text-brand-900">Contact information</h2>
+                            <p class="mt-0.5 text-sm text-gray-500">We'll send the booking confirmation here.</p>
+                        </div>
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label class="mb-1 block text-xs font-medium text-gray-600">Email address</label>
+                                <input type="email" x-model="contact.email" placeholder="agent@email.com" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label class="mb-1 block text-xs font-medium text-gray-600">Contact number</label>
+                                <div class="flex">
+                                    <span class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-3 text-sm text-gray-500">+63</span>
+                                    <input type="tel" x-model="contact.phone" placeholder="917 123 4567" class="w-full rounded-r-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div x-show="quote.isPassportMandatory" x-cloak class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-6">
-                        <input type="text" x-model="p.passportNo" placeholder="Passport no." class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
-                        <input type="date" x-model="p.passportExpiry" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
-                        <input type="text" x-model="p.nationality" maxlength="2" placeholder="Nat. (PH)" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm uppercase sm:col-span-2" />
+
+                    {{-- Per-guest details --}}
+                    <template x-for="(p, i) in passengers" :key="i">
+                        <div x-show="guestTab === i" class="space-y-4">
+                            <div>
+                                <h2 class="text-base font-semibold text-brand-900">Guest <span x-text="i + 1"></span> <span class="font-normal text-gray-400">· <span x-text="p.type"></span></span></h2>
+                                <p x-show="quote.isPassportMandatory" x-cloak class="mt-0.5 text-xs text-blue-700">Passport details are required for this fare.</p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4 sm:grid-cols-12">
+                                <div class="col-span-2 sm:col-span-2">
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Title</label>
+                                    <select x-model="p.title" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option>Mr</option><option>Mrs</option><option>Ms</option><option>Mstr</option><option>Miss</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-1 sm:col-span-5">
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">First name</label>
+                                    <input type="text" x-model="p.firstName" placeholder="First name" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                                <div class="col-span-1 sm:col-span-5">
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Last name</label>
+                                    <input type="text" x-model="p.lastName" placeholder="Last name" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Gender</label>
+                                    <select x-model="p.gender" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="">Select</option><option value="M">Male</option><option value="F">Female</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Date of birth</label>
+                                    <input type="date" x-model="p.dateOfBirth" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                            </div>
+
+                            <div x-show="quote.isPassportMandatory" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport no.</label>
+                                    <input type="text" x-model="p.passportNo" placeholder="Passport no." class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport expiry</label>
+                                    <input type="date" x-model="p.passportExpiry" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>
+                                    <input type="text" x-model="p.nationality" maxlength="2" placeholder="PH" class="w-full rounded-lg border-gray-300 text-sm uppercase focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    {{-- Footer --}}
+                    <div class="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+                        <button type="button" x-show="guestActiveIndex > 0" x-cloak @click="guestRetreat()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
+                        <a :href="flightsUrl" x-show="guestActiveIndex === 0" x-cloak class="text-sm font-medium text-gray-500 hover:text-gray-700">Change flight</a>
+                        <button type="button" @click="guestAdvance()"
+                                :disabled="! currentSectionComplete || (guestIsLast && ! canProceedGuests)"
+                                class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50">
+                            <span x-text="guestIsLast ? 'Continue to add-ons' : 'Next'"></span>
+                        </button>
                     </div>
                 </div>
-            </template>
-
-            <div>
-                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Contact</p>
-                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input type="email" x-model="contact.email" placeholder="Email" class="rounded-lg border-gray-300 py-1.5 text-sm" />
-                    <input type="tel" x-model="contact.phone" placeholder="Phone" class="rounded-lg border-gray-300 py-1.5 text-sm" />
-                </div>
-            </div>
-
-            <div class="flex justify-end border-t border-gray-100 pt-4">
-                <button type="button" @click="next()" :disabled="! canProceedGuests" class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50">Continue to add-ons</button>
             </div>
         </section>
 

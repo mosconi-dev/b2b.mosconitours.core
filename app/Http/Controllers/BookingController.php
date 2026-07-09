@@ -66,7 +66,12 @@ class BookingController extends Controller
             'ssr' => $ssr?->toArray(),
             'oldFare' => (float) ($data['oldFare'] ?? 0),
             'search' => (string) $request->query('search', ''),
-            'editUrl' => route('flights', array_filter(['q' => $request->query('q')])),
+            // `edit=1` tells the flights page to reopen the search form (not just the
+            // collapsed results), matching the in-page "Edit search" button.
+            'editUrl' => route('flights', array_filter([
+                'q' => $request->query('q'),
+                'edit' => $request->query('q') ? 1 : null,
+            ])),
             'summary' => [
                 'airline' => (string) $request->query('airline', ''),
                 'from' => (string) $request->query('from', ''),
