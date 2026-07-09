@@ -17,7 +17,7 @@ class ApiLogController extends Controller
             // Exclude the heavy `response` JSON from the list + ORDER BY so MySQL
             // never sorts megabyte blobs (avoids "Out of sort memory"). It's
             // fetched lazily via show() when a row is expanded.
-            ->select(['id', 'type', 'endpoint', 'status_code', 'successful', 'duration_ms', 'user_id', 'error', 'request', 'created_at'])
+            ->select(['id', 'type', 'environment', 'endpoint', 'status_code', 'successful', 'duration_ms', 'user_id', 'error', 'request', 'created_at'])
             ->with('user:id,name')
             ->when(in_array($type, ['authenticate', 'search'], true), fn ($q) => $q->where('type', $type))
             ->latest()

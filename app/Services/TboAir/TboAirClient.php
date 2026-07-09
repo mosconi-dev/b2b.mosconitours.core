@@ -110,6 +110,7 @@ class TboAirClient
         try {
             TboAirApiLog::create([
                 'type' => $type,
+                'environment' => $this->environment(),
                 'endpoint' => $url,
                 'status_code' => $status,
                 'successful' => $successful,

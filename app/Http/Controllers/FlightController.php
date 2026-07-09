@@ -24,7 +24,7 @@ class FlightController extends Controller
             // Cached per-user for a few minutes so refreshes / repeat searches
             // don't re-hit the provider. A failure throws out of remember() and
             // is therefore never cached.
-            $payload = $cache->remember($request->user()->id, $input, function () use ($service, $input): array {
+            $payload = $cache->remember($request->user()->id, $service->environment(), $input, function () use ($service, $input): array {
                 $result = $service->search($input);
 
                 return [

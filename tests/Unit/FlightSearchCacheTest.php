@@ -25,21 +25,23 @@ class FlightSearchCacheTest extends TestCase
     {
         $cache = new FlightSearchCache(300);
 
-        $this->assertSame($cache->key(1, $this->input()), $cache->key(1, $this->input()));
+        $this->assertSame($cache->key(1, 'test', $this->input()), $cache->key(1, 'test', $this->input()));
     }
 
-    public function test_key_differs_by_user_and_params(): void
+    public function test_key_differs_by_user_params_and_environment(): void
     {
         $cache = new FlightSearchCache(300);
 
-        $this->assertNotSame($cache->key(1, $this->input()), $cache->key(2, $this->input()));
-        $this->assertNotSame($cache->key(1, $this->input('2026-07-15')), $cache->key(1, $this->input('2026-08-01')));
+        $this->assertNotSame($cache->key(1, 'test', $this->input()), $cache->key(2, 'test', $this->input()));
+        $this->assertNotSame($cache->key(1, 'test', $this->input('2026-07-15')), $cache->key(1, 'test', $this->input('2026-08-01')));
+        // Same user + params but different environment must not collide.
+        $this->assertNotSame($cache->key(1, 'test', $this->input()), $cache->key(1, 'live', $this->input()));
     }
 
-    public function test_key_is_namespaced_and_per_user(): void
+    public function test_key_is_namespaced_by_environment_and_user(): void
     {
         $cache = new FlightSearchCache(300);
 
-        $this->assertStringStartsWith('flight_search:7:', $cache->key(7, $this->input()));
+        $this->assertStringStartsWith('flight_search:test:7:', $cache->key(7, 'test', $this->input()));
     }
 }

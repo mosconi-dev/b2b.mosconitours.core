@@ -60,6 +60,21 @@ class TboEnvironmentSwitchTest extends TestCase
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'searchapi.tboair.com')); // live auth
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'tbo-api.tboair.com'));   // live search
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'api-stage.tboair.com')); // never test
+
+        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'environment' => 'live']);
+    }
+
+    public function test_api_logs_record_the_test_environment(): void
+    {
+        Http::fake([
+            'xmloutapi.tboair.com/*' => Http::response($this->fixture('authenticate.json'), 200),
+            'api-stage.tboair.com/*' => Http::response($this->fixture('search-oneway.json'), 200),
+        ]);
+
+        $user = $this->userWith(['flight.view', 'flight.search']);
+        $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
+
+        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'environment' => 'test']);
     }
 
     public function test_token_cache_key_is_namespaced_per_environment(): void
