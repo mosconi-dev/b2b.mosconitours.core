@@ -66,6 +66,25 @@
                         <x-input-error :messages="$errors->get('cache_key')" class="mt-2" />
                     </div>
 
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <x-input-label for="ttl_test" value="Test token TTL (seconds)" />
+                            <x-text-input id="ttl_test" name="ttl_test" type="number" min="60" max="86400"
+                                          class="mt-1 block w-full" :value="old('ttl_test', $ttlTest)" required />
+                            <x-input-error :messages="$errors->get('ttl_test')" class="mt-2" />
+                        </div>
+                        <div>
+                            <x-input-label for="ttl_live" value="Live token TTL (seconds)" />
+                            <x-text-input id="ttl_live" name="ttl_live" type="number" min="60" max="86400"
+                                          class="mt-1 block w-full" :value="old('ttl_live', $ttlLive)" required />
+                            <x-input-error :messages="$errors->get('ttl_live')" class="mt-2" />
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500">
+                        How long an authenticated token is cached before re-authenticating (60s–86400s; token validity is ~24h).
+                        Keep a short live TTL so a quick live test expires on its own. Saving flushes any token whose TTL changed.
+                    </p>
+
                     <div class="flex justify-end border-t border-gray-100 pt-5">
                         <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
                             Save Settings

@@ -41,7 +41,7 @@ class TboAirService
     {
         return Cache::remember(
             $this->cacheKey(),
-            config('tboair.token_ttl'),
+            $this->tokenTtl(),
             fn (): string => $this->authenticate(),
         );
     }
@@ -49,6 +49,17 @@ class TboAirService
     public function environment(): string
     {
         return $this->client->environment();
+    }
+
+    /**
+     * Token cache lifetime (seconds) for the active environment. Admin-overridable
+     * per environment (Settings), falling back to config. Bounded when saved.
+     */
+    public function tokenTtl(): int
+    {
+        $override = $this->settings->get('tbo.token_ttl.'.$this->client->environment());
+
+        return (int) ($override ?: config('tboair.token_ttl'));
     }
 
     /**

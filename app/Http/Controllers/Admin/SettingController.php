@@ -24,6 +24,8 @@ class SettingController extends Controller
             'effectiveEnvironment' => $this->resolver->resolve(),
             'globalEnvironment' => $this->settings->get(TboEnvironmentResolver::SETTING_KEY, config('tboair.default')),
             'cacheKey' => $this->baseCacheKey(),
+            'ttlTest' => $this->tokenTtl('test'),
+            'ttlLive' => $this->tokenTtl('live'),
         ]);
     }
 
@@ -31,14 +33,32 @@ class SettingController extends Controller
     {
         $environment = $request->validated('environment');
         $cacheKey = $request->validated('cache_key');
-        $previous = $this->settings->get(TboEnvironmentResolver::SETTING_KEY);
+        $ttl = ['test' => (int) $request->validated('ttl_test'), 'live' => (int) $request->validated('ttl_live')];
+
+        $previousEnv = $this->settings->get(TboEnvironmentResolver::SETTING_KEY);
+        $previousBase = $this->baseCacheKey();
+        $previousTtl = ['test' => $this->tokenTtl('test'), 'live' => $this->tokenTtl('live')];
 
         $this->settings->set(TboEnvironmentResolver::SETTING_KEY, $environment);
         $this->settings->set('tbo.cache_key', $cacheKey);
+        $this->settings->set('tbo.token_ttl.test', $ttl['test']);
+        $this->settings->set('tbo.token_ttl.live', $ttl['live']);
+
+        // Side effect handling: changing an env's TTL (or the base key) doesn't shrink an
+        // already-cached token, so flush the affected token(s) — old and new key — to
+        // re-mint with the new lifetime on the next call.
+        $baseChanged = $cacheKey !== $previousBase;
+        foreach (['test', 'live'] as $env) {
+            if ($baseChanged || $ttl[$env] !== $previousTtl[$env]) {
+                Cache::forget($cacheKey.':'.$env);
+                Cache::forget($previousBase.':'.$env);
+            }
+        }
 
         $audit->log('tbo.settings_updated', null, [
-            'environment' => ['from' => $previous, 'to' => $environment],
+            'environment' => ['from' => $previousEnv, 'to' => $environment],
             'cache_key' => $cacheKey,
+            'token_ttl' => $ttl,
         ]);
 
         return back()->with('status', "TBO settings saved — global environment is now {$environment}.");
@@ -55,5 +75,10 @@ class SettingController extends Controller
     private function baseCacheKey(): string
     {
         return $this->settings->get('tbo.cache_key', config('tboair.cache_key'));
+    }
+
+    private function tokenTtl(string $env): int
+    {
+        return (int) ($this->settings->get("tbo.token_ttl.{$env}") ?: config('tboair.token_ttl'));
     }
 }
