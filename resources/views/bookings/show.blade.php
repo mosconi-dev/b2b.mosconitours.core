@@ -25,6 +25,12 @@
                     <dt class="text-gray-500">Total</dt>
                     <dd class="font-semibold text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }}</dd>
                 </div>
+                @if ((float) $booking->ancillary_total > 0)
+                    <div>
+                        <dt class="text-gray-500">Add-ons</dt>
+                        <dd class="font-medium text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->ancillary_total, 2) }}</dd>
+                    </div>
+                @endif
                 <div>
                     <dt class="text-gray-500">Fare type</dt>
                     <dd class="font-medium text-brand-900">{{ $booking->is_lcc ? 'Low-cost (LCC)' : 'GDS' }}</dd>
@@ -56,6 +62,8 @@
                                 $meta = [$p['type'] ?? 'Passenger'];
                                 if (! empty($p['dateOfBirth'])) { $meta[] = $p['dateOfBirth']; }
                                 if (! empty($p['passportNo'])) { $meta[] = 'Passport '.$p['passportNo']; }
+                                if (! empty($p['ssr']['baggage'])) { $meta[] = 'Baggage '.$p['ssr']['baggage']['label']; }
+                                if (! empty($p['ssr']['meal'])) { $meta[] = $p['ssr']['meal']['label']; }
                             @endphp
                             <p class="text-xs text-gray-500">{{ implode(' · ', $meta) }}</p>
                         </div>

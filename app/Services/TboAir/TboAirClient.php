@@ -4,6 +4,7 @@ namespace App\Services\TboAir;
 
 use App\Models\TboAirApiLog;
 use App\Services\TboAir\Exceptions\TboAirException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -69,6 +70,15 @@ class TboAirClient
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function ssr(array $payload): array
+    {
+        return $this->post('ssr', $this->endpoint('ssr'), $payload);
+    }
+
+    /**
      * Resolve a per-environment endpoint URL by config key (fare_rule, fare_quote, …).
      */
     private function endpoint(string $key): string
@@ -101,7 +111,12 @@ class TboAirClient
             } catch (Throwable $e) {
                 $error = $e->getMessage();
 
-                throw new TboAirException('Could not reach TBO Air: '.$e->getMessage(), previous: $e);
+                // A connect/read timeout on our side is also a "didn't respond in time".
+                throw new TboAirException(
+                    'Could not reach TBO Air: '.$e->getMessage(),
+                    previous: $e,
+                    timeout: $e instanceof ConnectionException,
+                );
             }
 
             $status = $response->status();
@@ -110,7 +125,7 @@ class TboAirClient
             if ($response->failed()) {
                 $error = "HTTP {$status}";
 
-                throw new TboAirException("TBO Air responded with HTTP {$status}.");
+                throw new TboAirException("TBO Air responded with HTTP {$status}.", status: $status);
             }
 
             $successful = true;

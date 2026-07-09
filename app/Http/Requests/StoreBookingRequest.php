@@ -39,6 +39,9 @@ class StoreBookingRequest extends FormRequest
             'passengers.*.passportNo' => ['nullable', 'string', 'max:32'],
             'passengers.*.passportExpiry' => ['nullable', 'date'],
             'passengers.*.nationality' => ['nullable', 'string', 'max:2'],
+            // Selected SSR option codes (LCC ancillaries); priced authoritatively server-side.
+            'passengers.*.baggage' => ['nullable', 'string', 'max:32'],
+            'passengers.*.meal' => ['nullable', 'string', 'max:32'],
         ];
     }
 

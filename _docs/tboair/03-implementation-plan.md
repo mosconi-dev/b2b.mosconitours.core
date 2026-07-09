@@ -109,7 +109,16 @@ window — search returns a top-level `TraceId`, and each `FlightOffer` already 
 
 ---
 
-## Phase 3 — Ancillaries: SSR (LCC baggage / meal / seat)
+## Phase 3 — Ancillaries: SSR (baggage + meal) — DONE
+
+> **Shipped:** `Ssr` DTO (flattens TBO's per-segment `Baggage` / `MealDynamic`), `TboAirService::ssr()`
+> + client `ssr()` on the shared `withReauth()`, `POST /flights/ssr` (`can:flight.search`).
+> `BookingService::applyAncillaries()` re-fetches **GetSSR** to price selections **authoritatively**
+> (never client prices), **forbids extra baggage for infants**, stores each pick on the pax row, and
+> folds the spend into `ancillary_total` + `total_amount`. UI: the passenger form (LCC only) shows a
+> baggage + meal dropdown per passenger with a live running total. Tested by `FarePipelineTest` (SSR
+> endpoint) + `BookingTest` (ancillary fold-in, infant guard). **Deferred:** seat-map selection
+> (a large grid UI) — baggage + meal cover the main ancillary revenue and prove the SSR pipeline.
 
 **Goal:** let users add baggage/meal/seat where available before ticketing.
 

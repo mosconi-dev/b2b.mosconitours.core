@@ -25,6 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/flights/search', [FlightController::class, 'search'])->name('flights.search')->middleware('can:flight.search');
     Route::post('/flights/fare-quote', [FlightController::class, 'fareQuote'])->name('flights.fare-quote')->middleware('can:flight.search');
     Route::post('/flights/fare-rule', [FlightController::class, 'fareRule'])->name('flights.fare-rule')->middleware('can:flight.search');
+    Route::post('/flights/ssr', [FlightController::class, 'ssr'])->name('flights.ssr')->middleware('can:flight.search');
 
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');

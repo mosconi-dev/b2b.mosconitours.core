@@ -138,6 +138,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     searchUrl: config.searchUrl ?? '',
     fareQuoteUrl: config.fareQuoteUrl ?? '',
     fareRuleUrl: config.fareRuleUrl ?? '',
+    ssrUrl: config.ssrUrl ?? '',
     bookingUrl: config.bookingUrl ?? '',
 
     // --- results state ---
@@ -167,6 +168,10 @@ Alpine.data('flightSearch', (config = {}) => ({
     contact: { email: '', phone: '' },
     bookingSubmitting: false,
     bookingError: null,
+
+    // --- ancillaries (Phase 3: SSR baggage / meals, LCC only) ---
+    ssr: null,
+    ssrLoading: false,
 
     // Sample recent searches (display only — clicking one re-fills the form).
     recent: [
@@ -352,6 +357,7 @@ Alpine.data('flightSearch', (config = {}) => ({
         this.quoteOpen = true;
         this.step = 'quote';
         this.bookingError = null;
+        this.ssr = null;
 
         try {
             const { ok, data } = await this.postJson(this.fareQuoteUrl, {
@@ -411,10 +417,47 @@ Alpine.data('flightSearch', (config = {}) => ({
         this.passengers = list;
         this.bookingError = null;
         this.step = 'passengers';
+
+        // Fetch add-ons (baggage/meals) for LCC fares.
+        if (this.quote?.isLcc && ! this.ssr) this.loadSsr();
     },
 
     blankPassenger(type) {
-        return { type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '' };
+        return { type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '' };
+    },
+
+    async loadSsr() {
+        if (this.ssrLoading) return;
+        this.ssrLoading = true;
+        try {
+            const { ok, data } = await this.postJson(this.ssrUrl, {
+                traceId: this.traceId,
+                resultIndex: this.quoteOffer?.resultIndex,
+            });
+            this.ssr = ok ? { baggage: data.baggage ?? [], meals: data.meals ?? [] } : { baggage: [], meals: [] };
+        } catch (e) {
+            this.ssr = { baggage: [], meals: [] };
+        } finally {
+            this.ssrLoading = false;
+        }
+    },
+
+    ssrPrice(list, code) {
+        if (! code || ! list) return 0;
+        const opt = list.find((o) => o.code === code);
+        return opt ? Number(opt.price) || 0 : 0;
+    },
+
+    get ancillaryTotal() {
+        if (! this.ssr) return 0;
+        return this.passengers.reduce(
+            (sum, p) => sum + this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal),
+            0,
+        );
+    },
+
+    get grandTotal() {
+        return (Number(this.quote?.price?.offeredFare) || 0) + this.ancillaryTotal;
     },
 
     backToQuote() {

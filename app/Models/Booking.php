@@ -12,7 +12,7 @@ use RuntimeException;
 
 #[Fillable([
     'reference', 'user_id', 'environment', 'status', 'trace_id', 'result_index',
-    'is_lcc', 'pnr', 'booking_id', 'currency', 'total_amount', 'quote', 'pax', 'contact',
+    'is_lcc', 'pnr', 'booking_id', 'currency', 'total_amount', 'ancillary_total', 'quote', 'pax', 'contact',
 ])]
 class Booking extends Model
 {
@@ -27,6 +27,7 @@ class Booking extends Model
             'status' => BookingStatus::class,
             'is_lcc' => 'boolean',
             'total_amount' => 'decimal:2',
+            'ancillary_total' => 'decimal:2',
             'quote' => 'array',
             'pax' => 'array',
             'contact' => 'array',

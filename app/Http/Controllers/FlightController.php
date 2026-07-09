@@ -35,11 +35,7 @@ class FlightController extends Controller
                 ];
             });
         } catch (TboAirException $e) {
-            report($e);
-
-            return response()->json([
-                'message' => 'We could not reach the flight provider. Please try again.',
-            ], 502);
+            return $this->providerError($e, 'We could not reach the flight provider. Please try again.');
         }
 
         return response()->json($payload);
@@ -54,11 +50,7 @@ class FlightController extends Controller
         try {
             $quote = $service->fareQuote($request->selection());
         } catch (TboAirException $e) {
-            report($e);
-
-            return response()->json([
-                'message' => 'We could not price this fare. It may have expired — please search again.',
-            ], 502);
+            return $this->providerError($e, 'We could not price this fare. It may have expired — please search again.');
         }
 
         return response()->json($quote->toArray());
@@ -72,13 +64,41 @@ class FlightController extends Controller
         try {
             $rule = $service->fareRule($request->selection());
         } catch (TboAirException $e) {
-            report($e);
-
-            return response()->json([
-                'message' => 'We could not load the fare rules. Please search again.',
-            ], 502);
+            return $this->providerError($e, 'We could not load the fare rules. Please search again.');
         }
 
         return response()->json($rule->toArray());
+    }
+
+    /**
+     * Available ancillaries (baggage / meals) for a selected result (GetSSR).
+     */
+    public function ssr(FareDetailRequest $request, TboAirService $service): JsonResponse
+    {
+        try {
+            $ssr = $service->ssr($request->selection());
+        } catch (TboAirException $e) {
+            return $this->providerError($e, 'We could not load add-ons for this fare.');
+        }
+
+        return response()->json($ssr->toArray());
+    }
+
+    /**
+     * Map a provider failure to a JSON error. A gateway timeout (common for routes
+     * the current environment doesn't serve) gets a clearer message + a 504 status;
+     * anything else falls back to the action-specific message + 502.
+     */
+    private function providerError(TboAirException $e, string $fallback): JsonResponse
+    {
+        report($e);
+
+        if ($e->isTimeout()) {
+            return response()->json([
+                'message' => 'The flight provider timed out for this request. Please try again in a moment, or try a different route or date.',
+            ], 504);
+        }
+
+        return response()->json(['message' => $fallback], 502);
     }
 }

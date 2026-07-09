@@ -40,6 +40,8 @@ class BookingService
             }
         }
 
+        [$pax, $ancillaryTotal] = $this->applyAncillaries($selection, $passengers);
+
         return Booking::create([
             'reference' => $this->reference(),
             'user_id' => $user->getKey(),
@@ -49,11 +51,57 @@ class BookingService
             'result_index' => $selection->resultIndex,
             'is_lcc' => $quote->isLcc,
             'currency' => $quote->price['currency'],
-            'total_amount' => $quote->price['offeredFare'],
+            'ancillary_total' => $ancillaryTotal,
+            'total_amount' => (float) $quote->price['offeredFare'] + $ancillaryTotal,
             'quote' => $quote->toArray(),
-            'pax' => array_map(fn (Passenger $p): array => $p->toArray(), $passengers),
+            'pax' => $pax,
             'contact' => $contact,
         ]);
+    }
+
+    /**
+     * Resolve each passenger's selected baggage/meal against a fresh GetSSR (so the
+     * price is authoritative, never client-supplied), returning the stored pax rows and
+     * the total ancillary spend. Infants may not carry extra baggage.
+     *
+     * @param  array<int, Passenger>  $passengers
+     * @return array{0: array<int, array<string, mixed>>, 1: float}
+     */
+    private function applyAncillaries(SelectionInput $selection, array $passengers): array
+    {
+        $wantsSsr = array_filter($passengers, fn (Passenger $p): bool => filled($p->baggage) || filled($p->meal));
+
+        foreach ($wantsSsr as $passenger) {
+            if ($passenger->isInfant() && filled($passenger->baggage)) {
+                throw new BookingException('Extra baggage is not available for infant passengers.');
+            }
+        }
+
+        $ssr = $wantsSsr === [] ? null : $this->tbo->ssr($selection); // fetched once, authoritative
+        $total = 0.0;
+
+        $pax = array_map(function (Passenger $p) use ($ssr, &$total): array {
+            $entry = $p->toArray();
+            $entry['ssr'] = ['baggage' => null, 'meal' => null];
+
+            if ($ssr === null) {
+                return $entry;
+            }
+
+            if (filled($p->baggage) && $bag = $ssr->baggage($p->baggage)) {
+                $entry['ssr']['baggage'] = $bag;
+                $total += (float) $bag['price'];
+            }
+
+            if (filled($p->meal) && $meal = $ssr->meal($p->meal)) {
+                $entry['ssr']['meal'] = $meal;
+                $total += (float) $meal['price'];
+            }
+
+            return $entry;
+        }, $passengers);
+
+        return [$pax, $total];
     }
 
     /**

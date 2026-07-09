@@ -20,7 +20,14 @@ class Passenger implements Arrayable
         public readonly ?string $passportNo = null,
         public readonly ?string $passportExpiry = null,
         public readonly ?string $nationality = null,
+        public readonly ?string $baggage = null,  // selected SSR baggage code
+        public readonly ?string $meal = null,     // selected SSR meal code
     ) {}
+
+    public function isInfant(): bool
+    {
+        return strcasecmp($this->type, 'Infant') === 0;
+    }
 
     public function hasPassport(): bool
     {
@@ -42,6 +49,8 @@ class Passenger implements Arrayable
             passportNo: $data['passportNo'] ?? null,
             passportExpiry: $data['passportExpiry'] ?? null,
             nationality: $data['nationality'] ?? null,
+            baggage: $data['baggage'] ?? null,
+            meal: $data['meal'] ?? null,
         );
     }
 

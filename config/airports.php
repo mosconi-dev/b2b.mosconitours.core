@@ -45,6 +45,7 @@ return [
     ['code' => 'PEK', 'city' => 'Beijing', 'country' => 'China'],
     ['code' => 'DXB', 'city' => 'Dubai', 'country' => 'UAE'],
     ['code' => 'DOH', 'city' => 'Doha', 'country' => 'Qatar'],
+    ['code' => 'DEL', 'city' => 'Delhi', 'country' => 'India'],
     ['code' => 'SYD', 'city' => 'Sydney', 'country' => 'Australia'],
     ['code' => 'LAX', 'city' => 'Los Angeles', 'country' => 'United States'],
     ['code' => 'SFO', 'city' => 'San Francisco', 'country' => 'United States'],

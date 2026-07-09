@@ -9,7 +9,7 @@
         <p class="mt-1 text-sm text-gray-500">Find and compare flights for your booking.</p>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', fareQuoteUrl: '{{ route('flights.fare-quote') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', bookingUrl: '{{ route('bookings.store') }}' })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', fareQuoteUrl: '{{ route('flights.fare-quote') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', ssrUrl: '{{ route('flights.ssr') }}', bookingUrl: '{{ route('bookings.store') }}' })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}
@@ -587,7 +587,9 @@
                             { code: 'HKG', city: 'Hong Kong', country: 'China', price: '6,180', grad: 'from-rose-500 to-pink-700' },
                             { code: 'DVO', city: 'Davao', country: 'Philippines', price: '3,250', grad: 'from-emerald-500 to-teal-700' },
                             { code: 'NRT', city: 'Tokyo', country: 'Japan', price: '12,400', grad: 'from-amber-500 to-orange-700' },
-                            { code: 'BKK', city: 'Bangkok', country: 'Thailand', price: '7,900', grad: 'from-cyan-500 to-sky-700' }
+                            { code: 'BKK', city: 'Bangkok', country: 'Thailand', price: '7,900', grad: 'from-cyan-500 to-sky-700' },
+                            { code: 'DXB', city: 'Dubai', country: 'UAE', price: '18,900', grad: 'from-yellow-500 to-amber-700' },
+                            { code: 'DEL', city: 'Delhi', country: 'India', price: '14,500', grad: 'from-orange-500 to-red-700' }
                         ]" :key="d.code">
                         <div @click="segments[0].dest = d.city + ' (' + d.code + ')'; if (!segments[0].origin) segments[0].origin = 'Manila (MNL)'; $refs.form.scrollIntoView({ behavior: 'smooth' })"
                              class="group flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow">
@@ -697,9 +699,13 @@
                 <div x-show="quote && step === 'passengers'" x-cloak class="mt-4 space-y-4">
                     <div class="flex items-center justify-between">
                         <p class="text-sm font-medium text-brand-900">Passenger details</p>
-                        <span class="text-sm font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote?.price?.offeredFare)"></span></span>
+                        <div class="text-right">
+                            <span class="text-sm font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(grandTotal)"></span></span>
+                            <p x-show="ancillaryTotal > 0" x-cloak class="text-[11px] text-gray-400">incl. add-ons <span x-text="currency"></span> <span x-text="money(ancillaryTotal)"></span></p>
+                        </div>
                     </div>
 
+                    <p x-show="ssrLoading" x-cloak class="text-xs text-gray-500">Loading add-ons…</p>
                     <p x-show="quote?.isPassportMandatory" x-cloak class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Passport details are required for every passenger on this fare.</p>
                     <div x-show="bookingError" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" x-text="bookingError"></div>
 
@@ -722,6 +728,22 @@
                                     <input type="text" x-model="p.passportNo" placeholder="Passport no." class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
                                     <input type="date" x-model="p.passportExpiry" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
                                     <input type="text" x-model="p.nationality" maxlength="2" placeholder="Nat. (PH)" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm uppercase sm:col-span-2" />
+                                </div>
+
+                                {{-- Ancillaries (LCC) --}}
+                                <div x-show="ssr && (ssr.baggage.length || ssr.meals.length)" x-cloak class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-6">
+                                    <select x-show="ssr && ssr.baggage.length && p.type !== 'Infant'" x-model="p.baggage" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3">
+                                        <option value="">No extra baggage</option>
+                                        <template x-for="b in (ssr?.baggage ?? [])" :key="b.code">
+                                            <option :value="b.code" x-text="b.label + ' — ' + currency + ' ' + money(b.price)"></option>
+                                        </template>
+                                    </select>
+                                    <select x-show="ssr && ssr.meals.length" x-model="p.meal" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3">
+                                        <option value="">No meal</option>
+                                        <template x-for="m in (ssr?.meals ?? [])" :key="m.code">
+                                            <option :value="m.code" x-text="m.label + ' — ' + currency + ' ' + money(m.price)"></option>
+                                        </template>
+                                    </select>
                                 </div>
                             </div>
                         </template>

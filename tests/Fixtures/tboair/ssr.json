@@ -1,0 +1,23 @@
+{
+    "Response": {
+        "ResponseStatus": 1,
+        "Error": {
+            "ErrorCode": 0,
+            "ErrorMessage": ""
+        },
+        "TraceId": "trace-abc-123",
+        "Baggage": [
+            [
+                { "AirlineCode": "5J", "FlightNumber": "5J 561", "WayType": 2, "Code": "", "Weight": 0, "Currency": "PHP", "Price": 0, "Origin": "MNL", "Destination": "CEB" },
+                { "AirlineCode": "5J", "FlightNumber": "5J 561", "WayType": 2, "Code": "PBAG20", "Weight": 20, "Currency": "PHP", "Price": 1200, "Origin": "MNL", "Destination": "CEB" },
+                { "AirlineCode": "5J", "FlightNumber": "5J 561", "WayType": 2, "Code": "PBAG32", "Weight": 32, "Currency": "PHP", "Price": 2000, "Origin": "MNL", "Destination": "CEB" }
+            ]
+        ],
+        "MealDynamic": [
+            [
+                { "AirlineCode": "5J", "FlightNumber": "5J 561", "WayType": 2, "Code": "HFML", "AirlineDescription": "Hot Meal - Chicken", "Quantity": 1, "Currency": "PHP", "Price": 350, "Origin": "MNL", "Destination": "CEB" },
+                { "AirlineCode": "5J", "FlightNumber": "5J 561", "WayType": 2, "Code": "VGML", "AirlineDescription": "Vegetarian Meal", "Quantity": 1, "Currency": "PHP", "Price": 300, "Origin": "MNL", "Destination": "CEB" }
+            ]
+        ]
+    }
+}

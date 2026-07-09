@@ -34,6 +34,7 @@ class BookingTest extends TestCase
         Http::fake([
             '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
             '*FareQuote*' => Http::response($this->fixture($quoteFixture), 200),
+            '*SSR*' => Http::response($this->fixture('ssr.json'), 200),
         ]);
     }
 
@@ -128,6 +129,42 @@ class BookingTest extends TestCase
         $this->actingAs($this->bookingUser())
             ->postJson(route('bookings.store'), $this->payload()) // no passport
             ->assertStatus(422);
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_store_folds_selected_ancillaries_into_the_total(): void
+    {
+        $this->fakeQuote(); // LCC fare + SSR options
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [[
+                    'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
+                    'baggage' => 'PBAG20', 'meal' => 'HFML',
+                ]],
+            ]))
+            ->assertRedirect();
+
+        $booking = Booking::firstOrFail();
+        $this->assertEqualsWithDelta(1550, (float) $booking->ancillary_total, 0.001); // 1200 + 350
+        $this->assertEqualsWithDelta(7950, (float) $booking->total_amount, 0.001);     // 6400 + 1550
+        $this->assertSame('PBAG20', data_get($booking->pax, '0.ssr.baggage.code'));
+        $this->assertSame('HFML', data_get($booking->pax, '0.ssr.meal.code'));
+    }
+
+    public function test_store_rejects_extra_baggage_for_an_infant(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [[
+                    'type' => 'Infant', 'title' => 'Mstr', 'firstName' => 'Baby', 'lastName' => 'Cruz',
+                    'baggage' => 'PBAG20',
+                ]],
+            ]))
+            ->assertSessionHasErrors('booking');
 
         $this->assertDatabaseCount('bookings', 0);
     }

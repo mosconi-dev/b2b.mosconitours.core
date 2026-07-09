@@ -9,6 +9,7 @@ use App\Services\TboAir\DTO\FareRule;
 use App\Services\TboAir\DTO\FlightOffer;
 use App\Services\TboAir\DTO\SearchInput;
 use App\Services\TboAir\DTO\SelectionInput;
+use App\Services\TboAir\DTO\Ssr;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Support\Airports;
 use Illuminate\Support\Facades\Cache;
@@ -43,6 +44,14 @@ class TboAirService
     public function fareRule(SelectionInput $selection): FareRule
     {
         return $this->withReauth(fn (string $token): FareRule => $this->doFareRule($selection, $token));
+    }
+
+    /**
+     * Available ancillaries (baggage / meals) for a selected result. LCC fares only.
+     */
+    public function ssr(SelectionInput $selection): Ssr
+    {
+        return $this->withReauth(fn (string $token): Ssr => $this->doSsr($selection, $token));
     }
 
     /**
@@ -146,6 +155,14 @@ class TboAirService
         $this->guardSession($data);
 
         return FareRule::fromResponse($data, $selection->resultIndex);
+    }
+
+    private function doSsr(SelectionInput $selection, string $token): Ssr
+    {
+        $data = $this->client->ssr($this->detailPayload($selection, $token));
+        $this->guardSession($data);
+
+        return Ssr::fromResponse($data, $selection->resultIndex);
     }
 
     /**

@@ -48,7 +48,9 @@ class BookingController extends Controller
         } catch (TboAirException $e) {
             report($e);
 
-            return $this->storeError($request, 'We could not confirm this fare — it may have expired. Please search again.', 502);
+            return $e->isTimeout()
+                ? $this->storeError($request, 'The flight provider timed out. Please try again in a moment.', 504)
+                : $this->storeError($request, 'We could not confirm this fare — it may have expired. Please search again.', 502);
         }
 
         if ($request->expectsJson()) {

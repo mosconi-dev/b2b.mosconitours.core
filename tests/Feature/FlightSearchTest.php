@@ -67,6 +67,20 @@ class FlightSearchTest extends TestCase
             ->assertSee('Confirm fare'); // the FareQuote modal markup compiled
     }
 
+    public function test_a_provider_gateway_timeout_returns_a_clear_message(): void
+    {
+        Http::fake([
+            'xmloutapi.tboair.com/*' => Http::response($this->authFixture(), 200),
+            'api-stage.tboair.com/*' => Http::response('', 504), // TBO gateway timeout
+        ]);
+
+        $res = $this->actingAs($this->flightUser())
+            ->postJson('/flights/search', $this->payload())
+            ->assertStatus(504);
+
+        $this->assertStringContainsString('timed out', $res->json('message'));
+    }
+
     public function test_search_is_forbidden_without_flight_permission(): void
     {
         $this->fakeOk();

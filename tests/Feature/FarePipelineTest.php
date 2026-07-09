@@ -128,6 +128,20 @@ class FarePipelineTest extends TestCase
             ->assertStatus(502);
     }
 
+    public function test_gateway_timeout_returns_a_clear_message(): void
+    {
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*FareQuote*' => Http::response('', 504),
+        ]);
+
+        $res = $this->actingAs($this->apiUser())
+            ->postJson(route('flights.fare-quote'), $this->selection())
+            ->assertStatus(504);
+
+        $this->assertStringContainsString('timed out', $res->json('message'));
+    }
+
     public function test_fare_rule_returns_readable_rules(): void
     {
         $this->fakeOk();
@@ -146,6 +160,30 @@ class FarePipelineTest extends TestCase
         $this->assertStringContainsString("TICKET RESTRICTIONS:\nCancellation:", $detail);
         $this->assertStringContainsString('Rebooking allowed & subject to fees', $detail);
         $this->assertStringEndsWith('subject to fees.', $detail); // trailing <br/> <br/> trimmed
+    }
+
+    public function test_ssr_returns_baggage_and_meal_options(): void
+    {
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*SSR*' => Http::response($this->fixture('ssr.json'), 200),
+        ]);
+
+        $this->actingAs($this->apiUser())
+            ->postJson(route('flights.ssr'), $this->selection())
+            ->assertOk()
+            ->assertJsonPath('baggage.0.code', 'PBAG20') // the empty-code default is filtered out
+            ->assertJsonPath('baggage.0.weight', 20)
+            ->assertJsonPath('meals.0.code', 'HFML');
+    }
+
+    public function test_ssr_requires_flight_search_permission(): void
+    {
+        Http::fake(['*' => Http::response([], 200)]);
+
+        $this->actingAs($this->userWith(['flight.view']))
+            ->postJson(route('flights.ssr'), $this->selection())
+            ->assertForbidden();
     }
 
     public function test_fare_endpoints_record_api_logs(): void
