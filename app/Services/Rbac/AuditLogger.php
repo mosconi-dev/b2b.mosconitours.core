@@ -3,6 +3,7 @@
 namespace App\Services\Rbac;
 
 use App\Models\AuditLog;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
@@ -15,11 +16,14 @@ class AuditLogger
 {
     /**
      * @param  array<string, mixed>  $properties
+     * @param  Authenticatable|null  $actor  Override the acting user (defaults to the
+     *                                       current user); needed when the request user
+     *                                       is already gone, e.g. on logout.
      */
-    public function log(string $event, ?Model $auditable = null, array $properties = [], ?string $description = null): AuditLog
+    public function log(string $event, ?Model $auditable = null, array $properties = [], ?string $description = null, ?Authenticatable $actor = null): AuditLog
     {
         return AuditLog::create([
-            'user_id' => Auth::id(),
+            'user_id' => $actor?->getAuthIdentifier() ?? Auth::id(),
             'event' => $event,
             'auditable_type' => $auditable?->getMorphClass(),
             'auditable_id' => $auditable?->getKey(),

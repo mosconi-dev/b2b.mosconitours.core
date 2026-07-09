@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SearchFlightsRequest;
-use App\Services\Activity\ActivityLogger;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\FlightSearchCache;
 use App\Services\TboAir\TboAirService;
@@ -17,7 +16,7 @@ class FlightController extends Controller
         return view('flights');
     }
 
-    public function search(SearchFlightsRequest $request, TboAirService $service, FlightSearchCache $cache, ActivityLogger $activity): JsonResponse
+    public function search(SearchFlightsRequest $request, TboAirService $service, FlightSearchCache $cache): JsonResponse
     {
         $input = $request->searchInput();
 
@@ -41,11 +40,6 @@ class FlightController extends Controller
                 'message' => 'We could not reach the flight provider. Please try again.',
             ], 502);
         }
-
-        $first = $input->segments[0] ?? null;
-        $activity->log('flight.searched', $first
-            ? 'Searched '.$first['origin'].' → '.$first['destination']
-            : 'Searched flights');
 
         return response()->json($payload);
     }

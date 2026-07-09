@@ -2,8 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\Activity;
+use App\Models\AuditLog;
 use App\Models\User;
+use App\Services\Rbac\AuditLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
@@ -18,61 +19,41 @@ class ActivityLogTest extends TestCase
         $this->seedRbac();
     }
 
-    public function test_authenticated_page_visits_are_logged(): void
-    {
-        $user = $this->userWith(['flight.view']);
-
-        $this->actingAs($user)->get(route('flights'))->assertOk();
-
-        $this->assertDatabaseHas('activity_logs', [
-            'user_id' => $user->id,
-            'action' => 'page.viewed',
-            'route' => 'flights',
-            'description' => 'Flights',
-        ]);
-    }
-
-    public function test_a_page_visit_creates_a_single_entry(): void
-    {
-        $user = $this->userWith(['flight.view']);
-
-        $this->actingAs($user)->get(route('flights'))->assertOk();
-
-        $this->assertDatabaseCount('activity_logs', 1);
-    }
-
-    public function test_guests_are_not_logged(): void
-    {
-        $this->get(route('login'))->assertOk();
-
-        $this->assertDatabaseCount('activity_logs', 0);
-    }
-
-    public function test_login_and_logout_are_logged(): void
+    public function test_login_and_logout_are_audited(): void
     {
         $user = User::factory()->create();
 
         $this->post('/login', ['email' => $user->email, 'password' => 'password'])->assertRedirect();
-        $this->assertDatabaseHas('activity_logs', ['user_id' => $user->id, 'action' => 'auth.login']);
+        $this->assertDatabaseHas('audit_logs', ['user_id' => $user->id, 'event' => 'auth.login']);
 
         $this->post('/logout')->assertRedirect();
-        $this->assertDatabaseHas('activity_logs', ['user_id' => $user->id, 'action' => 'auth.logout']);
+        $this->assertDatabaseHas('audit_logs', ['user_id' => $user->id, 'event' => 'auth.logout']);
     }
 
-    public function test_per_user_activity_tab_shows_entries(): void
+    public function test_page_visits_are_not_logged(): void
     {
-        $jane = User::factory()->create(['name' => 'Jane Traveler']);
-        Activity::create([
-            'user_id' => $jane->id,
-            'action' => 'flight.searched',
-            'description' => 'Searched MNL → CEB',
-            'created_at' => now(),
-        ]);
+        $user = $this->userWith(['flight.view']);
+
+        $before = AuditLog::count();
+        $this->actingAs($user)->get(route('flights'))->assertOk();
+
+        // Only meaningful actions are recorded — navigation is not.
+        $this->assertSame($before, AuditLog::count());
+    }
+
+    public function test_activity_tab_shows_the_users_actions(): void
+    {
+        $actor = User::factory()->create(['name' => 'Jane Admin']);
+        $target = User::factory()->create();
+
+        // An action performed BY Jane (actor = current user).
+        $this->actingAs($actor);
+        app(AuditLogger::class)->log('user.updated', $target, [], 'Updated a user');
 
         $this->actingAs($this->userWith(['user.view', 'apilog.view']))
-            ->get(route('admin.users.logs', ['user' => $jane, 'tab' => 'activity']))
+            ->get(route('admin.users.logs', ['user' => $actor, 'tab' => 'activity']))
             ->assertOk()
             ->assertSee('Activity')
-            ->assertSee('Searched MNL → CEB');
+            ->assertSee('Updated a user');
     }
 }

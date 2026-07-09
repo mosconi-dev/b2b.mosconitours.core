@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ResetUserPasswordRequest;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
-use App\Models\Activity;
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\TboAirApiLog;
 use App\Models\User;
@@ -62,8 +62,9 @@ class UserController extends Controller
         $entries = null;
 
         if ($tab === 'activity') {
-            // In-app movement (navigation + key actions).
-            $entries = Activity::where('user_id', $user->id)
+            // Meaningful actions this user performed (create/update/delete, settings,
+            // sign-in/out) — sourced from the audit trail, keyed by the acting user.
+            $entries = AuditLog::where('user_id', $user->id)
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->paginate(20)

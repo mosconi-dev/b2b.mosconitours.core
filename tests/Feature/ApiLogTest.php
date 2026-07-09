@@ -65,19 +65,6 @@ class ApiLogTest extends TestCase
         $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'successful' => true, 'status_code' => 200]);
     }
 
-    public function test_search_records_an_activity_entry(): void
-    {
-        $this->fakeOk();
-        $user = $this->apiUser();
-
-        $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
-
-        $this->assertDatabaseHas('activity_logs', [
-            'user_id' => $user->id,
-            'action' => 'flight.searched',
-        ]);
-    }
-
     public function test_auth_password_is_masked(): void
     {
         $this->fakeOk();

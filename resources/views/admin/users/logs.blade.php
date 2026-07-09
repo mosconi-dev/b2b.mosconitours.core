@@ -51,8 +51,8 @@
         <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             @if ($entries->isEmpty())
                 <div class="p-12 text-center">
-                    <p class="text-sm font-medium text-brand-900">No activity recorded yet</p>
-                    <p class="mt-1 text-sm text-gray-500">Page visits, sign-ins and searches will appear here.</p>
+                    <p class="text-sm font-medium text-brand-900">No actions recorded yet</p>
+                    <p class="mt-1 text-sm text-gray-500">Sign-ins and any create / update / delete actions this user makes will appear here.</p>
                 </div>
             @else
                 <div class="overflow-x-auto">
@@ -60,17 +60,18 @@
                         <thead>
                             <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 <th class="px-5 py-3">When</th>
-                                <th class="px-5 py-3">Activity</th>
-                                <th class="px-5 py-3">Where</th>
+                                <th class="px-5 py-3">Action</th>
+                                <th class="px-5 py-3">Detail</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             @foreach ($entries as $a)
                                 @php
                                     [$cat, $catClass] = match (true) {
-                                        str_starts_with($a->action, 'auth.') => [str_replace('auth.', '', $a->action), 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'],
-                                        $a->action === 'flight.searched' => ['search', 'bg-indigo-50 text-indigo-700 ring-indigo-600/20'],
-                                        default => ['page', 'bg-gray-50 text-gray-600 ring-gray-500/20'],
+                                        str_contains($a->event, 'created') => ['created', 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'],
+                                        str_contains($a->event, 'deleted') => ['deleted', 'bg-red-50 text-red-700 ring-red-600/20'],
+                                        str_starts_with($a->event, 'auth.') => [str_replace('auth.', '', $a->event), 'bg-gray-50 text-gray-600 ring-gray-500/20'],
+                                        default => ['updated', 'bg-blue-50 text-blue-700 ring-blue-600/20'],
                                     };
                                 @endphp
                                 <tr class="transition hover:bg-gray-50">
@@ -81,9 +82,7 @@
                                             <span class="font-medium text-brand-900">{{ $a->label() }}</span>
                                         </div>
                                     </td>
-                                    <td class="whitespace-nowrap px-5 py-3 text-xs text-gray-400">
-                                        @if ($a->method && $a->method !== 'GET')<span class="font-mono">{{ $a->method }}</span> @endif{{ $a->url }}
-                                    </td>
+                                    <td class="px-5 py-3 text-gray-500">{{ $a->description ?? $a->target() ?? '—' }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
