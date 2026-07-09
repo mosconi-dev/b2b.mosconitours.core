@@ -2,12 +2,16 @@
 
 namespace App\Providers;
 
+use App\Services\Activity\ActivityLogger;
 use App\Services\Rbac\PermissionRegistry;
 use App\Services\Settings\Settings;
 use App\Services\TboAir\FlightSearchCache;
 use App\Services\TboAir\TboAirClient;
 use App\Services\TboAir\TboAirConfig;
 use App\Services\TboAir\TboEnvironmentResolver;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -38,6 +42,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Record sign-in / sign-out in the per-user activity log.
+        Event::listen(Login::class, function (Login $event): void {
+            app(ActivityLogger::class)->log('auth.login', 'Signed in', $event->user);
+        });
+
+        Event::listen(Logout::class, function (Logout $event): void {
+            if ($event->user) {
+                app(ActivityLogger::class)->log('auth.logout', 'Signed out', $event->user);
+            }
+        });
     }
 }

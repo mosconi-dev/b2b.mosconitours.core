@@ -83,6 +83,12 @@
                                             </button>
                                         </form>
                                     @endcan
+                                    @can('apilog.view')
+                                        <a href="{{ route('admin.users.logs', $u) }}"
+                                           class="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
+                                            Logs
+                                        </a>
+                                    @endcan
                                     @can('user.update')
                                         <a href="{{ route('admin.users.edit', $u) }}"
                                            class="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-600 shadow-sm transition hover:bg-gray-50">

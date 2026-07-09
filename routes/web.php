@@ -48,6 +48,7 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
         Route::get('/create', [UserController::class, 'create'])->name('create')->middleware('can:user.create');
         Route::post('/', [UserController::class, 'store'])->name('store');
         Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit')->middleware('can:user.update');
+        Route::get('/{user}/logs', [UserController::class, 'logs'])->name('logs')->middleware('can:apilog.view');
         Route::put('/{user}', [UserController::class, 'update'])->name('update');
         Route::patch('/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('toggle-active')->middleware('can:toggleActive,user');
         Route::put('/{user}/password', [UserController::class, 'resetPassword'])->name('password');

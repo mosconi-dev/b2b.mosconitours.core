@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ResetUserPasswordRequest;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Models\Activity;
 use App\Models\Role;
+use App\Models\TboAirApiLog;
 use App\Models\User;
 use App\Services\Rbac\UserAdminService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class UserController extends Controller
@@ -49,6 +52,35 @@ class UserController extends Controller
             'user' => $user->load('roles:id'),
             'roles' => Role::orderBy('label')->get(),
         ]);
+    }
+
+    public function logs(Request $request, User $user): View
+    {
+        $tab = $request->query('tab') === 'activity' ? 'activity' : 'api';
+        $type = $request->query('type');
+        $logs = null;
+        $entries = null;
+
+        if ($tab === 'activity') {
+            // In-app movement (navigation + key actions).
+            $entries = Activity::where('user_id', $user->id)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->paginate(20)
+                ->withQueryString();
+        } else {
+            // Outbound TBO API calls. Exclude the heavy `response` JSON from the list
+            // (it's fetched lazily by show() when a row is expanded).
+            $logs = TboAirApiLog::query()
+                ->where('user_id', $user->id)
+                ->select(['id', 'type', 'environment', 'endpoint', 'status_code', 'successful', 'duration_ms', 'user_id', 'error', 'request', 'created_at'])
+                ->when(in_array($type, ['authenticate', 'search'], true), fn ($q) => $q->where('type', $type))
+                ->latest()
+                ->paginate(20)
+                ->withQueryString();
+        }
+
+        return view('admin.users.logs', compact('user', 'tab', 'type', 'logs', 'entries'));
     }
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
