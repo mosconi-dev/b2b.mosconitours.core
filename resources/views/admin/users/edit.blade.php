@@ -36,6 +36,20 @@
                 <x-input-error :messages="$errors->get('roles')" class="mt-2" />
             </div>
 
+            @can('supplier.tbo.manage')
+                <div>
+                    <x-input-label for="tbo_environment" value="TBO environment override" />
+                    <select id="tbo_environment" name="tbo_environment"
+                            class="mt-1 block w-full rounded-lg border-gray-300 py-2 pl-3.5 pr-8 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">Default (follow global)</option>
+                        <option value="test" @selected(old('tbo_environment', $user->tbo_environment) === 'test')>Test</option>
+                        <option value="live" @selected(old('tbo_environment', $user->tbo_environment) === 'live')>Live</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Live also requires the user to hold the “Supplier · TBO · Use Live” permission.</p>
+                    <x-input-error :messages="$errors->get('tbo_environment')" class="mt-2" />
+                </div>
+            @endcan
+
             <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-5">
                 <a href="{{ route('admin.users.index') }}" class="text-sm font-medium text-gray-600 hover:text-gray-800">Cancel</a>
                 <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">

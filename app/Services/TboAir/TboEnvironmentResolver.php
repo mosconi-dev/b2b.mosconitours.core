@@ -2,14 +2,18 @@
 
 namespace App\Services\TboAir;
 
+use App\Models\User;
 use App\Services\Settings\Settings;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Auth;
 
 /**
- * Decides which TBO environment ("test"/"live") the current request uses.
+ * Decides which TBO environment ("test"/"live") applies.
  *
  * Precedence: per-user override → global setting → config default.
- * (The per-user branch is added in a later phase; today this resolves the
- * global setting then the config fallback.)
+ * A per-user override to "live" is only honored when the user holds the
+ * supplier.tbo.live permission; otherwise it falls back to "test". The global
+ * setting is a deliberate platform-wide choice and is not per-user gated.
  */
 class TboEnvironmentResolver
 {
@@ -17,11 +21,21 @@ class TboEnvironmentResolver
 
     public function __construct(private readonly Settings $settings) {}
 
-    public function resolve(): string
+    public function resolve(?Authenticatable $user = null): string
     {
-        $env = $this->settings->get(self::SETTING_KEY) ?: config('tboair.default', 'test');
+        $user ??= Auth::user();
 
-        return $this->normalize((string) $env);
+        if ($user instanceof User && $user->tbo_environment) {
+            $env = $this->normalize($user->tbo_environment);
+
+            if ($env === 'live' && ! $user->can('supplier.tbo.live')) {
+                return 'test'; // override to live not permitted — safe fallback
+            }
+
+            return $env;
+        }
+
+        return $this->normalize($this->settings->get(self::SETTING_KEY) ?: config('tboair.default', 'test'));
     }
 
     public function normalize(string $env): string

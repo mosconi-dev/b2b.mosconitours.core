@@ -47,6 +47,14 @@
 
                     <div class="flex-1"></div>
 
+                    <!-- TBO live-environment indicator -->
+                    @if (app(\App\Services\TboAir\TboEnvironmentResolver::class)->resolve() === 'live')
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30"
+                              title="TBO Air is in LIVE mode — real searches and bookings">
+                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500"></span> Live
+                        </span>
+                    @endif
+
                     <!-- Support -->
                     <a href="#" class="hidden items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:inline-flex">
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
