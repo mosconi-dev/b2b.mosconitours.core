@@ -74,6 +74,24 @@ class BookingTest extends TestCase
             ->assertSee('Manila (MNL) → Cebu (CEB)');    // the carried search-context bar
     }
 
+    public function test_create_embeds_the_editable_search_form(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', [
+                'traceId' => 'trace-abc-123',
+                'resultIndex' => 'OB1',
+                'search' => 'Manila (MNL) → Cebu (CEB) · 1 Pax',
+                'q' => 'ENCODED_SEARCH_TOKEN',
+            ]))
+            ->assertOk()
+            // The in-place "Edit search" form is embedded, pre-filled from the
+            // token, and configured to hand off to the Select Flight page.
+            ->assertSee('ENCODED_SEARCH_TOKEN')
+            ->assertSee("redirectUrl: '".route('flights')."'", false);
+    }
+
     public function test_create_requires_booking_create_permission(): void
     {
         $this->fakeQuote();

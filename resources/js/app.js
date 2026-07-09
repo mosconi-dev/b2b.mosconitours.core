@@ -161,10 +161,18 @@ Alpine.data('flightSearch', (config = {}) => ({
     searchUrl: config.searchUrl ?? '',
     bookingCreateUrl: config.bookingCreateUrl ?? '',
     recentUrl: config.recentUrl ?? '',
+    // Embedded mode (booking wizard's inline "Edit search"): pre-fill from
+    // `initialQ`, show the collapsed summary, and on submit hand off to the
+    // flights page (`redirectUrl`) instead of searching in place.
+    embedded: config.embedded ?? false,
+    redirectUrl: config.redirectUrl ?? '',
+    initialQ: config.initialQ ?? '',
 
     // --- results state ---
-    searched: false,
-    collapsed: false,
+    // Embedded (booking) mode starts "searched + collapsed" so the shared form
+    // renders as the collapsed summary bar until the user hits Edit search.
+    searched: config.embedded ?? false,
+    collapsed: config.embedded ?? false,
     loading: false,
     error: null,
     results: [],
@@ -245,8 +253,52 @@ Alpine.data('flightSearch', (config = {}) => ({
         this.segments.splice(i, 1);
     },
 
+    // The current search as a plain object — the single source of truth shared by
+    // the search request, the ?q= URL token, and the hand-off to the booking wizard.
+    searchParams() {
+        return {
+            tripType: this.tripType,
+            cabin: this.cabin,
+            adults: this.pax.adults,
+            children: this.pax.children,
+            infants: this.pax.infants,
+            segments: this.segments.map((s) => ({ origin: s.origin, dest: s.dest, departure: s.departure })),
+            returnDate: this.tripType === 'round' ? this.returnDate : null,
+        };
+    },
+
+    // Replace the segment values WITHOUT swapping out the objects. Each Origin/
+    // Destination field is an airportField that captured its `segment` object at
+    // init; a wholesale `this.segments = ...` would leave those components bound
+    // to stale objects (typed value goes to the new object, but the autocomplete
+    // filters on the old one → "No matches"). Mutating in place keeps identity.
+    setSegments(list) {
+        const next = list.map((s) => ({
+            origin: s.origin ?? '',
+            dest: s.dest ?? '',
+            departure: s.departure ?? '',
+        }));
+
+        if (next.length < this.segments.length) this.segments.splice(next.length);
+        next.forEach((s, i) => {
+            if (this.segments[i]) {
+                Object.assign(this.segments[i], s);
+            } else {
+                this.segments.push(s);
+            }
+        });
+    },
+
     // ----- search -----
     async submit() {
+        // Embedded (booking wizard) form: hand the edited search off to the
+        // flights page, which restores it and runs the search / shows results.
+        if (this.redirectUrl) {
+            this.loading = true;
+            window.location = `${this.redirectUrl}?q=${encodeSearch(this.searchParams())}`;
+            return;
+        }
+
         this.error = null;
         this.loading = true;
         this.searched = true;
@@ -261,15 +313,7 @@ Alpine.data('flightSearch', (config = {}) => ({
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
                 },
-                body: JSON.stringify({
-                    tripType: this.tripType,
-                    cabin: this.cabin,
-                    adults: this.pax.adults,
-                    children: this.pax.children,
-                    infants: this.pax.infants,
-                    segments: this.segments.map((s) => ({ origin: s.origin, dest: s.dest, departure: s.departure })),
-                    returnDate: this.tripType === 'round' ? this.returnDate : null,
-                }),
+                body: JSON.stringify(this.searchParams()),
             });
 
             const data = await res.json().catch(() => ({}));
@@ -317,26 +361,24 @@ Alpine.data('flightSearch', (config = {}) => ({
             from: offer.departure?.code || '',
             to: offer.arrival?.code || '',
             search: this.summary || '', // carried to the wizard's search-context bar
-            q: new URLSearchParams(window.location.search).get('q') || '', // so "Edit search" restores it
+            q: encodeSearch(this.searchParams()), // exact search that produced this offer, so "Edit search" restores it
         });
         window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
 
-    // Restore a search from the URL (?q=…) on page load, then re-run it.
-    // Within the cache window this is a cache hit (no API); otherwise it
-    // auto re-runs the search. Alpine calls init() automatically.
-    init() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const q = urlParams.get('q');
-        if (! q) return;
+    // Decode a ?q= token and fill the form from it. Returns false if the token
+    // is missing/invalid. Shared by the flights page (URL restore) and the
+    // booking wizard's embedded edit form (config restore).
+    restoreFromQ(q) {
+        if (! q) return false;
 
         let p = null;
         try {
             p = decodeSearch(q);
         } catch (e) {
-            return;
+            return false;
         }
-        if (! p) return;
+        if (! p) return false;
 
         this.tripType = p.tripType ?? this.tripType;
         this.cabin = p.cabin ?? this.cabin;
@@ -347,36 +389,35 @@ Alpine.data('flightSearch', (config = {}) => ({
         };
         this.returnDate = p.returnDate ?? '';
         if (Array.isArray(p.segments) && p.segments.length) {
-            this.segments = p.segments.map((s) => ({
-                origin: s.origin ?? '',
-                dest: s.dest ?? '',
-                departure: s.departure ?? '',
-            }));
+            this.setSegments(p.segments);
         }
 
-        this.submit();
+        return true;
+    },
 
-        // Arriving from the booking wizard's "Edit search" (?edit=1): keep the form
-        // open above the results so the search can be changed straight away — the same
-        // state as clicking the in-page "Edit search" button. submit() sets collapsed
-        // synchronously before it awaits, so reopening here wins.
-        if (urlParams.get('edit')) this.collapsed = false;
+    // Alpine calls init() automatically.
+    init() {
+        // Embedded in the booking wizard: pre-fill from the passed search. The
+        // searched/collapsed defaults (set from `embedded`) already render the
+        // form as the collapsed summary; `searched=true` makes the shared form's
+        // `!searched || !collapsed` visibility reduce to `!collapsed`, so the
+        // Edit-search toggle works. Never auto-searches (submit navigates away).
+        if (this.embedded) {
+            this.restoreFromQ(this.initialQ);
+            return;
+        }
+
+        // Flights page: restore from ?q= and re-run the search.
+        const urlParams = new URLSearchParams(window.location.search);
+        if (! this.restoreFromQ(urlParams.get('q'))) return;
+
+        this.submit();
     },
 
     // Reflect the current search in the URL so a refresh / shared link restores it.
     syncUrl() {
-        const params = {
-            tripType: this.tripType,
-            cabin: this.cabin,
-            adults: this.pax.adults,
-            children: this.pax.children,
-            infants: this.pax.infants,
-            segments: this.segments.map((s) => ({ origin: s.origin, dest: s.dest, departure: s.departure })),
-            returnDate: this.tripType === 'round' ? this.returnDate : null,
-        };
-
         const url = new URL(window.location.href);
-        url.searchParams.set('q', encodeSearch(params));
+        url.searchParams.set('q', encodeSearch(this.searchParams()));
         window.history.replaceState({}, '', url);
     },
 
@@ -471,7 +512,7 @@ Alpine.data('flightSearch', (config = {}) => ({
         this.tripType = item.tripType;
         this.cabin = item.cabin;
         this.pax = { ...item.pax };
-        this.segments = item.segments.map((s) => ({ ...s }));
+        this.setSegments(item.segments);
         this.returnDate = item.returnDate ?? '';
         this.searched = false;
         this.collapsed = false;

@@ -15,28 +15,66 @@
             'flightsUrl' => route('flights'),
          ]))">
 
-        {{-- Search context — carried from the flights search (same bar as the Select Flight step).
-             Only relevant while choosing guests; hidden from Add-ons onward. --}}
+        {{-- Search context — carried from the flights search. Editable in place:
+             "Edit search" expands the real search form right here; submitting it
+             hands off to the Select Flight page with the new search. Shown only on
+             the Guest Details step. --}}
         @if ($search)
-            <div x-show="step === 2" x-cloak class="mb-6 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex min-w-0 items-center gap-3">
-                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                        </svg>
-                    </span>
-                    <div class="min-w-0">
-                        <p class="truncate text-sm font-semibold text-brand-900">{{ $search }}</p>
-                        <p class="text-xs text-gray-400">Edit to change your search</p>
+            <div x-show="step === 2" x-cloak class="mb-6">
+                @if ($q)
+                    <div x-data="flightSearch({
+                            airports: @js(\App\Support\Airports::all()),
+                            searchUrl: '{{ route('flights.search') }}',
+                            redirectUrl: '{{ route('flights') }}',
+                            initialQ: @js($q),
+                            embedded: true,
+                         })">
+                        {{-- Collapsed summary (default). x-text swaps in the live summary
+                             once Alpine boots; the server-rendered $search is the fallback. --}}
+                        <div x-show="collapsed" x-cloak
+                             class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                            <div class="flex min-w-0 items-center gap-3">
+                                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                                    </svg>
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold text-brand-900" x-text="summary">{{ $search }}</p>
+                                    <p class="text-xs text-gray-400">Edit to change your search</p>
+                                </div>
+                            </div>
+                            <button type="button" @click="editSearch()"
+                                    class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                                </svg>
+                                Edit search
+                            </button>
+                        </div>
+
+                        {{-- The real search form (shared with the flights page). Expands
+                             when the user hits Edit search; "Search Flights" navigates to
+                             Select Flight with the new search. --}}
+                        @include('flights.form')
                     </div>
-                </div>
-                <a href="{{ $editUrl }}"
-                   class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                    </svg>
-                    Edit search
-                </a>
+                @else
+                    {{-- No search token to pre-fill an editable form — show the carried
+                         search read-only. --}}
+                    <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div class="flex min-w-0 items-center gap-3">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                                </svg>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-semibold text-brand-900">{{ $search }}</p>
+                                <p class="text-xs text-gray-400">Your current search</p>
+                            </div>
+                        </div>
+                    </div>
+                @endif
             </div>
         @endif
 
