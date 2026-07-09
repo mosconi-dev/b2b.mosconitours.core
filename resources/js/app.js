@@ -136,6 +136,8 @@ Alpine.data('flightSearch', (config = {}) => ({
     // --- injected from the blade ---
     airports: config.airports ?? [],
     searchUrl: config.searchUrl ?? '',
+    fareQuoteUrl: config.fareQuoteUrl ?? '',
+    fareRuleUrl: config.fareRuleUrl ?? '',
 
     // --- results state ---
     searched: false,
@@ -147,6 +149,16 @@ Alpine.data('flightSearch', (config = {}) => ({
     currency: 'PHP',
     sort: 'price',
     filters: { stops: [], airlines: [], maxPrice: null },
+
+    // --- fare selection (Phase 1: FareQuote / FareRule) ---
+    selecting: null, // resultIndex currently being priced
+    quoteOpen: false,
+    quote: null,
+    quoteOffer: null,
+    quoteError: null,
+    rules: null,
+    rulesLoading: false,
+    rulesError: null,
 
     // Sample recent searches (display only — clicking one re-fills the form).
     recent: [
@@ -302,6 +314,77 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     editSearch() {
         this.collapsed = false;
+    },
+
+    // ----- fare selection (FareQuote / FareRule) -----
+    async postJson(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+            },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, data };
+    },
+
+    // Re-price the selected offer (FareQuote) and open the confirmation modal.
+    async selectOffer(offer) {
+        if (! this.traceId) return;
+        this.selecting = offer.resultIndex;
+        this.quote = null;
+        this.quoteError = null;
+        this.rules = null;
+        this.rulesError = null;
+        this.quoteOffer = offer;
+        this.quoteOpen = true;
+
+        try {
+            const { ok, data } = await this.postJson(this.fareQuoteUrl, {
+                traceId: this.traceId,
+                resultIndex: offer.resultIndex,
+            });
+            if (! ok) {
+                this.quoteError = data.message || 'We could not price this fare. Please search again.';
+                return;
+            }
+            this.quote = data;
+        } catch (e) {
+            this.quoteError = 'Network error. Please try again.';
+        } finally {
+            this.selecting = null;
+        }
+    },
+
+    // Load fare rules for the offer shown in the modal (FareRule), on demand.
+    async loadRules() {
+        if (! this.quoteOffer || this.rulesLoading) return;
+        this.rulesLoading = true;
+        this.rulesError = null;
+
+        try {
+            const { ok, data } = await this.postJson(this.fareRuleUrl, {
+                traceId: this.traceId,
+                resultIndex: this.quoteOffer.resultIndex,
+            });
+            if (! ok) {
+                this.rulesError = data.message || 'We could not load the fare rules.';
+                return;
+            }
+            this.rules = data.rules ?? [];
+        } catch (e) {
+            this.rulesError = 'Network error. Please try again.';
+        } finally {
+            this.rulesLoading = false;
+        }
+    },
+
+    closeQuote() {
+        this.quoteOpen = false;
     },
 
     // Restore a search from the URL (?q=…) on page load, then re-run it.

@@ -22,8 +22,8 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
 - **Two facts that shape the booking work:** the auth **token is valid ~24h** (TBO meeting — the
   published "12h" doc is stale; our 23h TTL is fine), and the **search `TraceId` is valid only ~15
   min**, so pricing/booking must run against a fresh search.
-- **Next step:** Phase 1 (FareRule + FareQuote), after confirming the TBO API generation of the
-  dormant fare endpoints. See `03-implementation-plan.md`.
+- **Done:** **Phase 1 (FareRule + FareQuote)** — select an offer → re-price + rules in a confirm modal.
+- **Next step:** Phase 2 (booking domain + passengers). See `03-implementation-plan.md`.
 
 ## Related in-app tooling
 

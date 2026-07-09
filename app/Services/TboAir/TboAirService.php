@@ -4,8 +4,11 @@ namespace App\Services\TboAir;
 
 use App\Enums\TripType;
 use App\Services\Settings\Settings;
+use App\Services\TboAir\DTO\FareQuote;
+use App\Services\TboAir\DTO\FareRule;
 use App\Services\TboAir\DTO\FlightOffer;
 use App\Services\TboAir\DTO\SearchInput;
+use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Support\Airports;
 use Illuminate\Support\Facades\Cache;
@@ -23,14 +26,43 @@ class TboAirService
      */
     public function search(SearchInput $input): array
     {
+        return $this->withReauth(fn (string $token): array => $this->doSearch($input, $token));
+    }
+
+    /**
+     * Binding re-price of a selected result. May differ from the search fare.
+     */
+    public function fareQuote(SelectionInput $selection): FareQuote
+    {
+        return $this->withReauth(fn (string $token): FareQuote => $this->doFareQuote($selection, $token));
+    }
+
+    /**
+     * Fare rules / cancellation policy for a selected result.
+     */
+    public function fareRule(SelectionInput $selection): FareRule
+    {
+        return $this->withReauth(fn (string $token): FareRule => $this->doFareRule($selection, $token));
+    }
+
+    /**
+     * Run a token-bearing call, re-authenticating exactly once if TBO reports an
+     * expired session (ErrorCode 6) — the token may lapse before its cached TTL.
+     *
+     * @template T
+     *
+     * @param  callable(string): T  $call
+     * @return T
+     */
+    private function withReauth(callable $call): mixed
+    {
         try {
-            return $this->doSearch($input, $this->token());
+            return $call($this->token());
         } catch (TboAirException $e) {
-            // Token may have expired before its cached TTL — re-auth once.
             if ($e->isAuthError()) {
                 Cache::forget($this->cacheKey());
 
-                return $this->doSearch($input, $this->token());
+                return $call($this->token());
             }
 
             throw $e;
@@ -89,13 +121,7 @@ class TboAirService
     private function doSearch(SearchInput $input, string $token): array
     {
         $data = $this->client->search($this->buildPayload($input, $token));
-
-        $errorCode = data_get($data, 'Response.Error.ErrorCode', data_get($data, 'Error.ErrorCode'));
-
-        // ErrorCode 6 = invalid/expired session token.
-        if ((int) $errorCode === 6) {
-            throw TboAirException::auth($this->firstError($data, 'TBO Air session expired.'));
-        }
+        $this->guardSession($data);
 
         $offers = $this->transformer->transform($data);
 
@@ -104,6 +130,53 @@ class TboAirService
             'traceId' => data_get($data, 'Response.TraceId', data_get($data, 'TraceId')),
             'currency' => $offers[0]->price['currency'] ?? data_get($data, 'Agency.LocalCurrency', 'PHP'),
         ];
+    }
+
+    private function doFareQuote(SelectionInput $selection, string $token): FareQuote
+    {
+        $data = $this->client->fareQuote($this->detailPayload($selection, $token));
+        $this->guardSession($data);
+
+        return FareQuote::fromResponse($data);
+    }
+
+    private function doFareRule(SelectionInput $selection, string $token): FareRule
+    {
+        $data = $this->client->fareRule($this->detailPayload($selection, $token));
+        $this->guardSession($data);
+
+        return FareRule::fromResponse($data, $selection->resultIndex);
+    }
+
+    /**
+     * The common body every detail/booking call needs: the session token plus the
+     * search's TraceId + the chosen ResultIndex.
+     *
+     * @return array<string, mixed>
+     */
+    private function detailPayload(SelectionInput $selection, string $token): array
+    {
+        return [
+            'EndUserIp' => $this->client->ipAddress(),
+            'TokenId' => $token,
+            'TraceId' => $selection->traceId,
+            'ResultIndex' => $selection->resultIndex,
+        ];
+    }
+
+    /**
+     * ErrorCode 6 = invalid/expired session token. Throwing an auth error lets
+     * withReauth() re-authenticate once and retry.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function guardSession(array $data): void
+    {
+        $errorCode = data_get($data, 'Response.Error.ErrorCode', data_get($data, 'Error.ErrorCode'));
+
+        if ((int) $errorCode === 6) {
+            throw TboAirException::auth($this->firstError($data, 'TBO Air session expired.'));
+        }
     }
 
     /**

@@ -51,6 +51,32 @@ class TboAirClient
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function fareRule(array $payload): array
+    {
+        return $this->post('farerule', $this->endpoint('fare_rule'), $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function fareQuote(array $payload): array
+    {
+        return $this->post('farequote', $this->endpoint('fare_quote'), $payload);
+    }
+
+    /**
+     * Resolve a per-environment endpoint URL by config key (fare_rule, fare_quote, …).
+     */
+    private function endpoint(string $key): string
+    {
+        return (string) ($this->config['endpoints'][$key] ?? '');
+    }
+
+    /**
      * @param  array<string, mixed>  $body
      * @return array<string, mixed>
      */

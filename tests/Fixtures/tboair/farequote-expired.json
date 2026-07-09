@@ -1,0 +1,10 @@
+{
+    "Response": {
+        "ResponseStatus": 3,
+        "Error": {
+            "ErrorCode": 6,
+            "ErrorMessage": "Session expired. Please login again."
+        },
+        "TraceId": "trace-abc-123"
+    }
+}

@@ -1,0 +1,18 @@
+{
+    "Response": {
+        "ResponseStatus": 1,
+        "Error": {
+            "ErrorCode": 0,
+            "ErrorMessage": ""
+        },
+        "TraceId": "trace-abc-123",
+        "FareRules": [
+            {
+                "Origin": "MNL",
+                "Destination": "CEB",
+                "Airline": "5J",
+                "FareRuleDetail": "TICKET RESTRICTIONS:<br/>Cancellation: PHP 2000 fee per passenger, non-refundable.<br/>Rebooking allowed &amp; subject to fees.<br/> <br/>"
+            }
+        ]
+    }
+}

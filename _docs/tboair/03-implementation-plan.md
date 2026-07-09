@@ -51,7 +51,14 @@ window — search returns a top-level `TraceId`, and each `FlightOffer` already 
 
 ---
 
-## Phase 1 — Fare pipeline: FareRule + FareQuote (read-only)
+## Phase 1 — Fare pipeline: FareRule + FareQuote (DONE)
+
+> **Shipped:** `SelectionInput` / `FareQuote` / `FareRule` DTOs, `TboAirService::fareQuote()` /
+> `fareRule()` on a shared `withReauth()` (self-heals on ErrorCode 6, reused by search), client
+> `fareQuote()`/`fareRule()` calls, `POST /flights/fare-quote` + `/flights/fare-rule`
+> (`can:flight.search`, not cached), and the **Select → Confirm-fare modal** (re-price, price-changed
+> notice, LCC / refundable / passport badges, per-pax breakdown, on-demand fare rules; "Continue to
+> booking" stubbed for Phase 4). Tested by `FarePipelineTest` + a flights-page render guard.
 
 **Goal:** when a user selects an offer, fetch its rules and a binding re-price before any commitment.
 
@@ -77,7 +84,8 @@ window — search returns a top-level `TraceId`, and each `FlightOffer` already 
 - **Build:**
   - Migration `bookings`: `id`, `reference` (our own), `user_id`, **`environment`**, `status`
     (enum-ish string: `quoted|booked|ticketed|failed|cancelled|refunded`), `trace_id`,
-    `result_index`, `is_lcc`, `pnr` (nullable), `booking_id` (TBO's, nullable), pricing snapshot
+    `result_index` (**`text` — TBO ResultIndex tokens far exceed 255 chars**), `is_lcc`,
+    `pnr` (nullable), `booking_id` (TBO's, nullable), pricing snapshot
     (`json`), `pax` (`json`), timestamps, soft deletes. Portable types.
   - `Booking` model + relations; a `Passenger` value object / request (`Store` FormRequest) with
     title/first/last/DOB/gender/passport (conditional on `IsPassportMandatory`), contact.

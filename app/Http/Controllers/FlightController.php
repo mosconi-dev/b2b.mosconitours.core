@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\FareDetailRequest;
 use App\Http\Requests\SearchFlightsRequest;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\FlightSearchCache;
@@ -42,5 +43,42 @@ class FlightController extends Controller
         }
 
         return response()->json($payload);
+    }
+
+    /**
+     * Re-price a selected result (FareQuote) before any commitment. Not cached —
+     * the fare is binding and time-sensitive within the TraceId window.
+     */
+    public function fareQuote(FareDetailRequest $request, TboAirService $service): JsonResponse
+    {
+        try {
+            $quote = $service->fareQuote($request->selection());
+        } catch (TboAirException $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'We could not price this fare. It may have expired — please search again.',
+            ], 502);
+        }
+
+        return response()->json($quote->toArray());
+    }
+
+    /**
+     * Fare rules / cancellation policy for a selected result (FareRule).
+     */
+    public function fareRule(FareDetailRequest $request, TboAirService $service): JsonResponse
+    {
+        try {
+            $rule = $service->fareRule($request->selection());
+        } catch (TboAirException $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'We could not load the fare rules. Please search again.',
+            ], 502);
+        }
+
+        return response()->json($rule->toArray());
     }
 }

@@ -58,6 +58,15 @@ class FlightSearchTest extends TestCase
         ], $overrides);
     }
 
+    public function test_flights_page_renders_with_the_fare_modal(): void
+    {
+        $this->actingAs($this->flightUser())
+            ->get(route('flights'))
+            ->assertOk()
+            ->assertSee('Search a Flight')
+            ->assertSee('Confirm fare'); // the FareQuote modal markup compiled
+    }
+
     public function test_search_is_forbidden_without_flight_permission(): void
     {
         $this->fakeOk();

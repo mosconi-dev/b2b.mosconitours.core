@@ -1,0 +1,35 @@
+{
+    "Response": {
+        "ResponseStatus": 1,
+        "Error": {
+            "ErrorCode": 0,
+            "ErrorMessage": ""
+        },
+        "TraceId": "trace-abc-123",
+        "Results": {
+            "ResultIndex": "OB1",
+            "Source": 6,
+            "IsLCC": true,
+            "IsRefundable": true,
+            "IsPriceChanged": true,
+            "IsPassportRequiredAtBook": false,
+            "IsPassportRequiredAtTicket": false,
+            "Fare": {
+                "Currency": "PHP",
+                "BaseFare": 5200,
+                "Tax": 1300,
+                "PublishedFare": 6500,
+                "OfferedFare": 6400
+            },
+            "FareBreakdown": [
+                {
+                    "Currency": "PHP",
+                    "PassengerType": 1,
+                    "PassengerCount": 1,
+                    "BaseFare": 5200,
+                    "Tax": 1300
+                }
+            ]
+        }
+    }
+}

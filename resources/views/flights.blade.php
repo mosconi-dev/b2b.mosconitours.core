@@ -9,7 +9,7 @@
         <p class="mt-1 text-sm text-gray-500">Find and compare flights for your booking.</p>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}' })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', fareQuoteUrl: '{{ route('flights.fare-quote') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}' })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}
@@ -464,9 +464,14 @@
                                             <p class="text-[11px] text-gray-400">total fare</p>
                                             <p class="text-lg font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(offer.price.offeredFare)"></span></p>
                                         </div>
-                                        <button type="button" title="Booking coming soon"
-                                                class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
-                                            Select
+                                        <button type="button" @click="selectOffer(offer)"
+                                                :disabled="selecting === offer.resultIndex"
+                                                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                                            <svg x-show="selecting === offer.resultIndex" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                            </svg>
+                                            <span x-text="selecting === offer.resultIndex ? 'Pricing…' : 'Select'"></span>
                                         </button>
                                     </div>
                                 </div>
@@ -599,6 +604,89 @@
                     </template>
                 </div>
             </section>
+        </div>
+
+        {{-- Fare quote / rules modal (FareQuote → confirm price before booking) --}}
+        <div x-show="quoteOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center sm:items-center" @keydown.escape.window="closeQuote()">
+            <div class="absolute inset-0 bg-black/40" @click="closeQuote()"></div>
+            <div class="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 translate-y-4"
+                 x-transition:enter-end="opacity-100 translate-y-0">
+
+                <div class="flex items-start justify-between">
+                    <div>
+                        <h2 class="text-base font-semibold text-brand-900">Confirm fare</h2>
+                        <p class="mt-0.5 text-sm text-gray-500" x-show="quoteOffer" x-cloak>
+                            <span x-text="quoteOffer?.airlineName || quoteOffer?.airlineCode"></span> ·
+                            <span x-text="quoteOffer?.departure?.code"></span> → <span x-text="quoteOffer?.arrival?.code"></span>
+                        </p>
+                    </div>
+                    <button type="button" @click="closeQuote()" class="rounded-md p-1 text-gray-400 transition hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+
+                {{-- Loading --}}
+                <div x-show="selecting && !quote && !quoteError" class="py-10 text-center text-sm text-gray-500">Pricing this fare…</div>
+
+                {{-- Error --}}
+                <div x-show="quoteError" x-cloak class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" x-text="quoteError"></div>
+
+                {{-- Quote --}}
+                <div x-show="quote" x-cloak class="mt-4 space-y-4">
+                    <div x-show="quote?.isPriceChanged" x-cloak class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        <strong>Price updated.</strong> The fare changed since your search — the confirmed total is below.
+                    </div>
+
+                    <div class="flex items-end justify-between rounded-lg bg-gray-50 px-4 py-3">
+                        <span class="text-sm text-gray-500">Confirmed total</span>
+                        <span class="text-xl font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote?.price?.offeredFare)"></span></span>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 text-xs">
+                        <span x-show="quote?.isLcc" x-cloak class="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">Low-cost</span>
+                        <span x-show="quote?.isRefundable" x-cloak class="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">Refundable</span>
+                        <span x-show="quote && !quote.isRefundable" x-cloak class="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-500">Non-refundable</span>
+                        <span x-show="quote?.isPassportMandatory" x-cloak class="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">Passport required</span>
+                    </div>
+
+                    <div x-show="quote?.fareBreakdown?.length" x-cloak>
+                        <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Fare breakdown</p>
+                        <div class="divide-y divide-gray-100 rounded-lg border border-gray-100 text-sm">
+                            <template x-for="(b, i) in quote.fareBreakdown" :key="i">
+                                <div class="flex items-center justify-between px-3 py-2">
+                                    <span class="text-gray-600"><span x-text="b.count"></span> × <span x-text="b.passengerType"></span></span>
+                                    <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money((b.baseFare + b.tax) * b.count)"></span></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="button" @click="loadRules()" x-show="rules === null && !rulesLoading" class="text-sm font-medium text-blue-600 hover:text-blue-700">View fare rules</button>
+                        <p x-show="rulesLoading" x-cloak class="text-sm text-gray-500">Loading fare rules…</p>
+                        <p x-show="rulesError" x-cloak class="text-sm text-red-600" x-text="rulesError"></p>
+                        <div x-show="rules && rules.length" x-cloak class="space-y-2">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fare rules</p>
+                            <template x-for="(r, i) in rules" :key="i">
+                                <div class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+                                    <p class="font-semibold text-gray-700"><span x-text="r.origin"></span> → <span x-text="r.destination"></span> <span x-show="r.airline" x-text="'· ' + r.airline"></span></p>
+                                    <p class="mt-1 whitespace-pre-line" x-text="r.detail"></p>
+                                </div>
+                            </template>
+                        </div>
+                        <p x-show="rules && rules.length === 0" x-cloak class="text-sm text-gray-500">No fare rules provided.</p>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
+                        <button type="button" @click="closeQuote()" class="text-sm font-medium text-gray-600 hover:text-gray-800">Close</button>
+                        <button type="button" disabled title="Booking coming soon" class="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-white">
+                            Continue to booking
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </x-app-layout>
