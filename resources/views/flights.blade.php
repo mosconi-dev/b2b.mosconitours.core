@@ -9,7 +9,7 @@
         <p class="mt-1 text-sm text-gray-500">Find and compare flights for your booking.</p>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', fareQuoteUrl: '{{ route('flights.fare-quote') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}' })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', fareQuoteUrl: '{{ route('flights.fare-quote') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', bookingUrl: '{{ route('bookings.store') }}' })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}
@@ -634,7 +634,7 @@
                 <div x-show="quoteError" x-cloak class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" x-text="quoteError"></div>
 
                 {{-- Quote --}}
-                <div x-show="quote" x-cloak class="mt-4 space-y-4">
+                <div x-show="quote && step === 'quote'" x-cloak class="mt-4 space-y-4">
                     <div x-show="quote?.isPriceChanged" x-cloak class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                         <strong>Price updated.</strong> The fare changed since your search — the confirmed total is below.
                     </div>
@@ -681,8 +681,69 @@
 
                     <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
                         <button type="button" @click="closeQuote()" class="text-sm font-medium text-gray-600 hover:text-gray-800">Close</button>
-                        <button type="button" disabled title="Booking coming soon" class="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-white">
-                            Continue to booking
+                        @can('booking.create')
+                            <button type="button" @click="startPassengers()" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                                Continue to booking
+                            </button>
+                        @else
+                            <button type="button" disabled title="You don't have booking permission" class="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-white">
+                                Continue to booking
+                            </button>
+                        @endcan
+                    </div>
+                </div>
+
+                {{-- Passenger details step --}}
+                <div x-show="quote && step === 'passengers'" x-cloak class="mt-4 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm font-medium text-brand-900">Passenger details</p>
+                        <span class="text-sm font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote?.price?.offeredFare)"></span></span>
+                    </div>
+
+                    <p x-show="quote?.isPassportMandatory" x-cloak class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Passport details are required for every passenger on this fare.</p>
+                    <div x-show="bookingError" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" x-text="bookingError"></div>
+
+                    <div class="space-y-3">
+                        <template x-for="(p, i) in passengers" :key="i">
+                            <div class="rounded-lg border border-gray-200 p-3">
+                                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Passenger <span x-text="i + 1"></span> · <span x-text="p.type"></span></p>
+                                <div class="grid grid-cols-2 gap-2 sm:grid-cols-6">
+                                    <select x-model="p.title" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-1">
+                                        <option>Mr</option><option>Mrs</option><option>Ms</option><option>Mstr</option><option>Miss</option>
+                                    </select>
+                                    <input type="text" x-model="p.firstName" placeholder="First name" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
+                                    <input type="text" x-model="p.lastName" placeholder="Last name" class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-3" />
+                                    <select x-model="p.gender" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2">
+                                        <option value="">Gender</option><option value="M">Male</option><option value="F">Female</option>
+                                    </select>
+                                    <input type="date" x-model="p.dateOfBirth" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-4" />
+                                </div>
+                                <div x-show="quote?.isPassportMandatory" x-cloak class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-6">
+                                    <input type="text" x-model="p.passportNo" placeholder="Passport no." class="col-span-2 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
+                                    <input type="date" x-model="p.passportExpiry" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm sm:col-span-2" />
+                                    <input type="text" x-model="p.nationality" maxlength="2" placeholder="Nat. (PH)" class="col-span-1 rounded-lg border-gray-300 py-1.5 text-sm uppercase sm:col-span-2" />
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div>
+                        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Contact</p>
+                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <input type="email" x-model="contact.email" placeholder="Email" class="rounded-lg border-gray-300 py-1.5 text-sm" />
+                            <input type="tel" x-model="contact.phone" placeholder="Phone" class="rounded-lg border-gray-300 py-1.5 text-sm" />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
+                        <button type="button" @click="backToQuote()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
+                        <button type="button" @click="createBooking()" :disabled="bookingSubmitting"
+                                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                            <svg x-show="bookingSubmitting" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            <span x-text="bookingSubmitting ? 'Creating…' : 'Create booking'"></span>
                         </button>
                     </div>
                 </div>

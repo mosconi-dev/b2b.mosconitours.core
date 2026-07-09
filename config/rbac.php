@@ -121,7 +121,7 @@ return [
         'booking' => [
             'label' => 'Bookings',
             'section' => 'travel_operations',
-            'route' => null,
+            'route' => 'bookings.index',
             'icon' => 'ticket',
             'actions' => ['view', 'create', 'cancel', 'refund'],
         ],

@@ -138,6 +138,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     searchUrl: config.searchUrl ?? '',
     fareQuoteUrl: config.fareQuoteUrl ?? '',
     fareRuleUrl: config.fareRuleUrl ?? '',
+    bookingUrl: config.bookingUrl ?? '',
 
     // --- results state ---
     searched: false,
@@ -159,6 +160,13 @@ Alpine.data('flightSearch', (config = {}) => ({
     rules: null,
     rulesLoading: false,
     rulesError: null,
+
+    // --- passenger entry (Phase 2: create booking) ---
+    step: 'quote', // 'quote' | 'passengers'
+    passengers: [],
+    contact: { email: '', phone: '' },
+    bookingSubmitting: false,
+    bookingError: null,
 
     // Sample recent searches (display only — clicking one re-fills the form).
     recent: [
@@ -342,6 +350,8 @@ Alpine.data('flightSearch', (config = {}) => ({
         this.rulesError = null;
         this.quoteOffer = offer;
         this.quoteOpen = true;
+        this.step = 'quote';
+        this.bookingError = null;
 
         try {
             const { ok, data } = await this.postJson(this.fareQuoteUrl, {
@@ -385,6 +395,57 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     closeQuote() {
         this.quoteOpen = false;
+    },
+
+    // Build one passenger row per person in the fare breakdown, then show the form.
+    startPassengers() {
+        const list = [];
+        (this.quote?.fareBreakdown ?? []).forEach((b) => {
+            const n = Number(b.count) || 0;
+            for (let i = 0; i < n; i++) {
+                list.push(this.blankPassenger(b.passengerType || 'Adult'));
+            }
+        });
+        if (! list.length) list.push(this.blankPassenger('Adult'));
+
+        this.passengers = list;
+        this.bookingError = null;
+        this.step = 'passengers';
+    },
+
+    blankPassenger(type) {
+        return { type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '' };
+    },
+
+    backToQuote() {
+        this.step = 'quote';
+    },
+
+    async createBooking() {
+        if (this.bookingSubmitting) return;
+        this.bookingSubmitting = true;
+        this.bookingError = null;
+
+        try {
+            const { ok, data } = await this.postJson(this.bookingUrl, {
+                traceId: this.traceId,
+                resultIndex: this.quoteOffer?.resultIndex,
+                contact: this.contact,
+                passengers: this.passengers,
+            });
+            if (! ok) {
+                this.bookingError =
+                    data.message ||
+                    (data.errors ? Object.values(data.errors)[0][0] : null) ||
+                    'We could not create the booking. Please check the details and try again.';
+                return;
+            }
+            window.location = data.redirect;
+        } catch (e) {
+            this.bookingError = 'Network error. Please try again.';
+        } finally {
+            this.bookingSubmitting = false;
+        }
     },
 
     // Restore a search from the URL (?q=…) on page load, then re-run it.

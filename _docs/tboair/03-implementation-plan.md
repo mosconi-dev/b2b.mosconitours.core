@@ -77,7 +77,18 @@ window — search returns a top-level `TraceId`, and each `FlightOffer` already 
 
 ---
 
-## Phase 2 — Booking domain + passengers (persistence, still no TBO writes)
+## Phase 2 — Booking domain + passengers (DONE)
+
+> **Shipped:** `bookings` table (env stamped + immutable via a model guard; `result_index` as `text`),
+> `BookingStatus` enum with a guarded state machine, `Booking` model + factory, `Passenger` DTO,
+> `BookingService::createFromQuote()` (re-prices via FareQuote — a read — and persists a `quoted`
+> booking; enforces passport when the fare requires it) + `transitionTo()`, `booking` RBAC module
+> enabled with a Bookings nav item, `StoreBookingRequest`, `POST /bookings` + read-only
+> `GET /bookings` & `/bookings/{booking}` (own-bookings only), and the **passenger-entry UI** — the
+> confirm-fare modal's "Continue to booking" (gated by `booking.create`) opens a dynamic passenger
+> form (rows built from the quote's fare breakdown; passport fields appear when the fare requires
+> them) that POSTs to `/bookings` (which content-negotiates JSON for the XHR) and redirects to the
+> booking. Tested by `BookingTest` + `BookingStatusTest`.
 
 **Goal:** a durable booking record to hang the write-steps off, so retries are safe.
 
