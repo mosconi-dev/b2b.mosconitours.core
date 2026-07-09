@@ -12,11 +12,94 @@
         </div>
     </x-slot>
 
-    <div class="rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center shadow-sm">
-        <svg class="mx-auto h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-        </svg>
-        <p class="mt-4 text-sm font-medium text-brand-900">Settings coming soon</p>
-        <p class="mt-1 text-sm text-gray-500">Platform-wide configuration will live here.</p>
+    <div class="max-w-2xl space-y-6">
+        <x-admin.flash />
+
+        <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div class="flex items-center justify-between">
+                <h2 class="text-base font-semibold text-brand-900">TBO Air Environment</h2>
+                @if ($effectiveEnvironment === 'live')
+                    <span class="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30">
+                        <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span> Live
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                        Test
+                    </span>
+                @endif
+            </div>
+            <p class="mt-1 text-sm text-gray-500">
+                Effective environment for your account is <span class="font-semibold text-brand-900">{{ $effectiveEnvironment }}</span>.
+                Live runs real searches and bookings.
+            </p>
+
+            @can('supplier.tbo.manage')
+                @if ($effectiveEnvironment === 'live')
+                    <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <strong>Live mode is active.</strong> Requests hit production TBO and can create real, billable bookings.
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('admin.settings.tbo.update') }}" class="mt-5 space-y-5">
+                    @csrf
+                    @method('PUT')
+
+                    <div>
+                        <x-input-label for="environment" value="Global environment" />
+                        <select id="environment" name="environment"
+                                class="mt-1 block w-full rounded-lg border-gray-300 py-2 pl-3.5 pr-8 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="test" @selected($globalEnvironment === 'test')>Test (staging)</option>
+                            <option value="live" @selected($globalEnvironment === 'live')>Live (production)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">The platform default. A per-user override can take precedence.</p>
+                        <x-input-error :messages="$errors->get('environment')" class="mt-2" />
+                    </div>
+
+                    <div>
+                        <x-input-label for="cache_key" value="Token cache key (base)" />
+                        <x-text-input id="cache_key" name="cache_key" type="text" class="mt-1 block w-full font-mono"
+                                      :value="old('cache_key', $cacheKey)" required />
+                        <p class="mt-1 text-xs text-gray-500">
+                            Effective key is <code class="rounded bg-gray-100 px-1">{{ $cacheKey }}:{env}</code>.
+                            Changing it invalidates cached tokens (they re-authenticate on next call).
+                        </p>
+                        <x-input-error :messages="$errors->get('cache_key')" class="mt-2" />
+                    </div>
+
+                    <div class="flex justify-end border-t border-gray-100 pt-5">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                            Save Settings
+                        </button>
+                    </div>
+                </form>
+
+                <div class="mt-6 border-t border-gray-100 pt-5">
+                    <h3 class="text-sm font-semibold text-brand-900">Cached tokens</h3>
+                    <p class="mt-1 text-xs text-gray-500">Force a re-authentication by flushing the cached TBO token for an environment.</p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        @foreach (['test', 'live'] as $env)
+                            <form method="POST" action="{{ route('admin.settings.tbo.flush', $env) }}">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
+                                    Flush {{ $env }} token
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+            @else
+                <dl class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                        <dt class="text-gray-500">Global environment</dt>
+                        <dd class="font-medium text-brand-900">{{ $globalEnvironment }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Token cache key</dt>
+                        <dd class="font-mono text-brand-900">{{ $cacheKey }}:{env}</dd>
+                    </div>
+                </dl>
+                <p class="mt-4 text-xs text-gray-400">You need the “Supplier · TBO · Use Live / Manage” permission to change these.</p>
+            @endcan
+        </div>
     </div>
 </x-app-layout>

@@ -31,6 +31,7 @@ return [
         'refund' => 'Refund',
         'sync' => 'Sync',
         'manage' => 'Manage',
+        'live' => 'Use Live',
     ],
 
     /*
@@ -130,7 +131,8 @@ return [
             'group' => 'Suppliers',
             'route' => null,
             'icon' => 'server',
-            'actions' => ['view', 'sync'],
+            // manage = edit the TBO environment/cache settings; live = may use the live environment
+            'actions' => ['view', 'sync', 'manage', 'live'],
         ],
         'supplier.amadeus' => [
             'label' => 'Amadeus',

@@ -65,9 +65,10 @@ class TboEnvironmentSwitchTest extends TestCase
     public function test_token_cache_key_is_namespaced_per_environment(): void
     {
         $transformer = app(FlightResultTransformer::class);
+        $settings = app(Settings::class);
 
-        $test = new TboAirService(new TboAirClient(TboAirConfig::for('test')), $transformer);
-        $live = new TboAirService(new TboAirClient(TboAirConfig::for('live')), $transformer);
+        $test = new TboAirService(new TboAirClient(TboAirConfig::for('test')), $transformer, $settings);
+        $live = new TboAirService(new TboAirClient(TboAirConfig::for('live')), $transformer, $settings);
 
         $this->assertStringEndsWith(':test', $test->cacheKey());
         $this->assertStringEndsWith(':live', $live->cacheKey());

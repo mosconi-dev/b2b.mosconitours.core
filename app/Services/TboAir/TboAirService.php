@@ -3,6 +3,7 @@
 namespace App\Services\TboAir;
 
 use App\Enums\TripType;
+use App\Services\Settings\Settings;
 use App\Services\TboAir\DTO\FlightOffer;
 use App\Services\TboAir\DTO\SearchInput;
 use App\Services\TboAir\Exceptions\TboAirException;
@@ -14,6 +15,7 @@ class TboAirService
     public function __construct(
         private readonly TboAirClient $client,
         private readonly FlightResultTransformer $transformer,
+        private readonly Settings $settings,
     ) {}
 
     /**
@@ -51,10 +53,13 @@ class TboAirService
 
     /**
      * Token cache key, namespaced per environment so test and live never collide.
+     * The base key is admin-overridable (Settings), falling back to config.
      */
     public function cacheKey(): string
     {
-        return config('tboair.cache_key').':'.$this->client->environment();
+        $base = $this->settings->get('tbo.cache_key') ?: config('tboair.cache_key');
+
+        return $base.':'.$this->client->environment();
     }
 
     private function authenticate(): string
