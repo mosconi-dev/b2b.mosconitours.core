@@ -12,6 +12,14 @@ class UpdateUserRequest extends FormRequest
         return (bool) $this->user()?->can('user.update');
     }
 
+    protected function prepareForValidation(): void
+    {
+        // An empty select means "no override".
+        if ($this->input('tbo_environment') === '') {
+            $this->merge(['tbo_environment' => null]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -25,6 +33,7 @@ class UpdateUserRequest extends FormRequest
             ],
             'roles' => ['nullable', 'array'],
             'roles.*' => ['integer', 'exists:roles,id'],
+            'tbo_environment' => ['nullable', Rule::in(['test', 'live'])],
         ];
     }
 }

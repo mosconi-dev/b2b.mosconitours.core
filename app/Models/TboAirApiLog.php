@@ -9,6 +9,7 @@ class TboAirApiLog extends Model
 {
     protected $fillable = [
         'type',
+        'environment',
         'endpoint',
         'status_code',
         'successful',

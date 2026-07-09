@@ -12,11 +12,111 @@
         </div>
     </x-slot>
 
-    <div class="rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center shadow-sm">
-        <svg class="mx-auto h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-        </svg>
-        <p class="mt-4 text-sm font-medium text-brand-900">Settings coming soon</p>
-        <p class="mt-1 text-sm text-gray-500">Platform-wide configuration will live here.</p>
+    <div class="max-w-2xl space-y-6">
+        <x-admin.flash />
+
+        <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div class="flex items-center justify-between">
+                <h2 class="text-base font-semibold text-brand-900">TBO Air Environment</h2>
+                @if ($effectiveEnvironment === 'live')
+                    <span class="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30">
+                        <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span> Live
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                        Test
+                    </span>
+                @endif
+            </div>
+            <p class="mt-1 text-sm text-gray-500">
+                Effective environment for your account is <span class="font-semibold text-brand-900">{{ $effectiveEnvironment }}</span>.
+                Live runs real searches and bookings.
+            </p>
+
+            @can('supplier.tbo.manage')
+                @if ($effectiveEnvironment === 'live')
+                    <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <strong>Live mode is active.</strong> Requests hit production TBO and can create real, billable bookings.
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('admin.settings.tbo.update') }}" class="mt-5">
+                    @csrf
+                    @method('PUT')
+
+                    <x-input-label for="environment" value="Global environment" />
+                    <div class="mt-1 flex gap-2">
+                        <select id="environment" name="environment"
+                                class="block w-full rounded-lg border-gray-300 py-2 pl-3.5 pr-8 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="test" @selected($globalEnvironment === 'test')>Test (staging)</option>
+                            <option value="live" @selected($globalEnvironment === 'live')>Live (production)</option>
+                        </select>
+                        <button type="submit" class="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                            Save
+                        </button>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">The platform default. A per-user override can take precedence.</p>
+                    <x-input-error :messages="$errors->get('environment')" class="mt-2" />
+                </form>
+
+                <div class="mt-6 border-t border-gray-100 pt-5">
+                    <h3 class="text-sm font-semibold text-brand-900">Environments</h3>
+                    <p class="mt-1 text-xs text-gray-500">
+                        Per environment: the cached TokenId and how long it's cached — the two go together. Paste a TokenId
+                        <strong>with</strong> a TTL (max 86400s) to reuse a session, or <strong>clear both and Save</strong> to
+                        force a fresh login on the next call. (Flush clears the token in one click.)
+                    </p>
+                    <div class="mt-3 space-y-3">
+                        @foreach (['test', 'live'] as $env)
+                            @php($bag = $errors->getBag('tbo_'.$env))
+                            <div class="rounded-lg border border-gray-200 p-4">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-semibold uppercase tracking-wide {{ $env === 'live' ? 'text-red-600' : 'text-gray-500' }}">{{ $env }}</span>
+                                    <form method="POST" action="{{ route('admin.settings.tbo.flush', $env) }}">
+                                        @csrf
+                                        <button type="submit" class="text-xs font-medium text-red-600 transition hover:text-red-700">Flush</button>
+                                    </form>
+                                </div>
+
+                                <form method="POST" action="{{ route('admin.settings.tbo.env', $env) }}" class="mt-3 space-y-3">
+                                    @csrf
+                                    @method('PUT')
+
+                                    <div>
+                                        <x-input-label :for="$env.'_ttl'" value="Token TTL (seconds)" />
+                                        <x-text-input :id="$env.'_ttl'" name="ttl" type="number" max="86400"
+                                                      class="mt-1 block w-full" :value="old('ttl', $environments[$env]['ttl'])" />
+                                        <x-input-error :messages="$bag->get('ttl')" class="mt-2" />
+                                    </div>
+
+                                    <div>
+                                        <x-input-label :for="$env.'_token'" value="Cached TokenId" />
+                                        <div class="mt-1 flex gap-2">
+                                            <input type="text" :id="$env.'_token'" name="token" value="{{ $environments[$env]['token'] }}"
+                                                   placeholder="{{ $environments[$env]['token'] ? '' : 'No cached token — paste one to reuse…' }}"
+                                                   class="block w-full rounded-lg border-gray-300 py-1.5 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                                            <button type="submit" class="shrink-0 rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                                                Save
+                                            </button>
+                                        </div>
+                                        <x-input-error :messages="$bag->get('token')" class="mt-2" />
+                                    </div>
+                                </form>
+                            </div>
+                        @endforeach
+                    </div>
+                    <p class="mt-2 text-xs text-gray-400">
+                        A shorter TTL applies from the next authentication. A pasted token must still be valid and your
+                        requests must exit the TBO-whitelisted IP.
+                    </p>
+                </div>
+            @else
+                <dl class="mt-4 text-sm">
+                    <dt class="text-gray-500">Global environment</dt>
+                    <dd class="font-medium text-brand-900">{{ $globalEnvironment }}</dd>
+                </dl>
+                <p class="mt-4 text-xs text-gray-400">You need the “Supplier · TBO · Use Live / Manage” permission to change these.</p>
+            @endcan
+        </div>
     </div>
 </x-app-layout>

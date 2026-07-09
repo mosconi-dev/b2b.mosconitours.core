@@ -53,11 +53,14 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        $this->users->update(
-            $user,
-            $request->safe()->only(['name', 'email']),
-            $request->validated('roles', []),
-        );
+        $data = $request->safe()->only(['name', 'email']);
+
+        // Only TBO managers may set a per-user environment override.
+        if ($request->user()->can('supplier.tbo.manage')) {
+            $data['tbo_environment'] = $request->validated('tbo_environment');
+        }
+
+        $this->users->update($user, $data, $request->validated('roles', []));
 
         return redirect()->route('admin.users.index')
             ->with('status', 'User updated.');

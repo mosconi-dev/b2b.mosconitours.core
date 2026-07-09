@@ -3,6 +3,7 @@
 namespace App\Services\TboAir;
 
 use App\Enums\TripType;
+use App\Services\Settings\Settings;
 use App\Services\TboAir\DTO\FlightOffer;
 use App\Services\TboAir\DTO\SearchInput;
 use App\Services\TboAir\Exceptions\TboAirException;
@@ -14,6 +15,7 @@ class TboAirService
     public function __construct(
         private readonly TboAirClient $client,
         private readonly FlightResultTransformer $transformer,
+        private readonly Settings $settings,
     ) {}
 
     /**
@@ -26,7 +28,7 @@ class TboAirService
         } catch (TboAirException $e) {
             // Token may have expired before its cached TTL — re-auth once.
             if ($e->isAuthError()) {
-                Cache::forget(config('tboair.cache_key'));
+                Cache::forget($this->cacheKey());
 
                 return $this->doSearch($input, $this->token());
             }
@@ -38,10 +40,34 @@ class TboAirService
     public function token(): string
     {
         return Cache::remember(
-            config('tboair.cache_key'),
-            config('tboair.token_ttl'),
+            $this->cacheKey(),
+            $this->tokenTtl(),
             fn (): string => $this->authenticate(),
         );
+    }
+
+    public function environment(): string
+    {
+        return $this->client->environment();
+    }
+
+    /**
+     * Token cache lifetime (seconds) for the active environment. Admin-overridable
+     * per environment (Settings), falling back to config. Bounded when saved.
+     */
+    public function tokenTtl(): int
+    {
+        $override = $this->settings->get('tbo.token_ttl.'.$this->client->environment());
+
+        return (int) ($override ?: config('tboair.token_ttl'));
+    }
+
+    /**
+     * Token cache key, namespaced per environment so test and live never collide.
+     */
+    public function cacheKey(): string
+    {
+        return config('tboair.cache_key').':'.$this->client->environment();
     }
 
     private function authenticate(): string
@@ -104,7 +130,7 @@ class TboAirService
             'DirectFlight' => false,
             'OneStopFlight' => false,
             'JourneyType' => $input->tripType->journeyType(),
-            'EndUserIp' => config('tboair.ip_address'),
+            'EndUserIp' => $this->client->ipAddress(),
             'TokenId' => $token,
             'PreferredAirlines' => [],
             'Sources' => [],

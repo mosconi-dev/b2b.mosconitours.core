@@ -82,7 +82,16 @@
                             <tr class="cursor-pointer transition hover:bg-gray-50" @click="toggle()">
                                 <td class="whitespace-nowrap px-5 py-3 text-gray-500">{{ $log->created_at->format('M j, H:i:s') }}</td>
                                 <td class="px-5 py-3">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset {{ $typeClass }}">{{ $log->type }}</span>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset {{ $typeClass }}">{{ $log->type }}</span>
+                                        @if ($log->environment)
+                                            <span @class([
+                                                'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset',
+                                                'bg-red-50 text-red-700 ring-red-600/30' => $log->environment === 'live',
+                                                'bg-gray-50 text-gray-500 ring-gray-500/20' => $log->environment !== 'live',
+                                            ])>{{ $log->environment }}</span>
+                                        @endif
+                                    </div>
                                 </td>
                                 <td class="px-5 py-3">
                                     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ $statusClass }}">

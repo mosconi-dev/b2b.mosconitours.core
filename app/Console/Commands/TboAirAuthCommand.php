@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\TboAir\Exceptions\TboAirException;
+use App\Services\TboAir\TboAirConfig;
 use App\Services\TboAir\TboAirService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -15,13 +16,17 @@ class TboAirAuthCommand extends Command
 
     public function handle(TboAirService $service): int
     {
-        $this->line('Auth URL : '.config('tboair.auth_url'));
-        $this->line('User     : '.config('tboair.username'));
-        $this->line('IP       : '.config('tboair.ip_address'));
+        $env = $service->environment();
+        $config = TboAirConfig::for($env);
+
+        $this->line('Env      : '.$env);
+        $this->line('Auth URL : '.$config['auth_url']);
+        $this->line('User     : '.$config['username']);
+        $this->line('IP       : '.$config['ip_address']);
         $this->newLine();
 
         if ($this->option('fresh')) {
-            Cache::forget(config('tboair.cache_key'));
+            Cache::forget($service->cacheKey());
         }
 
         $start = microtime(true);
