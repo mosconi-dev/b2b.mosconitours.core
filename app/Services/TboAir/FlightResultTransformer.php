@@ -67,6 +67,11 @@ class FlightResultTransformer
             $outbound
         )));
 
+        $allLegs = array_merge([], ...array_map(
+            fn (array $trip): array => $trip['segments'],
+            $trips
+        ));
+
         return new FlightOffer(
             resultIndex: (string) data_get($raw, 'ResultIndex', ''),
             source: (int) data_get($raw, 'Source', 0),
@@ -78,8 +83,8 @@ class FlightResultTransformer
             cabin: (string) data_get($firstLeg, 'cabin', ''),
             stops: (int) ($trips[0]['stops'] ?? max(count($outbound) - 1, 0)),
             duration: (int) ($trips[0]['duration'] ?? 0),
-            baggage: data_get($firstLeg, 'baggage'),
-            cabinBaggage: data_get($firstLeg, 'cabinBaggage'),
+            baggage: $this->lowestAllowance($allLegs, 'baggage'),
+            cabinBaggage: $this->lowestAllowance($allLegs, 'cabinBaggage'),
             departure: [
                 'code' => (string) data_get($firstLeg, 'origin.code', ''),
                 'city' => (string) data_get($firstLeg, 'origin.city', ''),
@@ -168,6 +173,49 @@ class FlightResultTransformer
         }
 
         return $trips;
+    }
+
+    /**
+     * The smallest baggage allowance across every leg, so the summary badge never
+     * promises more than the whole itinerary guarantees (a 20 KG first leg can be
+     * followed by a 0 KG LCC connection).
+     *
+     * TBO returns free text ("20 KG", "2 Piece"), so we only compare legs that share
+     * a unit; anything unparseable or mixed falls back to the first leg's own wording
+     * rather than inventing a number.
+     *
+     * @param  array<int, array<string, mixed>>  $legs
+     */
+    private function lowestAllowance(array $legs, string $key): ?string
+    {
+        $values = array_values(array_filter(
+            array_map(fn (array $leg): mixed => $leg[$key] ?? null, $legs),
+            fn (mixed $value): bool => is_string($value) && trim($value) !== ''
+        ));
+
+        if ($values === []) {
+            return null;
+        }
+
+        $units = [];
+        $lowest = null;
+        $lowestAmount = null;
+
+        foreach ($values as $value) {
+            if (! preg_match('/^\s*(\d+(?:\.\d+)?)\s*(\D*)$/', $value, $matches)) {
+                return $values[0];
+            }
+
+            $units[strtolower(trim($matches[2]))] = true;
+            $amount = (float) $matches[1];
+
+            if ($lowestAmount === null || $amount < $lowestAmount) {
+                $lowestAmount = $amount;
+                $lowest = $value;
+            }
+        }
+
+        return count($units) === 1 ? $lowest : $values[0];
     }
 
     /**
