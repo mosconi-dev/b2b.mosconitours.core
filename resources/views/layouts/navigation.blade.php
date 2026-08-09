@@ -21,9 +21,9 @@
     <!-- Brand -->
     <div class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4">
         <a href="{{ route('dashboard') }}" class="flex items-center gap-2.5">
-            <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-sm font-extrabold tracking-tight text-brand-900">PX</span>
+            <x-application-logo class="h-9 w-9 shrink-0" />
             <span class="flex flex-col leading-tight">
-                <span class="text-sm font-semibold text-white">Mosconi Tours</span>
+                <span class="text-sm font-semibold text-white">Philippine Explorer</span>
                 <span class="text-[11px] text-white/50">B2B Portal</span>
             </span>
         </a>

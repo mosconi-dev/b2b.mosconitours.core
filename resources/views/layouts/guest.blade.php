@@ -7,6 +7,11 @@
 
         <title>{{ config('app.name', 'Laravel') }}</title>
 
+        <!-- Icons -->
+        <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+        <link rel="icon" type="image/png" sizes="96x96" href="{{ asset('favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
@@ -17,11 +22,11 @@
     <body class="font-sans text-gray-900 antialiased">
         <div class="flex min-h-screen flex-col items-center justify-center bg-brand-900 px-4 py-10">
             <div class="mb-6 flex items-center gap-3">
-                <a href="/" class="flex h-12 w-12 items-center justify-center rounded-xl bg-accent text-lg font-extrabold tracking-tight text-brand-900">
-                    PX
+                <a href="/" class="flex h-12 w-12 items-center justify-center">
+                    <x-application-logo class="h-12 w-12" />
                 </a>
                 <div class="flex flex-col leading-tight">
-                    <span class="text-lg font-semibold text-white">Mosconi Tours</span>
+                    <span class="text-lg font-semibold text-white">Philippine Explorer</span>
                     <span class="text-xs text-white/60">B2B Portal</span>
                 </div>
             </div>
