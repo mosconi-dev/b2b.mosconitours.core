@@ -211,7 +211,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     bookingCreateUrl: config.bookingCreateUrl ?? '',
     recentUrl: config.recentUrl ?? '',
     fareRuleUrl: config.fareRuleUrl ?? '',
-    // Embedded mode (booking wizard's inline "Edit search"): pre-fill from
+    // Embedded mode (booking wizard's inline "Modify"): pre-fill from
     // `initialQ`, show the collapsed summary, and on submit hand off to the
     // flights page (`redirectUrl`) instead of searching in place.
     embedded: config.embedded ?? false,
@@ -220,7 +220,7 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     // --- results state ---
     // Embedded (booking) mode starts "searched + collapsed" so the shared form
-    // renders as the collapsed summary bar until the user hits Edit search.
+    // renders as the collapsed summary bar until the user hits Modify.
     searched: config.embedded ?? false,
     collapsed: config.embedded ?? false,
     loading: false,
@@ -405,8 +405,20 @@ Alpine.data('flightSearch', (config = {}) => ({
         }
     },
 
-    editSearch() {
+    // The search as it stood when the user hit Modify. Cancel puts the form back
+    // to it and re-collapses, so an abandoned edit leaves the results (and the
+    // wizard's carried search) exactly as they were.
+    beforeModify: null,
+
+    modifySearch() {
+        this.beforeModify = this.searchParams();
         this.collapsed = false;
+    },
+
+    cancelModify() {
+        if (this.beforeModify) this.applyParams(this.beforeModify);
+        this.beforeModify = null;
+        this.collapsed = true;
     },
 
     // ----- fare selection -----
@@ -425,7 +437,7 @@ Alpine.data('flightSearch', (config = {}) => ({
             from: offer.departure?.code || '',
             to: offer.arrival?.code || '',
             search: this.summary || '', // carried to the wizard's search-context bar
-            q: encodeSearch(this.searchParams()), // exact search that produced this offer, so "Edit search" restores it
+            q: encodeSearch(this.searchParams()), // exact search that produced this offer, so "Modify" restores it
         });
         window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
@@ -467,7 +479,7 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     // Decode a ?q= token and fill the form from it. Returns false if the token
     // is missing/invalid. Shared by the flights page (URL restore) and the
-    // booking wizard's embedded edit form (config restore).
+    // booking wizard's embedded modify form (config restore).
     restoreFromQ(q) {
         if (! q) return false;
 
@@ -479,6 +491,13 @@ Alpine.data('flightSearch', (config = {}) => ({
         }
         if (! p) return false;
 
+        this.applyParams(p);
+
+        return true;
+    },
+
+    // Fill the form from a searchParams()-shaped object.
+    applyParams(p) {
         this.tripType = p.tripType ?? this.tripType;
         this.cabin = p.cabin ?? this.cabin;
         this.pax = {
@@ -490,8 +509,6 @@ Alpine.data('flightSearch', (config = {}) => ({
         if (Array.isArray(p.segments) && p.segments.length) {
             this.setSegments(p.segments);
         }
-
-        return true;
     },
 
     // Alpine calls init() automatically.
@@ -507,7 +524,7 @@ Alpine.data('flightSearch', (config = {}) => ({
         // searched/collapsed defaults (set from `embedded`) already render the
         // form as the collapsed summary; `searched=true` makes the shared form's
         // `!searched || !collapsed` visibility reduce to `!collapsed`, so the
-        // Edit-search toggle works. Never auto-searches (submit navigates away).
+        // Modify toggle works. Never auto-searches (submit navigates away).
         if (this.embedded) {
             this.restoreFromQ(this.initialQ);
             return;

@@ -66,7 +66,7 @@ class BookingController extends Controller
             'ssr' => $ssr?->toArray(),
             'oldFare' => (float) ($data['oldFare'] ?? 0),
             'search' => (string) $request->query('search', ''),
-            // The encoded search token — pre-fills the in-place "Edit search" form.
+            // The encoded search token — pre-fills the in-place "Modify" form.
             'q' => (string) $request->query('q', ''),
             'summary' => [
                 'airline' => (string) $request->query('airline', ''),

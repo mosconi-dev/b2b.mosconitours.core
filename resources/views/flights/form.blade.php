@@ -187,7 +187,14 @@
                 </div>
 
                 {{-- Search --}}
-                <div class="mt-6 flex justify-end border-t border-gray-100 pt-5">
+                <div class="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-5">
+                    {{-- Only when modifying an existing search: there is a summary
+                         to fall back to, so Cancel restores it and re-collapses. --}}
+                    <button type="button" x-show="searched" x-cloak @click="cancelModify()" :disabled="loading"
+                            class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-60">
+                        Cancel
+                    </button>
+
                     <button type="submit" :disabled="loading"
                             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60">
                         <svg x-show="!loading" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">

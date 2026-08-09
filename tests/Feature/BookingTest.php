@@ -109,7 +109,7 @@ class BookingTest extends TestCase
                 'q' => 'ENCODED_SEARCH_TOKEN',
             ]))
             ->assertOk()
-            // The in-place "Edit search" form is embedded, pre-filled from the
+            // The in-place "Modify" form is embedded, pre-filled from the
             // token, and configured to hand off to the Select Flight page.
             ->assertSee('ENCODED_SEARCH_TOKEN')
             ->assertSee("redirectUrl: '".route('flights')."'", false);

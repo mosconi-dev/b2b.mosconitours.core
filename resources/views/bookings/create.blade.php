@@ -19,7 +19,7 @@
          ]))">
 
         {{-- Search context — carried from the flights search. Editable in place:
-             "Edit search" expands the real search form right here; submitting it
+             "Modify" expands the real search form right here; submitting it
              hands off to the Select Flight page with the new search. Shown only on
              the Guest Details step. --}}
         @if ($search)
@@ -44,20 +44,20 @@
                                 </span>
                                 <div class="min-w-0">
                                     <p class="truncate text-sm font-semibold text-brand-900" x-text="summary">{{ $search }}</p>
-                                    <p class="text-xs text-gray-400">Edit to change your search</p>
+                                    <p class="text-xs text-gray-400">Modify to change your search</p>
                                 </div>
                             </div>
-                            <button type="button" @click="editSearch()"
+                            <button type="button" @click="modifySearch()"
                                     class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
                                 </svg>
-                                Edit search
+                                Modify
                             </button>
                         </div>
 
                         {{-- The real search form (shared with the flights page). Expands
-                             when the user hits Edit search; "Search Flights" navigates to
+                             when the user hits Modify; "Search Flights" navigates to
                              Select Flight with the new search. --}}
                         @include('flights.form')
                     </div>
