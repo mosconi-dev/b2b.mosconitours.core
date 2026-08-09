@@ -629,6 +629,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
     oldFare: Number(config.oldFare) || 0,
     bookingUrl: config.bookingUrl ?? '',
     flightsUrl: config.flightsUrl ?? '',
+    changeFlightUrl: config.changeFlightUrl ?? config.flightsUrl ?? '',
 
     step: 2, // 1 = Select Flight (already done); wizard starts at Guest Details
     priceGateOpen: false, // shown on load if the re-price differs from the searched fare
@@ -645,6 +646,46 @@ Alpine.data('bookingWizard', (config = {}) => ({
         this.passengers = this.buildPassengers();
         // The wizard's own FareQuote is the single re-price; gate the flow if it changed.
         if (this.quote?.isPriceChanged) this.priceGateOpen = true;
+
+        // Restore the step from ?step=, then normalise the URL so a missing or
+        // out-of-range value is rewritten rather than left to mislead.
+        this.step = this.clampStep(this.stepFromUrl());
+        this.syncUrl(false);
+
+        // Back/Forward moves between wizard steps instead of leaving the page.
+        window.addEventListener('popstate', () => {
+            if (this.reference) return; // booking already made — stay on Confirmation
+            this.step = this.clampStep(this.stepFromUrl());
+        });
+    },
+
+    stepFromUrl() {
+        return new URLSearchParams(window.location.search).get('step');
+    },
+
+    // Highest step the current state can legitimately show. Guest details are not
+    // persisted across a reload, so a deep link to Add-ons/Payment on a fresh load
+    // lands on Guest Details instead of a Payment step with empty passengers.
+    get maxStep() {
+        if (this.reference) return 5;
+
+        return this.canProceedGuests ? 4 : 2;
+    },
+
+    clampStep(value) {
+        const step = Number(value);
+        if (! Number.isInteger(step)) return 2;
+
+        return Math.min(Math.max(step, 2), this.maxStep);
+    },
+
+    // Reflect the current step in the URL so refresh, Back/Forward and shared links
+    // land on the right step. push=true adds a history entry (user navigation);
+    // false rewrites the current one (init normalisation, confirmation).
+    syncUrl(push = true) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('step', this.step);
+        window.history[push ? 'pushState' : 'replaceState']({ step: this.step }, '', url);
     },
 
     get priceDiff() {
@@ -656,7 +697,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     declinePrice() {
-        window.location = this.flightsUrl;
+        window.location = this.changeFlightUrl;
     },
 
     get currency() {
@@ -725,11 +766,15 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     next() {
-        if (this.step < 4) this.step++;
+        if (this.step >= 4) return;
+        this.step++;
+        this.syncUrl();
     },
 
     back() {
-        if (this.step > 2) this.step--;
+        if (this.step <= 2) return;
+        this.step--;
+        this.syncUrl();
     },
 
     ssrPrice(list, code) {
@@ -778,6 +823,9 @@ Alpine.data('bookingWizard', (config = {}) => ({
         this.reference = data.reference;
         this.showUrl = data.redirect ?? '#';
         this.step = 5;
+        // Replace, not push: the booking exists now, so Confirmation must not
+        // become a history entry the user can Back into and re-submit.
+        this.syncUrl(false);
     },
 }));
 

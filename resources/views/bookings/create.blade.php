@@ -12,7 +12,11 @@
             'summary' => $summary,
             'oldFare' => $oldFare,
             'bookingUrl' => route('bookings.store'),
+            // Two different intents: "Book another" starts a fresh search, while
+            // "Change flight" / "Decline" go back to Select Flight with the search
+            // that produced this fare, so the results list is restored.
             'flightsUrl' => route('flights'),
+            'changeFlightUrl' => $q ? route('flights', ['q' => $q]) : route('flights'),
          ]))">
 
         {{-- Search context — carried from the flights search. Editable in place:
@@ -97,7 +101,7 @@
             </div>
             <div class="text-right">
                 <p class="text-lg font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(grandTotal)"></span></p>
-                <a :href="flightsUrl" x-show="step < 5" class="text-xs font-medium text-blue-600 hover:text-blue-700">Change flight</a>
+                <a :href="changeFlightUrl" x-show="step < 5" class="text-xs font-medium text-blue-600 hover:text-blue-700">Change flight</a>
             </div>
         </div>
 
@@ -212,7 +216,7 @@
                     {{-- Footer --}}
                     <div class="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
                         <button type="button" x-show="guestActiveIndex > 0" x-cloak @click="guestRetreat()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
-                        <a :href="flightsUrl" x-show="guestActiveIndex === 0" x-cloak class="text-sm font-medium text-gray-500 hover:text-gray-700">Change flight</a>
+                        <a :href="changeFlightUrl" x-show="guestActiveIndex === 0" x-cloak class="text-sm font-medium text-gray-500 hover:text-gray-700">Change flight</a>
                         <button type="button" @click="guestAdvance()"
                                 :disabled="! currentSectionComplete || (guestIsLast && ! canProceedGuests)"
                                 class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50">
