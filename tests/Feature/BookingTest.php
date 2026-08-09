@@ -74,6 +74,29 @@ class BookingTest extends TestCase
             ->assertSee('Manila (MNL) → Cebu (CEB)');    // the carried search-context bar
     }
 
+    /**
+     * The wizard's summary card can expand into the same leg-by-leg itinerary the
+     * results page shows, plus the fare conditions — so a client re-checking the
+     * flight doesn't have to go back and lose the wizard.
+     */
+    public function test_create_renders_the_expandable_flight_details(): void
+    {
+        $this->fakeQuote();
+
+        $res = $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk()
+            ->assertSee('Flight details')
+            ->assertSee('Fare conditions');
+
+        // The itinerary and fee summary ride along on the injected quote — no
+        // second provider call from the page.
+        $content = $res->getContent();
+        $this->assertStringContainsString('5J561', $content);
+        $this->assertStringContainsString('25 KG', $content);
+        $this->assertStringContainsString('4466 PHP (Before)', $content);
+    }
+
     public function test_create_embeds_the_editable_search_form(): void
     {
         $this->fakeQuote();

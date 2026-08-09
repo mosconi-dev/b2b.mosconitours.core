@@ -165,6 +165,30 @@ async function postJson(url, body) {
     return { ok: res.ok, data };
 }
 
+// ----- display helpers -----
+// Module-level so the results list and the booking wizard format identically —
+// both expose them on their scope for the shared itinerary partial to call.
+function formatTime(iso) {
+    if (! iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? iso : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function formatDate(iso) {
+    if (! iso) return '';
+    const d = new Date(iso);
+    return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDuration(mins) {
+    mins = Number(mins) || 0;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function money(amount) {
+    return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 /**
  * flightSearch — state + behaviour for the flight search form and results.
  */
@@ -568,27 +592,11 @@ Alpine.data('flightSearch', (config = {}) => ({
         return list.sort(sorters[this.sort] ?? sorters.price);
     },
 
-    // ----- display helpers -----
-    formatTime(iso) {
-        if (! iso) return '—';
-        const d = new Date(iso);
-        return isNaN(d) ? iso : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    },
-
-    formatDate(iso) {
-        if (! iso) return '';
-        const d = new Date(iso);
-        return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    },
-
-    formatDuration(mins) {
-        mins = Number(mins) || 0;
-        return `${Math.floor(mins / 60)}h ${mins % 60}m`;
-    },
-
-    money(amount) {
-        return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    },
+    // ----- display helpers (shared module functions, exposed on the scope) -----
+    formatTime,
+    formatDate,
+    formatDuration,
+    money,
 
     stopsLabel(stops) {
         if (stops <= 0) return 'Non-stop';
@@ -721,6 +729,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
 
     step: 2, // 1 = Select Flight (already done); wizard starts at Guest Details
     priceGateOpen: false, // shown on load if the re-price differs from the searched fare
+    detailsOpen: false, // full itinerary + fare conditions under the summary card
     passengers: [],
     contact: { email: '', phone: '' },
     guestTab: 'contact', // active Guest-details sub-section: 'contact' or a passenger index
@@ -883,9 +892,12 @@ Alpine.data('bookingWizard', (config = {}) => ({
         return (Number(this.quote?.price?.offeredFare) || 0) + this.ancillaryTotal;
     },
 
-    money(amount) {
-        return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    },
+    // Same helpers as the results list, so the shared itinerary partial renders
+    // identically on both pages.
+    formatTime,
+    formatDate,
+    formatDuration,
+    money,
 
     async complete() {
         if (this.submitting) return;
