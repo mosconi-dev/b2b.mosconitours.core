@@ -186,6 +186,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     searchUrl: config.searchUrl ?? '',
     bookingCreateUrl: config.bookingCreateUrl ?? '',
     recentUrl: config.recentUrl ?? '',
+    fareRuleUrl: config.fareRuleUrl ?? '',
     // Embedded mode (booking wizard's inline "Edit search"): pre-fill from
     // `initialQ`, show the collapsed summary, and on submit hand off to the
     // flights page (`redirectUrl`) instead of searching in place.
@@ -204,7 +205,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     traceId: null,
     currency: 'PHP',
     sort: 'price',
-    filters: { stops: [], airlines: [], maxPrice: null },
+    filters: { stops: [], airlines: [], maxPrice: null, refundableOnly: false },
 
     // --- fare selection ---
     selecting: null, // resultIndex being handed off to the wizard (loading state)
@@ -405,6 +406,41 @@ Alpine.data('flightSearch', (config = {}) => ({
         window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
 
+    // ----- fare rules -----
+    // Search only carries the coarse IsRefundable flag, so the actual cancellation
+    // policy is pulled per result on demand (FareRule). Successful loads are cached
+    // by result index — rules don't change inside the TraceId window — while
+    // failures stay uncached so the user can retry.
+    fareRules: {},
+    fareRuleErrors: {},
+    fareRuleLoading: null,
+
+    async loadFareRule(resultIndex) {
+        if (this.fareRules[resultIndex] || this.fareRuleLoading) return;
+
+        if (! this.traceId || ! this.fareRuleUrl) {
+            this.fareRuleErrors[resultIndex] = 'This search has expired. Please search again.';
+            return;
+        }
+
+        this.fareRuleLoading = resultIndex;
+        delete this.fareRuleErrors[resultIndex];
+
+        try {
+            const { ok, data } = await postJson(this.fareRuleUrl, { traceId: this.traceId, resultIndex });
+
+            if (ok) {
+                this.fareRules[resultIndex] = data.rules ?? [];
+            } else {
+                this.fareRuleErrors[resultIndex] = data.message ?? 'We could not load the fare rules.';
+            }
+        } catch (e) {
+            this.fareRuleErrors[resultIndex] = 'We could not load the fare rules. Please try again.';
+        } finally {
+            this.fareRuleLoading = null;
+        }
+    },
+
     // Decode a ?q= token and fill the form from it. Returns false if the token
     // is missing/invalid. Shared by the flights page (URL restore) and the
     // booking wizard's embedded edit form (config restore).
@@ -478,7 +514,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     // ----- filters / sorting -----
     resetFilters() {
         this.sort = 'price';
-        this.filters = { stops: [], airlines: [], maxPrice: this.priceBounds.max };
+        this.filters = { stops: [], airlines: [], maxPrice: this.priceBounds.max, refundableOnly: false };
     },
 
     get priceBounds() {
@@ -514,6 +550,12 @@ Alpine.data('flightSearch', (config = {}) => ({
         }
         if (this.filters.maxPrice != null) {
             list = list.filter((r) => (r.price?.offeredFare ?? 0) <= Number(this.filters.maxPrice));
+        }
+        // Search-level IsRefundable is the airline's coarse flag — FareQuote is the
+        // binding one — so this narrows the shortlist rather than promising a refund.
+        // The sidebar's "X of Y flights" count keeps the hidden results visible.
+        if (this.filters.refundableOnly) {
+            list = list.filter((r) => r.isRefundable);
         }
 
         const sorters = {

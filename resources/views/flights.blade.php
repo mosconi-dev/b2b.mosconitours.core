@@ -9,7 +9,7 @@
         </x-page-heading>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}', recentUrl: '{{ route('flights.recent') }}', recent: @js($recent) })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}', recentUrl: '{{ route('flights.recent') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', recent: @js($recent) })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}
@@ -172,6 +172,13 @@
                                 </div>
                             </div>
 
+                            <div class="mt-4 border-t border-gray-100 pt-4">
+                                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Fare type</p>
+                                <label class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" x-model="filters.refundableOnly" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"> Refundable fares only
+                                </label>
+                            </div>
+
                             <div class="mt-4 border-t border-gray-100 pt-4" x-show="airlineOptions.length">
                                 <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Airlines</p>
                                 <div class="max-h-40 space-y-1.5 overflow-auto pr-1">
@@ -308,6 +315,7 @@
                                         <span x-text="offer.cabinBaggage"></span> cabin
                                     </span>
                                     <span x-show="offer.isRefundable" x-cloak class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">Refundable</span>
+                                    <span x-show="!offer.isRefundable" x-cloak class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">Non-refundable</span>
                                     <span x-show="offer.isLcc" x-cloak class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">Low-cost</span>
                                     <button type="button" @click="expanded = !expanded" class="ml-auto inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700">
                                         <span x-text="expanded ? 'Hide details' : 'Flight details'"></span>
@@ -367,6 +375,39 @@
                                             </template>
                                         </div>
                                     </template>
+
+                                    {{-- Fare rules / cancellation policy, fetched on demand --}}
+                                    <div class="border-t border-gray-200 pt-3">
+                                        <button type="button"
+                                                x-show="!fareRules[offer.resultIndex]"
+                                                @click="loadFareRule(offer.resultIndex)"
+                                                :disabled="fareRuleLoading === offer.resultIndex"
+                                                class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 disabled:text-gray-400">
+                                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" /></svg>
+                                            <span x-text="fareRuleLoading === offer.resultIndex ? 'Loading fare rules…' : 'Fare rules &amp; cancellation policy'"></span>
+                                        </button>
+
+                                        <p x-show="fareRuleErrors[offer.resultIndex]" x-cloak
+                                           class="text-xs text-red-600" x-text="fareRuleErrors[offer.resultIndex]"></p>
+
+                                        <template x-if="fareRules[offer.resultIndex]">
+                                            <div class="space-y-3">
+                                                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fare rules</p>
+                                                <template x-for="(rule, ri) in fareRules[offer.resultIndex]" :key="ri">
+                                                    <div class="rounded-lg bg-white p-3 text-xs ring-1 ring-gray-100">
+                                                        <p class="mb-1 font-medium text-brand-900">
+                                                            <span x-text="rule.origin + ' → ' + rule.destination"></span>
+                                                            <span x-show="rule.airline" x-text="' · ' + rule.airline" class="text-gray-400"></span>
+                                                        </p>
+                                                        <p class="whitespace-pre-line leading-relaxed text-gray-600" x-text="rule.detail"></p>
+                                                    </div>
+                                                </template>
+                                                <p x-show="!fareRules[offer.resultIndex].length" class="text-xs text-gray-500">
+                                                    The airline returned no fare rules for this fare.
+                                                </p>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </div>
                             </div>
                         </template>

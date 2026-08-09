@@ -64,7 +64,13 @@ class FlightSearchTest extends TestCase
             ->get(route('flights'))
             ->assertOk()
             ->assertSee('Search a Flight')
-            ->assertSee('Popular destinations');
+            ->assertSee('Popular destinations')
+            // Both refund states are rendered (Alpine picks one per offer), and the
+            // on-demand fare-rule endpoint is wired into the results component.
+            ->assertSee('Non-refundable')
+            ->assertSee('Refundable fares only')
+            ->assertSee('Fare rules &amp; cancellation policy', false)
+            ->assertSee(route('flights.fare-rule', absolute: false));
     }
 
     public function test_a_provider_gateway_timeout_returns_a_clear_message(): void
