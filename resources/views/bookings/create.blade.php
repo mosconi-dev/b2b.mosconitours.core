@@ -192,7 +192,8 @@
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Date of birth</label>
-                                    <input type="date" x-model="p.dateOfBirth" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="text" readonly x-flatpickr="{ model: 'p.dateOfBirth', minDate: null, maxDate: 'today' }" placeholder="Select date" autocomplete="off"
+                                           class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                             </div>
 
@@ -203,7 +204,8 @@
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Passport expiry</label>
-                                    <input type="date" x-model="p.passportExpiry" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="text" readonly x-flatpickr="{ model: 'p.passportExpiry' }" placeholder="Select date" autocomplete="off"
+                                           class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>

@@ -23,12 +23,19 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
     const minPath = cfg.min ?? null;
     const placeholderPath = cfg.placeholder ?? null;
 
+    // Static bounds. Travel dates are always ahead of today, so that stays the
+    // default minimum; a field reaching into the past (date of birth) passes
+    // `minDate: null` and caps the other end with `maxDate` instead.
+    const minDate = 'minDate' in cfg ? cfg.minDate : 'today';
+    const maxDate = cfg.maxDate ?? null;
+
     const fp = flatpickr(el, {
         dateFormat: 'Y-m-d',       // value sent to the server
         altInput: true,            // visible field shows a friendly format…
         altFormat: 'j, M Y',       // …e.g. "29, Jun 2026"
         altInputClass: el.className,
-        minDate: 'today',
+        minDate,
+        maxDate,
         disableMobile: true,
         onChange: (dates, str) => {
             if (modelPath) {
@@ -71,7 +78,7 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
     if (minPath) {
         const readMin = evaluateLater(minPath);
         effect(() => {
-            readMin((value) => fp.set('minDate', value || 'today'));
+            readMin((value) => fp.set('minDate', value || minDate));
         });
     }
 
