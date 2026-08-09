@@ -3,6 +3,7 @@
 namespace App\Services\TboAir\DTO;
 
 use App\Services\TboAir\FareTotal;
+use App\Services\TboAir\ItineraryMapper;
 use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
@@ -16,6 +17,8 @@ class FareQuote implements Arrayable, JsonSerializable
     /**
      * @param  array{currency: string, baseFare: float, tax: float, offeredFare: float, publishedFare: float}  $price
      * @param  array<int, array{passengerType: string, count: int, baseFare: float, tax: float}>  $fareBreakdown
+     * @param  array<int, array{direction: string, stops: int, duration: int, segments: array<int, array<string, mixed>>}>  $trips
+     * @param  array<int, array{type: string, details: string, journeyPoints: string, from: string, to: string, unit: string, onlineRefundAllowed: bool, onlineReissueAllowed: bool}>  $miniFareRules
      */
     public function __construct(
         public readonly string $resultIndex,
@@ -26,6 +29,10 @@ class FareQuote implements Arrayable, JsonSerializable
         public readonly bool $isPassportMandatory,
         public readonly array $price,
         public readonly array $fareBreakdown,
+        public readonly array $trips = [],
+        public readonly array $miniFareRules = [],
+        public readonly ?string $baggage = null,
+        public readonly ?string $cabinBaggage = null,
     ) {}
 
     /**
@@ -41,6 +48,13 @@ class FareQuote implements Arrayable, JsonSerializable
         }
 
         $fare = data_get($result, 'Fare', []);
+
+        // FareQuote carries the full itinerary and a structured fee summary, so the
+        // booking page can show the same detail as the results page — and the real
+        // cancellation/reissue figures — without a second provider call.
+        $itinerary = new ItineraryMapper;
+        $trips = $itinerary->trips(data_get($result, 'Segments', []));
+        $legs = $itinerary->legs($trips);
 
         return new self(
             resultIndex: (string) data_get($result, 'ResultIndex', ''),
@@ -66,7 +80,43 @@ class FareQuote implements Arrayable, JsonSerializable
                 'baseFare' => (float) data_get($b, 'BaseFare', 0),
                 'tax' => (float) data_get($b, 'Tax', 0),
             ], array_values((array) data_get($result, 'FareBreakdown', []))),
+            trips: $trips,
+            miniFareRules: self::mapMiniFareRules(data_get($result, 'MiniFareRules', [])),
+            baggage: $itinerary->lowestAllowance($legs, 'baggage'),
+            cabinBaggage: $itinerary->lowestAllowance($legs, 'cabinBaggage'),
         );
+    }
+
+    /**
+     * TBO's per-fare cancellation/reissue summary. Nested one list per journey like
+     * Segments, so flatten it; entries are kept verbatim ("4466 PHP (Before)") rather
+     * than parsed into numbers — the wording carries the condition.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function mapMiniFareRules(mixed $rules): array
+    {
+        if (! is_array($rules) || $rules === []) {
+            return [];
+        }
+
+        if (ItineraryMapper::isNestedList($rules)) {
+            $rules = array_merge([], ...array_map(
+                fn (mixed $group): array => is_array($group) ? array_values(array_filter($group, 'is_array')) : [],
+                $rules
+            ));
+        }
+
+        return array_values(array_map(fn (array $r): array => [
+            'type' => (string) data_get($r, 'Type', ''),
+            'details' => (string) data_get($r, 'Details', ''),
+            'journeyPoints' => (string) data_get($r, 'JourneyPoints', ''),
+            'from' => (string) data_get($r, 'From', ''),
+            'to' => (string) data_get($r, 'To', ''),
+            'unit' => (string) data_get($r, 'Unit', ''),
+            'onlineRefundAllowed' => (bool) data_get($r, 'OnlineRefundAllowed', false),
+            'onlineReissueAllowed' => (bool) data_get($r, 'OnlineReissueAllowed', false),
+        ], array_values(array_filter($rules, 'is_array'))));
     }
 
     private static function paxLabel(int $type): string
@@ -93,6 +143,10 @@ class FareQuote implements Arrayable, JsonSerializable
             'isPassportMandatory' => $this->isPassportMandatory,
             'price' => $this->price,
             'fareBreakdown' => $this->fareBreakdown,
+            'trips' => $this->trips,
+            'miniFareRules' => $this->miniFareRules,
+            'baggage' => $this->baggage,
+            'cabinBaggage' => $this->cabinBaggage,
         ];
     }
 

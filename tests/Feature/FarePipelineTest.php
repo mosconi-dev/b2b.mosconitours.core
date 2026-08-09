@@ -74,6 +74,58 @@ class FarePipelineTest extends TestCase
         $this->assertEqualsWithDelta(5200, $res->json('fareBreakdown.0.baseFare'), 0.001);
     }
 
+    /**
+     * FareQuote returns the same Segments shape as Search plus a structured fee
+     * summary, so the booking page can render the full itinerary and the real
+     * cancellation figures without a second provider call.
+     */
+    public function test_fare_quote_carries_the_itinerary_and_mini_fare_rules(): void
+    {
+        $this->fakeOk();
+
+        $res = $this->actingAs($this->apiUser())
+            ->postJson(route('flights.fare-quote'), $this->selection())
+            ->assertOk()
+            ->assertJsonPath('trips.0.direction', 'outbound')
+            ->assertJsonPath('trips.0.stops', 0)
+            ->assertJsonPath('trips.0.segments.0.flightNumber', '5J561')
+            ->assertJsonPath('trips.0.segments.0.cabin', 'Economy')
+            ->assertJsonPath('trips.0.segments.0.origin.code', 'MNL')
+            ->assertJsonPath('trips.0.segments.0.destination.code', 'CEB')
+            ->assertJsonPath('trips.0.segments.0.baggage', '25 KG')
+            // Itinerary-wide allowances, same rule as the search summary.
+            ->assertJsonPath('baggage', '25 KG')
+            ->assertJsonPath('cabinBaggage', '7 KG');
+
+        // Nested per-journey mini fare rules are flattened, wording kept verbatim.
+        $this->assertCount(3, $res->json('miniFareRules'));
+        $this->assertSame('Cancellation', $res->json('miniFareRules.0.type'));
+        $this->assertSame('4466 PHP (Before)', $res->json('miniFareRules.0.details'));
+        $this->assertTrue($res->json('miniFareRules.0.onlineRefundAllowed'));
+        $this->assertSame('Reissue', $res->json('miniFareRules.2.type'));
+        $this->assertTrue($res->json('miniFareRules.2.onlineReissueAllowed'));
+    }
+
+    public function test_fare_quote_without_segments_stays_empty_rather_than_fataling(): void
+    {
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*FareQuote*' => Http::response([
+                'Response' => ['Error' => ['ErrorCode' => 0], 'TraceId' => 'trace-abc-123', 'Results' => [
+                    'ResultIndex' => 'OB1',
+                    'Fare' => ['Currency' => 'PHP', 'OfferedFare' => 4300],
+                ]],
+            ], 200),
+        ]);
+
+        $this->actingAs($this->apiUser())
+            ->postJson(route('flights.fare-quote'), $this->selection())
+            ->assertOk()
+            ->assertJsonPath('trips', [])
+            ->assertJsonPath('miniFareRules', [])
+            ->assertJsonPath('baggage', null);
+    }
+
     public function test_fare_quote_validates_the_selection(): void
     {
         $this->actingAs($this->apiUser())
