@@ -65,6 +65,49 @@ class FlightResultTransformerTest extends TestCase
         $this->assertSame([], $offers[0]->trips);
     }
 
+    /**
+     * TBO sometimes blanks the headline Fare block — no OfferedFare/PublishedFare
+     * key and Tax reset to 0 — while FareBreakdown still holds the real numbers.
+     * Shape taken from a live search response that priced every offer at 0.
+     */
+    public function test_falls_back_to_fare_breakdown_when_headline_fare_is_blank(): void
+    {
+        $offers = (new FlightResultTransformer)->transform(['Results' => [[
+            'ResultIndex' => 'OB1',
+            'Fare' => ['Currency' => 'PHP', 'BaseFare' => 11852.16, 'Tax' => 0, 'YQTax' => 2054.69],
+            'FareBreakdown' => [
+                ['PassengerType' => 1, 'PassengerCount' => 1, 'BaseFare' => 11852.16, 'Tax' => 2976.26],
+            ],
+        ]]]);
+
+        $this->assertSame(14828.42, $offers[0]->price['offeredFare']);
+    }
+
+    public function test_fare_breakdown_rows_are_group_totals(): void
+    {
+        $offers = (new FlightResultTransformer)->transform(['Results' => [[
+            'ResultIndex' => 'OB2',
+            'Fare' => ['Currency' => 'PHP'],
+            'FareBreakdown' => [
+                ['PassengerType' => 1, 'PassengerCount' => 3, 'BaseFare' => 30000.0, 'Tax' => 10183.02],
+                ['PassengerType' => 2, 'PassengerCount' => 1, 'BaseFare' => 8000.0, 'Tax' => 2000.0],
+            ],
+        ]]]);
+
+        // Rows already cover their whole passenger group, so they are summed, not multiplied.
+        $this->assertEqualsWithDelta(50183.02, $offers[0]->price['offeredFare'], 0.01);
+    }
+
+    public function test_zero_offered_fare_falls_back_to_published(): void
+    {
+        $offers = (new FlightResultTransformer)->transform(['Results' => [[
+            'ResultIndex' => 'OB3',
+            'Fare' => ['Currency' => 'PHP', 'OfferedFare' => 0, 'PublishedFare' => 4300.0],
+        ]]]);
+
+        $this->assertSame(4300.0, $offers[0]->price['offeredFare']);
+    }
+
     public function test_groups_round_trip_segments_by_indicator(): void
     {
         $raw = [

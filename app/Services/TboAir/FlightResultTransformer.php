@@ -90,21 +90,24 @@ class FlightResultTransformer
                 'city' => (string) data_get($lastLeg, 'destination.city', ''),
                 'time' => data_get($lastLeg, 'destination.time'),
             ],
-            price: $this->mapFare(data_get($raw, 'Fare', [])),
+            price: $this->mapFare($raw),
             trips: $trips,
         );
     }
 
     /**
+     * @param  array<string, mixed>  $raw
      * @return array{currency: string, baseFare: float, tax: float, offeredFare: float, publishedFare: float}
      */
-    private function mapFare(mixed $fare): array
+    private function mapFare(array $raw): array
     {
+        $fare = data_get($raw, 'Fare', []);
+
         return [
             'currency' => (string) data_get($fare, 'Currency', 'PHP'),
             'baseFare' => (float) data_get($fare, 'BaseFare', 0),
             'tax' => (float) data_get($fare, 'Tax', 0),
-            'offeredFare' => (float) data_get($fare, 'OfferedFare', data_get($fare, 'PublishedFare', 0)),
+            'offeredFare' => FareTotal::for($raw),
             'publishedFare' => (float) data_get($fare, 'PublishedFare', 0),
         ];
     }

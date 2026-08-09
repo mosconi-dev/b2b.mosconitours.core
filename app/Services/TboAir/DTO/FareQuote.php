@@ -2,6 +2,7 @@
 
 namespace App\Services\TboAir\DTO;
 
+use App\Services\TboAir\FareTotal;
 use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
@@ -56,7 +57,7 @@ class FareQuote implements Arrayable, JsonSerializable
                 'currency' => (string) data_get($fare, 'Currency', 'PHP'),
                 'baseFare' => (float) data_get($fare, 'BaseFare', 0),
                 'tax' => (float) data_get($fare, 'Tax', 0),
-                'offeredFare' => (float) (data_get($fare, 'OfferedFare') ?: data_get($fare, 'PublishedFare', 0)),
+                'offeredFare' => FareTotal::for((array) $result),
                 'publishedFare' => (float) data_get($fare, 'PublishedFare', 0),
             ],
             fareBreakdown: array_map(fn (array $b): array => [
