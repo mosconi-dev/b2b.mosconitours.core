@@ -6,6 +6,15 @@
     display: none !important;
 }
 
+/* @tailwindcss/forms defaults placeholders to gray-500, dark enough to be
+   mistaken for a real value. Lighten them so a blank field reads as blank.
+   Per-input `placeholder:*` utilities still override this. */
+input::placeholder,
+textarea::placeholder {
+    color: theme('colors.gray.400');
+    opacity: 1;
+}
+
 /* Slim, subtle scrollbar for the navy sidebar */
 .sidebar-scroll {
     scrollbar-width: thin;

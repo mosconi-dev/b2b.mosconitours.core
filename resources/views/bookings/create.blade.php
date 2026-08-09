@@ -146,13 +146,13 @@
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
                                 <label class="mb-1 block text-xs font-medium text-gray-600">Email address</label>
-                                <input type="email" x-model="contact.email" placeholder="agent@email.com" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                <input type="email" x-model="contact.email" placeholder="e.g. agent@email.com" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                             </div>
                             <div>
                                 <label class="mb-1 block text-xs font-medium text-gray-600">Contact number</label>
                                 <div class="flex">
                                     <span class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-3 text-sm text-gray-500">+63</span>
-                                    <input type="tel" x-model="contact.phone" placeholder="917 123 4567" class="w-full rounded-r-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="tel" x-model="contact.phone" placeholder="e.g. 917 123 4567" class="w-full rounded-r-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                             </div>
                         </div>
@@ -175,19 +175,20 @@
                                 </div>
                                 <div class="col-span-1 sm:col-span-5">
                                     <label class="mb-1 block text-xs font-medium text-gray-600">First name</label>
-                                    <input type="text" x-model="p.firstName" placeholder="First name" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="text" x-model="p.firstName" placeholder="e.g. Juan" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                                 <div class="col-span-1 sm:col-span-5">
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Last name</label>
-                                    <input type="text" x-model="p.lastName" placeholder="Last name" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="text" x-model="p.lastName" placeholder="e.g. Dela Cruz" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Gender</label>
-                                    <select x-model="p.gender" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500">
-                                        <option value="">Select</option><option value="M">Male</option><option value="F">Female</option>
+                                    <select x-model="p.gender" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+                                            :class="p.gender ? 'text-gray-900' : 'text-gray-400'">
+                                        <option value="" class="text-gray-400">Select</option><option value="M" class="text-gray-900">Male</option><option value="F" class="text-gray-900">Female</option>
                                     </select>
                                 </div>
                                 <div>
@@ -199,7 +200,7 @@
                             <div x-show="quote.isPassportMandatory" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Passport no.</label>
-                                    <input type="text" x-model="p.passportNo" placeholder="Passport no." class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="text" x-model="p.passportNo" placeholder="e.g. P1234567A" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Passport expiry</label>
@@ -207,7 +208,7 @@
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>
-                                    <input type="text" x-model="p.nationality" maxlength="2" placeholder="PH" class="w-full rounded-lg border-gray-300 text-sm uppercase focus:border-blue-500 focus:ring-blue-500" />
+                                    <input type="text" x-model="p.nationality" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                             </div>
                         </div>
