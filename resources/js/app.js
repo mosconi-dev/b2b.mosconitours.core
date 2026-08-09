@@ -21,6 +21,7 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
     const cfg = expression ? evaluate(expression) : {};
     const modelPath = cfg.model ?? null;
     const minPath = cfg.min ?? null;
+    const placeholderPath = cfg.placeholder ?? null;
 
     const fp = flatpickr(el, {
         dateFormat: 'Y-m-d',       // value sent to the server
@@ -38,6 +39,19 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
 
     if (fp.altInput && el.placeholder) {
         fp.altInput.placeholder = el.placeholder;
+    }
+
+    // Reactive placeholder. The field the user actually sees is flatpickr's
+    // altInput, so a plain :placeholder on this input would only ever update
+    // the hidden original — the visible copy above is taken once, at init.
+    if (placeholderPath) {
+        const readPlaceholder = evaluateLater(placeholderPath);
+        effect(() => {
+            readPlaceholder((value) => {
+                el.placeholder = value ?? '';
+                if (fp.altInput) fp.altInput.placeholder = value ?? '';
+            });
+        });
     }
 
     // Keep flatpickr's display in sync when the model is set programmatically
@@ -155,6 +169,10 @@ Alpine.data('flightSearch', (config = {}) => ({
     pax: { adults: 1, children: 0, infants: 0 },
     segments: [{ origin: '', dest: '', departure: '' }],
     returnDate: '',
+    // Origin/destination stay two-up at every width, so on a phone each input
+    // fits ~12 characters — the roomy instructional placeholders would clip.
+    // Tracked from a media query (see init) rather than guessed from a class.
+    isNarrow: false,
 
     // --- injected from the blade ---
     airports: config.airports ?? [],
@@ -200,6 +218,20 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     get cabinLabel() {
         return CABIN_LABELS[this.cabin] ?? this.cabin;
+    },
+
+    // Placeholder copy for the search fields. These inputs carry no label, so
+    // the placeholder is the field's only name: keep the instructional wording
+    // where it fits and fall back to bare field names on a phone.
+    get hints() {
+        return this.isNarrow
+            ? { origin: 'From', dest: 'To', departure: 'Departure', returnDate: 'Return' }
+            : {
+                  origin: 'From — city or airport',
+                  dest: 'To — city or airport',
+                  departure: 'Pick departure date',
+                  returnDate: 'Pick return date',
+              };
     },
 
     setTripType(type) {
@@ -397,6 +429,13 @@ Alpine.data('flightSearch', (config = {}) => ({
 
     // Alpine calls init() automatically.
     init() {
+        // Placeholder width tracking — set up before the embedded early return
+        // below, since the wizard's inline search form needs it too. `sm` is
+        // where the form stops being cramped (tailwind's 640px breakpoint).
+        const narrow = window.matchMedia('(max-width: 639px)');
+        this.isNarrow = narrow.matches;
+        narrow.addEventListener('change', (e) => (this.isNarrow = e.matches));
+
         // Embedded in the booking wizard: pre-fill from the passed search. The
         // searched/collapsed defaults (set from `embedded`) already render the
         // form as the collapsed summary; `searched=true` makes the shared form's

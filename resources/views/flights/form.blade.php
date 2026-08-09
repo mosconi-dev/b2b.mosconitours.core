@@ -90,7 +90,7 @@
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 9.75c0 7.5-7.5 12-7.5 12s-7.5-4.5-7.5-12a7.5 7.5 0 1115 0z" />
                                             </svg>
                                         </span>
-                                        <input type="text" x-model="segment.origin" @focus="open = true" placeholder="From — city or airport" autocomplete="off"
+                                        <input type="text" x-model="segment.origin" @focus="open = true" :placeholder="hints.origin" placeholder="From — city or airport" autocomplete="off"
                                                class="w-full rounded-lg border-0 bg-transparent py-3 pl-9 pr-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0" />
                                         <ul x-show="open" x-cloak
                                             class="absolute left-0 top-full z-40 mt-1 max-h-64 w-64 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
@@ -122,7 +122,7 @@
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 9.75c0 7.5-7.5 12-7.5 12s-7.5-4.5-7.5-12a7.5 7.5 0 1115 0z" />
                                             </svg>
                                         </span>
-                                        <input type="text" x-model="segment.dest" @focus="open = true" placeholder="To — city or airport" autocomplete="off"
+                                        <input type="text" x-model="segment.dest" @focus="open = true" :placeholder="hints.dest" placeholder="To — city or airport" autocomplete="off"
                                                class="w-full rounded-lg border-0 bg-transparent py-3 pl-9 pr-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0" />
                                         <ul x-show="open" x-cloak
                                             class="absolute right-0 top-full z-40 mt-1 max-h-64 w-64 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
@@ -148,7 +148,7 @@
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                                             </svg>
                                         </span>
-                                        <input type="text" readonly x-flatpickr="{ model: 'segment.departure' }" placeholder="Pick departure date" autocomplete="off"
+                                        <input type="text" readonly x-flatpickr="{ model: 'segment.departure', placeholder: 'hints.departure' }" placeholder="Pick departure date" autocomplete="off"
                                                class="w-full cursor-pointer rounded-lg border-gray-300 bg-white py-3 pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500" />
                                     </div>
 
@@ -158,7 +158,7 @@
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                                             </svg>
                                         </span>
-                                        <input type="text" readonly x-flatpickr="{ model: 'returnDate', min: 'segment.departure' }" placeholder="Pick return date" autocomplete="off"
+                                        <input type="text" readonly x-flatpickr="{ model: 'returnDate', min: 'segment.departure', placeholder: 'hints.returnDate' }" placeholder="Pick return date" autocomplete="off"
                                                class="w-full cursor-pointer rounded-lg border-gray-300 bg-white py-3 pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500" />
                                     </div>
 
