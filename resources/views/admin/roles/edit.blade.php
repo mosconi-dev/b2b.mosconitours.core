@@ -1,15 +1,14 @@
 <x-app-layout>
     <x-slot name="header">
-        <div>
-            <a href="{{ route('admin.roles.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to roles</a>
-            <div class="mt-1 flex items-center gap-2">
-                <h1 class="text-2xl font-bold tracking-tight text-brand-900">{{ $role->label }}</h1>
-                @if ($role->is_system)
-                    <span class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">Built-in</span>
-                @endif
-            </div>
-            <p class="mt-1 font-mono text-xs text-gray-400">{{ $role->name }}</p>
-        </div>
+        <x-page-heading :title="$role->label" :subtitle="$role->name">
+            @if ($role->is_system)
+                <span class="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">Built-in</span>
+            @endif
+        </x-page-heading>
+    </x-slot>
+
+    <x-slot name="back">
+        <a href="{{ route('admin.roles.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to roles</a>
     </x-slot>
 
     <div class="space-y-6">

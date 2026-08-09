@@ -1,7 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        <h1 class="text-2xl font-bold tracking-tight text-brand-900">Book your flight</h1>
-        <p class="mt-1 text-sm text-gray-500">Complete the steps below to confirm your booking.</p>
+        <x-page-heading title="Book your flight" subtitle="Complete the steps below to confirm your booking." />
     </x-slot>
 
     <div x-data="bookingWizard(@js([

@@ -1,12 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
-        <h1 class="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-brand-900">
-            <svg class="h-7 w-7 text-brand-700" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-            </svg>
-            Search a Flight
-        </h1>
-        <p class="mt-1 text-sm text-gray-500">Find and compare flights for your booking.</p>
+        <x-page-heading title="Search a Flight" subtitle="Find and compare flights for your booking.">
+            <x-slot name="icon">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                </svg>
+            </x-slot>
+        </x-page-heading>
     </x-slot>
 
     <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}', recentUrl: '{{ route('flights.recent') }}', recent: @js($recent) })"

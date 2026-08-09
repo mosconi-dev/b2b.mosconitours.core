@@ -1,50 +1,51 @@
 <x-app-layout>
     <x-slot name="header">
-        <div>
-            <a href="{{ route('admin.users.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to users</a>
-            <h1 class="mt-1 flex items-center gap-2.5 text-2xl font-bold tracking-tight text-brand-900">
-                <svg class="h-7 w-7 text-brand-700" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <x-page-heading title="{{ $user->name }} — Logs" subtitle="{{ $user->email }} · What this user is doing in the app.">
+            <x-slot name="icon">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
                 </svg>
-                {{ $user->name }} — Logs
-            </h1>
-            <p class="mt-1 text-sm text-gray-500">{{ $user->email }} · What this user is doing in the app.</p>
+            </x-slot>
+        </x-page-heading>
+    </x-slot>
 
-            <div class="mt-4 flex flex-wrap items-center gap-3">
-                {{-- Section tabs --}}
-                <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-                    <a href="{{ route('admin.users.logs', $user) }}"
-                       @class([
-                           'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
-                           'bg-brand-800 text-white shadow-sm' => $tab === 'api',
-                           'text-gray-500 hover:text-gray-700' => $tab !== 'api',
-                       ])>API calls</a>
-                    <a href="{{ route('admin.users.logs', ['user' => $user, 'tab' => 'activity']) }}"
-                       @class([
-                           'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
-                           'bg-brand-800 text-white shadow-sm' => $tab === 'activity',
-                           'text-gray-500 hover:text-gray-700' => $tab !== 'activity',
-                       ])>Activity</a>
-                </div>
+    <x-slot name="back">
+        <a href="{{ route('admin.users.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to users</a>
+    </x-slot>
 
-                {{-- Type filter (API calls only) --}}
-                @if ($tab === 'api')
-                    <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-                        @php
-                            $tabs = ['' => 'All', 'authenticate' => 'Auth', 'search' => 'Search'];
-                        @endphp
-                        @foreach ($tabs as $value => $label)
-                            <a href="{{ route('admin.users.logs', ['user' => $user] + array_filter(['type' => $value])) }}"
-                               @class([
-                                   'rounded-md px-3 py-1.5 text-sm font-medium transition',
-                                   'bg-gray-100 text-brand-900' => (string) $type === (string) $value,
-                                   'text-gray-500 hover:text-gray-700' => (string) $type !== (string) $value,
-                               ])>{{ $label }}</a>
-                        @endforeach
-                    </div>
-                @endif
-            </div>
+    <x-slot name="actions">
+        {{-- Section tabs --}}
+        <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+            <a href="{{ route('admin.users.logs', $user) }}"
+               @class([
+                   'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
+                   'bg-brand-800 text-white shadow-sm' => $tab === 'api',
+                   'text-gray-500 hover:text-gray-700' => $tab !== 'api',
+               ])>API calls</a>
+            <a href="{{ route('admin.users.logs', ['user' => $user, 'tab' => 'activity']) }}"
+               @class([
+                   'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
+                   'bg-brand-800 text-white shadow-sm' => $tab === 'activity',
+                   'text-gray-500 hover:text-gray-700' => $tab !== 'activity',
+               ])>Activity</a>
         </div>
+
+        {{-- Type filter (API calls only) --}}
+        @if ($tab === 'api')
+            <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+                @php
+                    $tabs = ['' => 'All', 'authenticate' => 'Auth', 'search' => 'Search'];
+                @endphp
+                @foreach ($tabs as $value => $label)
+                    <a href="{{ route('admin.users.logs', ['user' => $user] + array_filter(['type' => $value])) }}"
+                       @class([
+                           'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                           'bg-gray-100 text-brand-900' => (string) $type === (string) $value,
+                           'text-gray-500 hover:text-gray-700' => (string) $type !== (string) $value,
+                       ])>{{ $label }}</a>
+                @endforeach
+            </div>
+        @endif
     </x-slot>
 
     @if ($tab === 'activity')

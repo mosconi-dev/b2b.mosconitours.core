@@ -45,72 +45,89 @@
                         </svg>
                     </button>
 
-                    <div class="flex-1"></div>
+                    <!-- Page heading -->
+                    @isset($header)
+                        <div class="min-w-0 flex-1">
+                            {{ $header }}
+                        </div>
+                    @else
+                        <div class="flex-1"></div>
+                    @endisset
 
-                    <!-- TBO live-environment indicator -->
-                    @if (app(\App\Services\TboAir\TboEnvironmentResolver::class)->resolve() === 'live')
-                        <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30"
-                              title="TBO Air is in LIVE mode — real searches and bookings">
-                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500"></span> Live
-                        </span>
-                    @endif
+                    <!-- Right-side controls -->
+                    <div class="flex shrink-0 items-center gap-3">
+                        <!-- TBO live-environment indicator -->
+                        @if (app(\App\Services\TboAir\TboEnvironmentResolver::class)->resolve() === 'live')
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30"
+                                  title="TBO Air is in LIVE mode — real searches and bookings">
+                                <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500"></span> Live
+                            </span>
+                        @endif
 
-                    <!-- Support -->
-                    <a href="#" class="hidden items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:inline-flex">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-                        </svg>
-                        Support
-                    </a>
+                        <!-- Support -->
+                        <a href="#" class="hidden items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:inline-flex">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                            </svg>
+                            Support
+                        </a>
 
-                    <!-- Notifications -->
-                    <button class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                        </svg>
-                        <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
-                    </button>
+                        <!-- Notifications -->
+                        <button class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                            </svg>
+                            <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
+                        </button>
 
-                    <div class="h-6 w-px bg-gray-200"></div>
+                        <div class="h-6 w-px bg-gray-200"></div>
 
-                    <!-- User dropdown -->
-                    <x-dropdown align="right" width="48">
-                        <x-slot name="trigger">
-                            <button class="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none">
-                                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-800 text-xs font-semibold text-white">
-                                    {{ strtoupper(Str::substr(Auth::user()->name ?? 'U', 0, 1)) }}
-                                </span>
-                                <span class="hidden sm:block">{{ Auth::user()->name }}</span>
-                                <svg class="h-4 w-4 fill-current text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                </svg>
-                            </button>
-                        </x-slot>
+                        <!-- User dropdown -->
+                        <x-dropdown align="right" width="48">
+                            <x-slot name="trigger">
+                                <button class="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none">
+                                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-800 text-xs font-semibold text-white">
+                                        {{ strtoupper(Str::substr(Auth::user()->name ?? 'U', 0, 1)) }}
+                                    </span>
+                                    <span class="hidden sm:block">{{ Auth::user()->name }}</span>
+                                    <svg class="h-4 w-4 fill-current text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </x-slot>
 
-                        <x-slot name="content">
-                            <x-dropdown-link :href="route('profile.edit')">
-                                {{ __('Profile') }}
-                            </x-dropdown-link>
-
-                            <form method="POST" action="{{ route('logout') }}">
-                                @csrf
-                                <x-dropdown-link :href="route('logout')"
-                                        onclick="event.preventDefault(); this.closest('form').submit();">
-                                    {{ __('Log Out') }}
+                            <x-slot name="content">
+                                <x-dropdown-link :href="route('profile.edit')">
+                                    {{ __('Profile') }}
                                 </x-dropdown-link>
-                            </form>
-                        </x-slot>
-                    </x-dropdown>
+
+                                <form method="POST" action="{{ route('logout') }}">
+                                    @csrf
+                                    <x-dropdown-link :href="route('logout')"
+                                            onclick="event.preventDefault(); this.closest('form').submit();">
+                                        {{ __('Log Out') }}
+                                    </x-dropdown-link>
+                                </form>
+                            </x-slot>
+                        </x-dropdown>
+                    </div>
                 </header>
 
                 <!-- Main -->
                 <main class="flex-1 px-4 py-8 sm:px-6 lg:px-8">
                     <div class="mx-auto">
-                        @isset($header)
-                            <div class="mb-6">
-                                {{ $header }}
+                        <!-- Back link (left) and page actions (right) -->
+                        @if (isset($back) || isset($actions))
+                            <div class="mb-6 flex flex-wrap items-center gap-3">
+                                @isset($back)
+                                    <div class="mr-auto min-w-0">{{ $back }}</div>
+                                @endisset
+
+                                @isset($actions)
+                                    <div class="ml-auto flex flex-wrap items-center gap-2">{{ $actions }}</div>
+                                @endisset
                             </div>
-                        @endisset
+                        @endif
 
                         {{ $slot }}
                     </div>

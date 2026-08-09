@@ -1,17 +1,17 @@
 <x-app-layout>
     <x-slot name="header">
-        <div>
-            <a href="{{ route('bookings.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to bookings</a>
-            <div class="mt-1 flex items-center gap-3">
-                <h1 class="font-mono text-2xl font-bold tracking-tight text-brand-900">{{ $booking->reference }}</h1>
-                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset {{ $booking->status->badgeClasses() }}">{{ $booking->status->label() }}</span>
-                <span @class([
-                    'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset',
-                    'bg-red-50 text-red-700 ring-red-600/30' => $booking->environment === 'live',
-                    'bg-gray-50 text-gray-500 ring-gray-500/20' => $booking->environment !== 'live',
-                ])>{{ $booking->environment }}</span>
-            </div>
-        </div>
+        <x-page-heading :title="$booking->reference" title-class="font-mono">
+            <span class="inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset {{ $booking->status->badgeClasses() }}">{{ $booking->status->label() }}</span>
+            <span @class([
+                'hidden shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset sm:inline-flex',
+                'bg-red-50 text-red-700 ring-red-600/30' => $booking->environment === 'live',
+                'bg-gray-50 text-gray-500 ring-gray-500/20' => $booking->environment !== 'live',
+            ])>{{ $booking->environment }}</span>
+        </x-page-heading>
+    </x-slot>
+
+    <x-slot name="back">
+        <a href="{{ route('bookings.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to bookings</a>
     </x-slot>
 
     <div class="max-w-3xl space-y-6">

@@ -1,10 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
-        <div>
-            <a href="{{ route('admin.users.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to users</a>
-            <h1 class="mt-1 text-2xl font-bold tracking-tight text-brand-900">Edit User</h1>
-            <p class="mt-1 text-sm text-gray-500">{{ $user->email }}</p>
-        </div>
+        <x-page-heading title="Edit User" :subtitle="$user->email" />
+    </x-slot>
+
+    <x-slot name="back">
+        <a href="{{ route('admin.users.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to users</a>
     </x-slot>
 
     <div class="max-w-2xl space-y-6">
