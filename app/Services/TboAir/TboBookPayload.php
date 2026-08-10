@@ -341,7 +341,7 @@ class TboBookPayload
             // Domestic: only populate the passport fields if TBO insists, and then
             // from the ID we actually hold.
             ? ($passportRequired && filled($number)
-                ? ['no' => substr((string) $number, 0, 15), 'expiry' => $expiry, 'country' => $country, 'issued' => null]
+                ? ['no' => self::asPassportNumber($number), 'expiry' => $expiry, 'country' => $country, 'issued' => null]
                 : ['no' => null, 'expiry' => null, 'country' => null, 'issued' => null])
             // International: the document IS the passport.
             : ['no' => $number, 'expiry' => $expiry, 'country' => $country, 'issued' => $issued];
@@ -367,6 +367,20 @@ class TboBookPayload
                 'IssueDate' => $isDomestic ? ($issued ?? self::dateTime(now()->format('Y-m-d'))) : $issued,
             ]] : [],
         ];
+    }
+
+    /**
+     * A government ID rendered as something TBO's passport field will accept.
+     *
+     * TBO rejects a Book with "Passport number must contain only letters and numbers",
+     * and Philippine IDs are full of hyphens and spaces — a UMID reads
+     * `UMID-1234-5678901`. Strip everything else first, *then* truncate, so the 15
+     * characters that survive are 15 meaningful ones rather than a prefix padded with
+     * punctuation.
+     */
+    private static function asPassportNumber(string $number): string
+    {
+        return substr((string) preg_replace('/[^A-Za-z0-9]/', '', $number), 0, 15);
     }
 
     /**

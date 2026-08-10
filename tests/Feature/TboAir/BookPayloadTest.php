@@ -241,12 +241,17 @@ class BookPayloadTest extends TestCase
 
         $booking = $this->booking(['quote_raw' => $quote]);
         $pax = $booking->pax;
-        $pax[0] += ['documentNumber' => 'ABCDEFGHIJKLMNOPQRSTUV', 'documentExpiry' => '2032-05-01'];
+        // A real Philippine ID: hyphenated, and longer than the field allows.
+        $pax[0] += ['documentNumber' => 'UMID-1234-5678901-XYZ', 'documentExpiry' => '2032-05-01'];
         $booking->update(['pax' => $pax]);
 
         $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
 
-        $this->assertSame('ABCDEFGHIJKLMNO', $sent['PassportNo'], 'truncated to 15');
+        // TBO refuses a Book with "Passport number must contain only letters and
+        // numbers", so the separators go before the truncation — otherwise the 15
+        // characters that survive are mostly punctuation.
+        $this->assertSame('UMID12345678901', $sent['PassportNo']);
+        $this->assertSame('UMID-1234-5678901-XYZ', $sent['PassengerIdNo'], 'the ID itself is untouched');
         $this->assertSame('2032-05-01T00:00:00', $sent['PassportExpiry']);
         $this->assertSame(2, $sent['PassengerIdType'], 'still a domestic ID');
     }
