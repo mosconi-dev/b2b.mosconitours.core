@@ -118,7 +118,7 @@ class BookPayloadTest extends TestCase
     {
         $pax = $this->build($this->booking())['Itinerary']['Passenger'][0];
 
-        $this->assertSame(0, $pax['Title']);   // Mr
+        $this->assertSame('Mr', $pax['Title']); // the word — TBO refuses the ordinal
         $this->assertSame(1, $pax['Type']);    // Adult
         $this->assertSame(1, $pax['Gender']);  // Male
         $this->assertTrue($pax['IsLeadPax']);

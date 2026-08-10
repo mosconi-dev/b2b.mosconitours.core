@@ -8,23 +8,27 @@ use PHPUnit\Framework\TestCase;
 
 class TboPassengerMapperTest extends TestCase
 {
+    /**
+     * The word, not the ordinal its doc page describes: a real Book sending 0 came
+     * back "Invalid title. Parameter name: title".
+     */
     public function test_it_maps_the_three_titles_tbo_accepts(): void
     {
-        $this->assertSame(0, TboPassengerMapper::title('Mr'));
-        $this->assertSame(1, TboPassengerMapper::title('Miss'));
-        $this->assertSame(2, TboPassengerMapper::title('Mrs'));
+        $this->assertSame('Mr', TboPassengerMapper::title('Mr'));
+        $this->assertSame('Miss', TboPassengerMapper::title('Miss'));
+        $this->assertSame('Mrs', TboPassengerMapper::title('Mrs'));
     }
 
     public function test_it_folds_retired_titles_onto_the_nearest_tbo_value(): void
     {
         // The wizard offered these before Phase 4.0, so stored bookings may carry them.
-        $this->assertSame(1, TboPassengerMapper::title('Ms'));
-        $this->assertSame(0, TboPassengerMapper::title('Mstr'));
+        $this->assertSame('Miss', TboPassengerMapper::title('Ms'));
+        $this->assertSame('Mr', TboPassengerMapper::title('Mstr'));
     }
 
     public function test_it_is_case_and_whitespace_insensitive(): void
     {
-        $this->assertSame(2, TboPassengerMapper::title('  mrs '));
+        $this->assertSame('Mrs', TboPassengerMapper::title('  mrs '));
         $this->assertSame(1, TboPassengerMapper::gender('MALE'));
         $this->assertSame(3, TboPassengerMapper::paxType(' infant'));
     }

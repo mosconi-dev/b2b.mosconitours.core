@@ -8,27 +8,30 @@ use InvalidArgumentException;
  * Encodes our passenger strings as the integers TBO's Book/Ticket methods expect.
  *
  * We store human-readable values ("Mr", "Adult", "F") because that is what the UI and
- * every report want. TBO's Book passenger array wants enum ordinals. This is the
- * translation at the supplier boundary — the only place those integers should appear.
- *
- * Phase 4.1 assembles the full Book payload; this covers the encoding it will need.
+ * every report want. TBO's Book passenger array wants integers for Type and Gender —
+ * and, despite its doc page, the plain word for Title. This is the translation at the
+ * supplier boundary, and the only place those encodings should appear.
  */
 class TboPassengerMapper
 {
     /**
-     * Title → TBO ordinal. TBO offers exactly three: Mr=0, Miss=1, Mrs=2.
+     * Title → the **string** TBO's Book method wants.
      *
-     * "Ms" and "Mstr" were selectable in the booking wizard before Phase 4.0 and may
-     * sit on stored bookings, so they are folded onto the nearest TBO value rather
-     * than rejected — Ms to Miss, and Mstr (a young boy) to Mr, which is the only
-     * male option TBO has.
+     * Its doc page describes an ordinal (Mr=0, Miss=1, Mrs=2) and that is wrong: a
+     * real Book sending 0 was refused with "Invalid title. Parameter name: title".
+     * The live production system sends the word, and tickets. Type and Gender really
+     * are integers — only Title is not.
+     *
+     * "Ms" and "Mstr" were selectable in the wizard before Phase 4.0 and may sit on
+     * stored bookings, so they are folded onto the nearest value TBO accepts rather
+     * than rejected — Ms to Miss, and Mstr (a young boy) to Mr, the only male option.
      */
-    public static function title(string $title): int
+    public static function title(string $title): string
     {
         return match (strtolower(trim($title))) {
-            'mr', 'mstr', 'master' => 0,
-            'miss', 'ms' => 1,
-            'mrs' => 2,
+            'mr', 'mstr', 'master' => 'Mr',
+            'miss', 'ms' => 'Miss',
+            'mrs' => 'Mrs',
             default => throw new InvalidArgumentException("Unmappable passenger title [{$title}]."),
         };
     }
