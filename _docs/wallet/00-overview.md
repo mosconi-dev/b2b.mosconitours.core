@@ -65,6 +65,11 @@ and four-eyes. `create` additionally requires an agency — platform staff have 
 
 ## HTTP surface
 
+- **Top bar** — `<x-wallet-balance />` (`App\View\Components\WalletBalance`) shows the agency balance on
+  every page, red when overdrawn, linking to `/wallet`. It renders only for a user with an agency **and**
+  `wallet.view`, so platform staff see nothing. The lookup is **read-only** — a GET must never create a
+  wallet row, and an agency that has never loaded genuinely shows 0.00. One indexed query per render
+  (`wallets.agency_id` is unique); cache it in `WalletService::post()` if that ever shows up in a profile.
 - **`/wallet`** — balance + ledger for the signed-in user's agency. Platform staff get an explanation
   rather than a zero balance that reads like empty funds.
 - **`/wallet/requests`** — the queue, scoped and status-filterable, with Approve / Reject / Cancel

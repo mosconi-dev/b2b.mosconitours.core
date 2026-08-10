@@ -61,6 +61,9 @@
 
                     <!-- Right-side controls -->
                     <div class="flex shrink-0 items-center gap-3">
+                        <!-- Agency e-wallet; renders nothing for platform staff -->
+                        <x-wallet-balance />
+
                         <!-- TBO live-environment indicator -->
                         @if (app(\App\Services\TboAir\TboEnvironmentResolver::class)->resolve() === 'live')
                             <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30"
