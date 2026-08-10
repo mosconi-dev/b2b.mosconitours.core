@@ -136,7 +136,7 @@ see §4 of `01-tbo-api-reference.md`.
 
 ---
 
-## Phase 4 — Book & Ticket (the money step) — DONE (untested against TBO)
+## Phase 4 — Book & Ticket (the money step) — Book PROVEN, Ticket untested
 
 **Goal:** issue tickets. Branch on `IsLCC` from FareQuote.
 
@@ -165,10 +165,15 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
 > Covered by `BookPayloadTest`, `BookAndIssueTest`, `TicketingRoutesTest`, `SeatAvailabilityTest`,
 > `TboBookingStatusTest`.
 >
-> ⚠️ **No Book or Ticket call has ever been made** — all of it is `Http::fake`. The server needs TBO
-> whitelisting first, and **`Fare_BE`** (whole fare object per passenger, mirroring production over the
-> docs) is the assumption most worth checking. **Domestic round-trip two-PNR is not implemented** —
-> decide before certification, since four of the 11 cases are returns. See `02`'s gaps section.
+> ✅ **Book is proven**: `MT-FBVMSJVR` → **PNR `984XIX`** on test, read back as `Successful`, wallet
+> debited. Five refusals got us there, each one a correction to TBO's documentation — the envelope,
+> the passport flags, ID sanitisation, the `Title` type, and the GetBookingDetails container. All are
+> in `01`§5 and `02`. **`Fare_BE` is validated** by that booking: the whole fare object per passenger,
+> as the live system sends it, not the per-passenger split TBO documents.
+>
+> ⚠️ **Ticket has still never been called.** Same payload plus the PNR, so the shape is proven, but
+> expect its own surprises. **Domestic round-trip two-PNR is still not implemented** — decide before
+> certification, since four of the 11 cases are returns. See `02`'s gaps.
 
 #### As originally planned
 
@@ -204,7 +209,7 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
     see P4.
   - Routes `POST /bookings/{booking}/book`, `/issue`, gated by `can:flight.book` / `can:flight.issue`;
     LIVE booking shows the existing red LIVE guard.
-- **Four things the live system gets wrong — build these right** (`04`§5):
+- **Four things the live system gets wrong — build these right** (`04`§6):
   1. **A failed Book must abort.** There, it sets a failed status and falls through to Ticket with a
      null PNR, which silently takes the LCC path and tries to issue an unbooked itinerary.
   2. **Call `GetBookingDetails` in the pipeline**, not only from an operator screen. It is the only
@@ -250,6 +255,10 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
 
 **Goal:** pass TBO certification and switch to production.
 
+- ⚠️ **The test environment appears to have no LCC inventory.** A MNL→CEB search returned 40 results,
+  all Philippine Airlines, with no 5J or Z2 anywhere — so **cases 1–5 cannot be run as written**. Case 6
+  (non-LCC, 2 adults, one-way, non-stop) was used for the first real booking instead. Ask TBO how to
+  reach LCC content on test before planning the certification run.
 - Run the **11 required test cases** on the **test** environment — the exact matrix (5 LCC, 4 non-LCC,
   plus price/schedule-change and `InProgress` handling) is tabulated in §7 of
   `01-tbo-api-reference.md`. Two shape the build rather than merely exercising it: **Case 10**
@@ -288,7 +297,7 @@ Two questions remain genuinely open, but **neither blocks 4.1**: the **token val
 20h / 24h / 23h — see `01`§4) and whether refund is **`Booking/RefundApi` or `Queues/RefundApi`**
 (Phase 5, and unverified in the live system too). Fold them into a TBO email whenever convenient.
 
-One small fix worth picking up alongside 4.1 (`04`§6.2): **token refresh has no lock**, so concurrent
+One small fix worth picking up alongside 4.1 (`04`§7.2): **token refresh has no lock**, so concurrent
 cache misses can each fire an Authenticate. The live system wraps it in a `Cache::lock`.
 
 (The re-auth *signal* was briefly suspect — production keys on `ResponseStatus == 4`, we key on

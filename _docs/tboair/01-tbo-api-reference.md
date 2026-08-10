@@ -99,16 +99,21 @@ Rules that shape the design:
 
 | Identifier | Where | Validity | Notes |
 | --- | --- | --- | --- |
-| **TokenId** | Authenticate → all calls | **contested — see below** | TBO's meeting said 24h; the guide says 12h; the GetAgencyBalance page says 20h; **the live system uses 12h**. Ours is 23h. Do **not** re-auth per request; cache and reuse. Re-auth on `ErrorCode 6`, which arrives together with `ResponseStatus 4` — §6. |
+| **TokenId** | Authenticate → all calls | **shorter on the booking host — see below** | Measured: a 6-hour-old token that Search still accepted was refused by Book. Published figures (12h / 20h / 24h) all describe the search side. Cache and reuse, but **be ready to re-auth on either host's error shape** — §6. |
 | **TraceId** | Search → all downstream calls | **~15 minutes** | Ties FareRule/FareQuote/SSR/Book/Ticket to a search. **Expires fast** — a held search result must be booked within the window or re-searched. |
 | **ResultIndex** | a specific fare in Search results | within TraceId | Selects the exact itinerary/fare to price and book. |
 | **EndUserIp** | every request | — | The whitelisted origin IP. |
 
-> ⚠️ **Token validity has four conflicting figures** — 12h (the published guide **and the live
-> production system**), 20h (the GetAgencyBalance page), 24h (TBO's integration meeting), against our
-> **23h** `token_ttl`. Production runs the most conservative of them. If the real figure is under 23h
-> we serve a dead token until `ErrorCode 6` heals it; dropping the TTL costs one extra auth a day.
-> **Settle this with TBO, or simply follow production down to 12h.**
+> ⚠️ **The two hosts do not agree on how long a token lives.** Measured on 2026-08-10: a token minted
+> at 01:48 was still being accepted by Search and FareQuote at 07:45, and **refused by Book at the same
+> moment** with *"Authentication Failed"*. A token minted seconds later worked on the booking host
+> immediately.
+>
+> So the published figures — 12h (guide, and the live system's TTL), 20h (GetAgencyBalance page), 24h
+> (TBO's meeting) — describe the **search** side. The booking host tolerates less, and how much less is
+> unknown; six hours is already too much. Our 23h TTL is only survivable because the re-auth branch
+> catches the booking host's error shape too (§6). **Do not remove that branch on the assumption a
+> long-lived token is fine.**
 >
 > The one hard constraint that is not in doubt is the **TraceId ~15-minute window**: we must **not**
 > feed FareQuote/Book with search results cached longer than ~15 minutes, or the TraceId will be dead
@@ -135,8 +140,13 @@ settled not by TBO but by reading the **live production system** — see
 
 ## 5. Booking method structures (Phase 4/5 surface)
 
-From the per-method pages. Field names are reproduced as documented; treat them as the shape to
-**verify against a live call**, not as gospel — TBO's pages lag their API.
+From the per-method pages **and, since 2026-08-10, from real calls** — we have created PNR `984XIX`
+on the test environment, so Book and GetBookingDetails are now documented from what TBO actually
+sends rather than what it publishes.
+
+> ⚠️ **Four of TBO's documented field shapes are wrong.** Each was found by a refused Book, in this
+> order: the response envelope (§5.1), the passport flags (§5.1), the `Title` type (§5.1), and the
+> GetBookingDetails container (§5.4). Trust an observed response over the doc page every time.
 
 ### 5.1 Book — non-LCC, creates the PNR
 
@@ -183,6 +193,39 @@ plus `Origin`, `Destination`, `Airline`, `FareRestriction`, `FareBasisCode`, `De
 **Ancillaries:** `Meal` as `Code` + `Description`; `Seat` may be sent as NULL. (Arrays themselves must
 not be null — see §3.)
 
+#### ⚠️ Corrections from real calls
+
+| Documented | Actually |
+| --- | --- |
+| `Title` is an enum ordinal (`Mr=0, Miss=1, Mrs=2`) | **A string** — `"Mr"`. Sending `0` is refused with *"Invalid title. Parameter name: title"*. `Type` and `Gender` genuinely are integers; only `Title` is not. |
+| The response is an object | **A one-element JSON array** — `[{…}]`. Read as an object it yields no status, no PNR and **no error message**, so a genuine refusal looks like a blank failure. |
+| An absent PNR is null/empty | Also **`"-"`**. Treating that as a PNR records a reservation called `-`. |
+| `IsPassportRequiredAtBook` / `AtTicket` distinguish when a passport is needed | They are **independent flags, both meaning "collect one"**. TBO enforced a passport **at Book** on a fare that flagged only `AtTicket`. Never chain them with a null-coalesce — a `false` first flag hides a `true` second one. |
+| — | **The passport number must be alphanumeric.** A hyphenated ID is refused with *"Passport number must contain only letters and numbers"*. |
+
+#### Identity documents — `IdDetails`
+
+Not on the doc page at all, and required. `IdType` follows the **route**: **1 = international**,
+**2 = domestic**. See [`04-live-reference-implementation.md`](04-live-reference-implementation.md) §5
+for the full model — a passport abroad, any government ID at home, and the ID rendered into the
+passport fields (sanitised, truncated to 15) when TBO demands them on a domestic fare.
+
+```json
+"IdDetails": [{ "PaxId": 0, "IdType": 2, "IdNumber": "UMID-1234-5678901",
+                "ExpiryDate": "2032-08-18T00:00:00", "IssuedCountryCode": "PH",
+                "IssueDate": "2026-08-10T00:00:00" }]
+```
+
+#### A successful Book (observed)
+
+```json
+[{ "PNR": "984XIX", "BookingId": null, "Status": 1, "IsSuccess": true,
+   "Errors": [], "TrackingId": "8be27870-…" }]
+```
+
+`BookingId` is **null on Book** and only appears on GetBookingDetails (`75133` for this PNR) — so the
+PNR is the identifier to persist first.
+
 ### 5.2 Ticket — LCC books+issues, non-LCC issues a held PNR
 
 > ✅ **In practice it is simply the Book payload plus a PNR** — one builder serves both calls and both
@@ -214,13 +257,28 @@ not defensive polish.
 
 ### 5.4 GetBookingDetails — the source of truth
 
-- **Request:** `PNR` + `TokenId`. Note it is keyed on **PNR**, not BookingId, in this generation — so
-  the PNR is the reconciliation key we must persist first.
-- **Response:** itinerary level (`PNR`, `IsDomestic`, `Source`, `Origin`/`Destination`, `AirlineCode`,
-  `ValidatingAirlineCode`, `IsLCC`, `NonRefundable`, `FareType`, `TicketStatus`); **passengers**
-  (`PaxID`, name, `PaxType`, `DateOfBirth`, `Gender`, passport, `IsLeadPax`, `FFAirlineCode`/`FFNumber`);
-  **tickets** (**`TicketId`**, `TicketNumber`, `IssueDate`, `ValidatingAirline`, `Status`, `Remarks`);
-  segments; fare rules; `InvoiceNo` / `InvoiceCreatedOn`; and an optional `Penalty` block.
+- **Request:** `PNR` + `TokenId`. Keyed on **PNR**, not BookingId — so the PNR is the reconciliation
+  key to persist first. An unknown PNR answers *"PNR does not exist."*
+- ⚠️ **The itinerary is under `Itinerary`, not `FlightItinerary`.** The doc page names the latter; it
+  appears nowhere in a real response. Reading only that returns no PNR at all while the top-level
+  `Status` still parses — which looks like a booking that exists but has no reference.
+
+**Real response** for PNR `984XIX` (top level):
+
+```
+Alerts, Errors, Status, TokenId, IsSuccess, Itinerary, TrackingId,
+OnlineRefund, VoidApplicable, ShowFailedReason, isPassportRequiredAtTicket
+```
+
+**`Itinerary`** carries `PNR`, `BookingId` (`75133` — **only here, null on Book**), `IsLcc`, `Origin`,
+`Destination`, `Ticketed`, `NonRefundable`, `LastTicketDate`, `Segments`, `Segments_BE`, `FareRules`,
+`MiniFareRules`, `Passenger`, `FareKey`, `PaymentKey`, `CreatedOn`, `AirlineCode`, `AirlineRemark`.
+
+Each **`Passenger`** carries `PaxId`, `Title`, `FirstName`/`LastName`, `Type`, `Gender`, `Email`,
+`Mobile1`, `City`, `Country`, `ZipCode`, `IDCardNo`, `FFNumber`, `Fare`, `Fare_BE`, `Meal`, `Seat`,
+and a **`Ticket`** block (`TicketId`, `TicketNumber`) — the TicketIds ReleasePNR needs (§5.6).
+
+`OnlineRefund` and `VoidApplicable` at the top level tell you what Phase 5 may attempt.
 
 ### 5.5 GetAvailableBalance (GetAgencyBalance) — our funds with TBO
 
@@ -278,7 +336,26 @@ not defensive polish.
 
   So keying on either detects it. We key on `ErrorCode 6`; the live system keys on `ResponseStatus 4`.
 
-Observed pairings across 338 logged calls:
+**The booking host reports a dead session differently.** Not `ErrorCode 6` at all — a one-element
+array whose `Errors[0].Code` is `2`:
+
+```json
+[{ "PNR": "-", "Status": 0, "IsSuccess": false, "TokenId": null,
+   "Errors": [{ "Code": 2, "UserMessage": "Authentication Failed" }] }]
+```
+
+Both shapes mean the same thing and both must trigger a re-authenticate-and-retry. Retrying is safe
+in either case: TBO rejected the request before looking at it, so nothing was created.
+
+Other `Errors[].Code` values seen from Book, all business refusals rather than session problems:
+
+| Code | UserMessage | Cause |
+| --- | --- | --- |
+| `30` | Passport Number and Passport Expiry should not be Empty | The fare wanted a document and we sent none (§5.1) |
+| — | Passport number must contain only letters and numbers | A hyphenated government ID reached the passport field |
+| — | Invalid title. Parameter name: title | `Title` sent as the documented ordinal instead of the word |
+
+Observed pairings across 338 logged calls (**search generation only**):
 
 | `ResponseStatus` | `ErrorCode` | Meaning |
 | --- | --- | --- |

@@ -42,13 +42,18 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   Select Flight with the new search.
 - **Recent searches** are real, not sample data: kept per-user in the cache (`RecentSearchStore`, ~1-day
   TTL), appended on each successful search (deduped, capped at 6), and click-to-refill.
-- **Phase 4 is built.** Book, Ticket and GetBookingDetails all exist, behind `flight.book` /
-  `flight.issue`, with a ticketing panel on the booking page. **But no Book or Ticket call has ever
-  been made** — it was written entirely against fakes, because dev is not IP-whitelisted with TBO.
-- **Next step:** get the server whitelisted, then run **Phase 6's certification matrix** — the 11 cases
-  are exactly the coverage the real endpoint needs. Two things to settle first: **`Fare_BE`** (we mirror
-  production over the docs) and the **domestic round-trip two-PNR** split, which is not implemented and
-  affects four of the 11 cases. Then **Phase 5** (cancel / void / refund). Seat maps stay deferred.
+- **Phase 4 is built and Book is proven.** On 2026-08-10, booking `MT-FBVMSJVR` created **PNR `984XIX`**
+  on the test environment, confirmed by reading it back as `Successful`. It took five refusals to get
+  there, and **four of them were TBO's documentation being wrong** — the response envelope, the
+  passport flags, the `Title` type, and the GetBookingDetails container. See `01`§5 and `02`.
+  **Ticket has still never been called.**
+- **Next step:** send **Ticket** — the only untested call left in Phase 4 — then **Phase 6's
+  certification matrix**. Two blockers for that matrix: the test environment showed **no LCC
+  inventory** (all PR), so cases 1–5 cannot be run as written, and the **domestic round-trip two-PNR**
+  split is still unimplemented, affecting four of the 11 cases. Then **Phase 5** (cancel / void /
+  refund). Seat maps stay deferred.
+- **A live PNR is held on test** — `984XIX`, ticketing deadline `2026-09-07 20:00`. With no ReleasePNR
+  yet, releasing it means contacting TBO.
 - **Phase 4.0's four prerequisites — all now done** (from TBO's Book/Ticket method pages; detail in
   `01`§5 and `02`):
   1. ~~**Ask TBO whether `ResultId`/`TrackingId` are our `ResultIndex`/`TraceId`.**~~ ✅ **done** —
@@ -64,7 +69,7 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
      balance, not the internal e-wallet.
 
   **Phases 4.0 and 4.1 are both complete.** One small fix still worth doing: our **token refresh
-  has no lock**, so concurrent cache misses can each re-authenticate (`04`§6.2). Our `ErrorCode 6`
+  has no lock**, so concurrent cache misses can each re-authenticate (`04`§7.2). Our `ErrorCode 6`
   re-auth is confirmed working against a real logged expiry — no change needed there (`02`§4).
 - **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a
   price/schedule-change case and an **`InProgress`** case. Four of them need baggage/meal, so Phase 3

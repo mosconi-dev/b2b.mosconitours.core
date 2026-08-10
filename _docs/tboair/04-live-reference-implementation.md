@@ -104,7 +104,47 @@ TboAir::ticket($data, $bookResponse)
 Only TBO status **1 (Successful)** reaches the debit. Note `Failed` (2) and `InProgress` (8) collapse
 into the same bucket (5).
 
-## 5. Defects not to copy
+## 5. Identity documents — the model we adopted
+
+The most useful single decision in that codebase, and the one that unblocked our first real booking.
+
+```php
+$idType = $data['selectedFlight']['isDomestic'] ? 2 : 1;   // TboAir.php:1363
+```
+
+**`IdType` follows the route, not TBO's passport flags** — and `isDomestic` is computed from the
+airports themselves (`SearchService.php:534`: every origin *and* destination in the Philippines),
+never from anything TBO returns. TBO's flags say what its API wants in the payload; the route says
+what a traveller actually carries.
+
+| | `IdType 1` — international | `IdType 2` — domestic |
+| --- | --- | --- |
+| Document collected | **Passport** | Any government ID |
+| Also collected | issuing country, issue date | — |
+| Expiry when blank | — | **today + 20 years** |
+| Issue date | from the passenger | **today** |
+| Issuing country | passport country | the passenger's nationality |
+
+Both the `PassengerId*` and `Passport*` families go up on every passenger; internationally they carry
+the same values.
+
+**The part that matters.** For a domestic fare where TBO demands passport fields anyway — which PR
+fares do — they never ask for a passport:
+
+```php
+if ($isPassportRequiredAtBook || $isPassportRequiredAtTicket) {
+    $passportNo = substr($idNo, 0, 15);   // the government ID, truncated
+```
+
+Most people flying Manila to Cebu hold no passport, so the ID they do have is sent in the passport
+field. Note they **OR** the two flags — we had chained them with `??`, which stopped at the first
+`false` and collected nothing.
+
+**One thing we had to add.** Philippine IDs are hyphenated (`UMID-1234-5678901`) and TBO refuses a
+Book with *"Passport number must contain only letters and numbers"*, so we strip separators **before**
+truncating — otherwise the 15 surviving characters are mostly punctuation.
+
+## 6. Defects not to copy
 
 Their own known-issues doc flags most of these. They are listed here because Phase 4.1 will be
 tempted to mirror this code.
@@ -121,9 +161,9 @@ tempted to mirror this code.
 Our design already avoids most of these: the wallet debits under lock against an authoritative ledger,
 `BookingStatus` is a guarded state machine, and the plan requires `GetBookingDetails` reconciliation.
 
-## 6. Where our implementation differs
+## 7. Where our implementation differs
 
-### 6.1 The stale-session signal — different key, same coverage ✅
+### 7.1 The stale-session signal — different key, same coverage ✅
 
 `SearchService.php:45` there retries on `ResponseStatus == 4`; our `withReauth()` keys on
 `Error.ErrorCode == 6`. This looked like a gap and **is not**: TBO sends **both fields on the same
@@ -140,7 +180,7 @@ Our self-heal is also confirmed working end-to-end in `tbo_air_api_logs`:
 
 No change needed.
 
-### 6.2 Their token TTL is 12 hours, and their refresh is locked ⚠️
+### 7.2 Their token TTL is 12 hours, and their refresh is locked ⚠️
 
 `SearchService.php:565`: `$ttlHours = 12; // 12 // 24` — the trailing comment is someone else's open
 question about the same contradiction we hit. Refresh is wrapped in a `Cache::lock('tboair-auth-lock')`

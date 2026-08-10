@@ -5,10 +5,10 @@ What exists in the codebase today. The **search → price → book → ticket** 
 plus a persisted **Booking** domain, a full-page booking **wizard**, and a permission-gated ticketing
 action. Namespaces: `App\Services\TboAir` (supplier) and `App\Services\Booking` (our booking domain).
 
-> ⚠️ **No Book or Ticket call has ever been made.** Phase 4.1 was built and tested entirely against
-> `Http::fake` fixtures, because the dev machine is not IP-whitelisted with TBO. The code is complete
-> and green; it has never met the real endpoint. See "Untested against the supplier" below before the
-> first live attempt.
+> ✅ **Book has been proven against TBO.** On 2026-08-10 booking `MT-FBVMSJVR` created **PNR `984XIX`**
+> on the test environment (TBO `BookingId 75133`), read back through GetBookingDetails as
+> `Successful`, with the agency wallet correctly debited. **Ticket has still never been called** — it
+> is the same payload plus that PNR, so the shape is proven, but the call itself is untested.
 
 Still not built: **ReleasePNR, Void, Refund** (Phase 5), and the **domestic round-trip two-PNR** split
 (see the gaps section).
@@ -108,7 +108,7 @@ been fixed; these are what is left, all Phase 5:
 | `ItineraryMapper` | `trips(mixed)` · `legs()` · `lowestAllowance()` · `static isNestedList()` | Normalizes TBO's `Segments` (nested-per-direction **or** flat with `TripIndicator`) into trips of legs; shared by search results and FareQuote so the booking page renders the same itinerary without a second call |
 | `TboBookPayload` | `static for(Booking, token, ip, ?userAgent, ?pnr): array` | Builds the Book/Ticket request body. **One builder for both** — Ticket is this payload plus a `PNR` (null for LCC). Segments and fare go back verbatim from `quote_raw`; the two search-only fields (`NoOfSeatAvailable`, `ResultType`) are restored from their own columns. Pure assembly, no network |
 | `FareTotal` | `static for(array $result): float` | The trip total for one result. TBO intermittently blanks a result's headline `Fare` block (no `OfferedFare`/`PublishedFare`, `Tax` reset to 0) while `FareBreakdown` still holds the real numbers — so it falls through alternatives rather than trusting one key, which was showing "PHP 0" and would have written a 0 total onto a booking |
-| `TboPassengerMapper` | `static title(): int` · `gender(): int` · `paxType(): int` | Encodes our passenger strings as TBO's Book/Ticket enum ordinals — the only place those integers belong. Folds retired `Ms`/`Mstr` titles; throws rather than guess a missing gender |
+| `TboPassengerMapper` | `static title(): string` · `gender(): int` · `paxType(): int` | The supplier-boundary encoding. `Type` and `Gender` are integers; **`Title` is the word** — TBO's doc page says ordinal and a real Book refused `0`. Folds retired `Ms`/`Mstr`; throws rather than guess a missing gender |
 | `Exceptions\TboAirException` | `static auth()` · `isAuthError()` · `isTimeout()` | Drives the re-auth retry; timeout vs other for messaging |
 
 **DTOs** (`app/Services/TboAir/DTO/`): `SearchInput`, `FlightOffer` (carries `resultIndex`),
@@ -225,7 +225,12 @@ call on render), `Unit/AgencyBalanceTest` (separators, both envelopes, bccomp ed
 Book-vs-Ticket PNR), `Feature/TboAir/BookAndIssueTest` (LCC vs non-LCC, idempotency, the write lock,
 reconciliation, unresolved outcomes, supplier-funds guard, **a failed Book never reaching Ticket**),
 `Feature/TboAir/SeatAvailabilityTest`, `Feature/TboAir/TicketingRoutesTest` (both permissions,
-ownership, LIVE flag, timeout wording), and the admin settings/logs tests.
+ownership, LIVE flag, timeout wording), `Feature/TboAir/PayloadCommandTest`, and the admin
+settings/logs tests.
+
+**Fixtures worth knowing are real, not written from the docs:** `bookingdetails.json` is the response
+for PNR `984XIX`, and `book-auth-failed.json` is a verbatim refused Book — both exist because reading
+them from the documentation is what produced the bugs in the first place.
 Balance fixtures: `balance.json` (flat, as documented) and
 `balance-agency.json` (nested, as observed).
 
@@ -242,20 +247,29 @@ are currently unset — live auth fails until provided.)
 
 Book, Ticket and GetBookingDetails now exist. What remains:
 
-### ⚠️ Untested against the supplier
+### What the first real Book proved — and what it cost
 
-**Not one Book or Ticket call has ever been made.** Everything in Phase 4.1 was built against
-`Http::fake` fixtures, because dev is not IP-whitelisted with TBO. Two consequences:
+`MT-FBVMSJVR` → **PNR `984XIX`**. Getting there took five attempts, and each refusal was TBO
+correcting its own documentation. All five fixes are in the code and covered by tests; the details
+live in `01`§5.1 and §6.
 
-- **The server must be whitelisted before the first attempt.** Until then every call fails at the
-  gateway, exactly as `tboair:auth` does today.
-- **`Fare_BE` is the assumption most worth checking first.** TBO's docs describe a *per-passenger*
-  fare split; the live production system sends the **whole itinerary `Fare` object on every
-  passenger** and tickets successfully, so that is what we mirror (`04`§3). If a real Book rejects the
-  payload, this is the first field to look at.
+| Attempt | TBO said | What was wrong |
+| --- | --- | --- |
+| 1 | *Authentication Failed* | The booking host expires tokens sooner than search **and reports it differently**; our re-auth never fired |
+| 2 | *Passport Number and Passport Expiry should not be Empty* | Passport flags chained with `??`, hiding `IsPassportRequiredAtTicket` |
+| 3 | *Passport number must contain only letters and numbers* | A hyphenated Philippine ID reached the passport field |
+| 4 | *Invalid title. Parameter name: title* | `Title` sent as the documented ordinal instead of the word |
+| 5 | **PNR `984XIX`** | — |
 
-Phase 6's certification matrix is the natural way to exercise all of it — the 11 cases are exactly the
-coverage the real endpoint needs, and the API Logs already capture the evidence.
+**`Fare_BE` is now validated.** The open question was whether to send the whole itinerary `Fare`
+object per passenger (as the live system does) or the per-passenger split TBO documents. The Book that
+succeeded sent the whole object, so the live system's approach is right and the doc is not.
+
+**Also validated by that booking:** `quote_raw` as the payload source, `seats_available` and
+`result_type` carried from search, the contact fan-out, the lead-pax rule, and `TboBookPayload`'s
+`IdDetails` block.
+
+**Still unproven:** the **Ticket** call itself, and everything in Phase 5.
 
 ### Domestic round-trip is not split into two PNRs
 
@@ -266,6 +280,15 @@ domestic return would go up as one booking. International returns are unaffected
 
 This has not been hit because nothing has been booked yet. It needs deciding before certification —
 cases 3, 5, 8 and 9 are returns.
+
+### The Ticket call is still unproven
+
+Book works; `issue()` has never been sent. It is the same payload with the held PNR, so the shape is
+already validated — but the response envelope, its status codes and any further business rules are
+unknown, exactly as Book's were before the first attempt. Expect at least one surprise.
+
+There is also a **live PNR (`984XIX`) held on test** with `LastTicketDate 2026-09-07T20:00`. We have
+no ReleasePNR, so releasing it means contacting TBO.
 
 ### Still to build (Phase 5)
 
@@ -315,8 +338,13 @@ Book requires `AddressLine1`, `AddressLine2`, `City`, `CountryCode`, `CountryNam
   the wizard uses a radio (`setLeadPax()`), and `BookingService::withLeadPax()` guarantees one anyway
   — the flagged adult, else the first adult. A flag on a child is **not** honoured, and a booking with
   **no adult** is refused.
-- **Title is constrained to `Mr` / `Mrs` / `Miss`** — the only three TBO encodes. The wizard used to
-  offer `Ms` and `Mstr`, which have no TBO value.
+- **Title is constrained to `Mr` / `Mrs` / `Miss`** — the only three TBO accepts. The wizard used to
+  offer `Ms` and `Mstr`, which have none. It is sent as the **word**, not the ordinal TBO documents.
+- **The identity document follows the route, not TBO's flags** — a passport internationally, any
+  government ID domestically (`FareQuote::$isDomestic`, derived from the segments' country codes
+  against `config('tboair.point_of_sale')`). `Passenger` carries one typed document (number, expiry,
+  issuing country, issue date); the wizard relabels between "Passport no." and "ID number". See
+  `04`§5 for the model and `01`§5.1 for what goes on the wire.
 - **`App\Services\TboAir\TboPassengerMapper`** is the string→ordinal encoding (`title()`, `gender()`,
   `paxType()`) and the only place those integers belong. It folds the retired `Ms`/`Mstr` onto
   Miss/Mr for already-stored bookings, and **refuses to guess a missing gender** — TBO requires it and
@@ -355,7 +383,7 @@ the fallback and rendered a blank error.
 ### 4. Session handling vs the live system — one real gap
 
 Comparing against the production implementation at `b2b.philippineexplorer.com`
-([`04-live-reference-implementation.md`](04-live-reference-implementation.md) §6) raised two
+([`04-live-reference-implementation.md`](04-live-reference-implementation.md) §7) raised two
 differences. Checking them against our own `tbo_air_api_logs` cleared one and confirmed the other.
 
 **✅ Not a gap — the stale-session signal.** The live system retries on `ResponseStatus == 4` where we
