@@ -86,6 +86,7 @@ cheap to fix while the config is open:
 | `FlightResultTransformer` | `transform(array): FlightOffer[]` | Envelope-agnostic mapping of TBO search results |
 | `ItineraryMapper` | `trips(mixed)` · `legs()` · `lowestAllowance()` · `static isNestedList()` | Normalizes TBO's `Segments` (nested-per-direction **or** flat with `TripIndicator`) into trips of legs; shared by search results and FareQuote so the booking page renders the same itinerary without a second call |
 | `FareTotal` | `static for(array $result): float` | The trip total for one result. TBO intermittently blanks a result's headline `Fare` block (no `OfferedFare`/`PublishedFare`, `Tax` reset to 0) while `FareBreakdown` still holds the real numbers — so it falls through alternatives rather than trusting one key, which was showing "PHP 0" and would have written a 0 total onto a booking |
+| `TboPassengerMapper` | `static title(): int` · `gender(): int` · `paxType(): int` | Encodes our passenger strings as TBO's Book/Ticket enum ordinals — the only place those integers belong. Folds retired `Ms`/`Mstr` titles; throws rather than guess a missing gender |
 | `Exceptions\TboAirException` | `static auth()` · `isAuthError()` · `isTimeout()` | Drives the re-auth retry; timeout vs other for messaging |
 
 **DTOs** (`app/Services/TboAir/DTO/`): `SearchInput`, `FlightOffer` (carries `resultIndex`),
@@ -98,12 +99,13 @@ untransformed response, excluded from `toArray()`), `FareRule`, `Ssr`
 
 | Class | Key public API | Purpose |
 | --- | --- | --- |
-| `BookingService` | `createFromQuote(User, SelectionInput, passengers[], contact): Booking` · `transitionTo(Booking, BookingStatus, attrs): Booking` | Re-prices server-side (FareQuote), persists a `quoted` Booking; `transitionTo` is the status seam for Phase 4 |
-| `DTO\Passenger` | readonly (`type,title,firstName,lastName,gender,dateOfBirth,passport…,nationality,baggage,meal`) · `isInfant()` · `hasPassport()` · `toArray()` | One passenger the store request builds |
+| `BookingService` | `createFromQuote(User, SelectionInput, passengers[], contact): Booking` · `transitionTo(Booking, BookingStatus, attrs): Booking` | Re-prices server-side (FareQuote), persists a `quoted` Booking; `transitionTo` is the status seam for Phase 4. Privately: `withLeadPax()` (exactly one, adult only) and `applyContact()` (fans the shared contact block onto every pax row) |
+| `DTO\Passenger` | readonly (`type,title,firstName,lastName,gender,dateOfBirth,passport…,nationality,baggage,meal,isLeadPax`) · `isInfant()` · `isAdult()` · `hasPassport()` · `withLead()` · `toArray()` | One passenger the store request builds. Address/mobile/email are **not** here — they are contact-level and fanned on at persistence |
 | `Exceptions\BookingException` | — | Domain failures (fare gone, validation) → controller 422 |
 
 Enums (`app/Enums/`): `TripType`, `CabinClass`, **`BookingStatus`** (`quoted` → `booked` → `ticketed`;
-`failed`/`cancelled`/`refunded`). Airports helper: `app/Support/Airports.php`.
+`failed`/`cancelled`/`refunded`). Support helpers: `app/Support/Airports.php`,
+`app/Support/Countries.php` (ISO code → country name, for the Book address).
 
 ## Data model
 
@@ -146,6 +148,10 @@ FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`
   place** (reuses `flights/form.blade.php` via `flightSearch` "embedded" mode) and submitting it hands
   back to the Select Flight page with the new search. A **price-change gate** shows only if the re-price
   differs. Confirmation shows the saved `quoted` booking.
+- **Guest Details** collects, in the Contact section, the **billing address** (line 1/2, city, 2-letter
+  country) and a **mobile country code** beside the number — required because TBO wants them on every
+  passenger. Per guest: title (**Mr/Mrs/Miss** only), names, gender, DOB, passport when the fare
+  demands it, and a **Lead guest** radio shown only for adults (first adult preselected).
 - **Payment** is no longer a bare stub: it shows the agency **wallet balance** and *remaining after
   booking*, reddens a shortfall, blocks **Complete booking** and offers *Request a load*. It is
   advisory — the server re-checks under lock at submit. There is still **no card/gateway step**, and no
@@ -160,9 +166,11 @@ FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`
 
 Fixtures: `tests/Fixtures/tboair/` (`authenticate.json`, `search-*.json`, `farequote.json`, `ssr.json`).
 Coverage includes `FlightSearchTest`, `FlightSearchCacheTest` (+ `Unit`), `RecentSearchesTest`,
-`Unit/FlightResultTransformerTest`, `Unit/SearchInputTest`, `BookingTest` (create/store, gates,
-fare-gone redirect, embedded edit form), `Feature/TboAir/*` (env resolver, per-user env, live routing),
-`ApiLogTest`, and the admin settings/logs tests.
+`Unit/FlightResultTransformerTest`, `Unit/SearchInputTest`, `Unit/TboPassengerMapperTest` (enum
+encoding, retired titles, refused gender), `BookingTest` (create/store, gates, fare-gone redirect,
+embedded edit form, **raw quote kept verbatim, contact fan-out, lead-pax rules, title constraint**),
+`Feature/TboAir/*` (env resolver, per-user env, live routing), `ApiLogTest`, and the admin
+settings/logs tests.
 
 ## Environment variables
 
@@ -200,16 +208,30 @@ FareQuote response verbatim, written beside the snapshot by `BookingService::cre
 `quote` snapshot and the JSON the wizard receives, and the browser has no use for the raw response.
 Nullable because pre-existing bookings have none and backfilling would mean re-pricing a moved fare.
 
-### 2. `Passenger` is missing ~8 mandatory Book fields, and the enums are integers
+### 2. ~~`Passenger` is missing ~8 mandatory Book fields, and the enums are integers~~ — FIXED
 
-`App\Services\Booking\DTO\Passenger` carries type/title/names/gender/DOB/passport/nationality/
-baggage/meal. Book additionally requires `AddressLine1`, `AddressLine2`, `City` (code + name),
-`CountryCode`, `CountryName`, `Mobile1`, `Mobile1CountryCode`, `Email`, `IsLeadPax`, and
-`FFAirline`/`FFNumber` (send NULL). It also wants **integer enums** — `Title` `Mr=0/Miss=1/Mrs=2`
-(no Ms/Mstr), `Gender` `Male=1/Female=2`, `Type` `Adult=1/Child=2/Infant=3` — where we store strings.
+Book requires `AddressLine1`, `AddressLine2`, `City`, `CountryCode`, `CountryName`, `Mobile1`,
+`Mobile1CountryCode`, `Email`, `IsLeadPax` and `FFAirline`/`FFNumber` on **every** passenger, plus
+**integer enums** where we store strings.
 
-→ Extend the DTO + Guest Details form, constrain the Title list to what TBO accepts, and add a
-string→enum mapping layer at the client boundary.
+✅ **Fixed**, with the shared fields modelled where they belong:
+
+- **Address / mobile / email are contact-level, not per-passenger.** They do not vary per passenger,
+  and no agent is typing an address for a two-year-old. They are collected once in the wizard's
+  Contact section (`contact.mobileCountryCode`, `addressLine1`, `addressLine2`, `city`, `countryCode`)
+  and **fanned onto every pax row** by `BookingService::applyContact()`, so each stored row is
+  Book-ready. `CountryName` is **derived** from the code via `App\Support\Countries` (ICU
+  `Locale::getDisplayRegion`, falling back to the code), never collected — the two cannot disagree.
+- **`Passenger::$isLeadPax`** is the one genuinely per-passenger addition. TBO expects exactly one:
+  the wizard uses a radio (`setLeadPax()`), and `BookingService::withLeadPax()` guarantees one anyway
+  — the flagged adult, else the first adult. A flag on a child is **not** honoured, and a booking with
+  **no adult** is refused.
+- **Title is constrained to `Mr` / `Mrs` / `Miss`** — the only three TBO encodes. The wizard used to
+  offer `Ms` and `Mstr`, which have no TBO value.
+- **`App\Services\TboAir\TboPassengerMapper`** is the string→ordinal encoding (`title()`, `gender()`,
+  `paxType()`) and the only place those integers belong. It folds the retired `Ms`/`Mstr` onto
+  Miss/Mr for already-stored bookings, and **refuses to guess a missing gender** — TBO requires it and
+  airlines match it against ID. Phase 4.1 builds the payload around it.
 
 ### 3. TBO's agency balance is invisible to us
 

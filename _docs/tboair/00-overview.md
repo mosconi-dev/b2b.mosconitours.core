@@ -45,8 +45,9 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
      different host and route style than search, and their docs use different names.
   2. ~~**Persist the raw FareQuote JSON.**~~ ✅ **done** — nullable `bookings.quote_raw` keeps the
      FareQuote response verbatim, since Book echoes the whole priced itinerary back.
-  3. **Extend `Passenger`** — ~8 mandatory Book fields missing (address, city, country, mobile, email,
-     `IsLeadPax`, FF nulls) and TBO wants **integer enums** where we store strings.
+  3. ~~**Extend `Passenger`.**~~ ✅ **done** — address/mobile/email collected once as contact and fanned
+     onto every pax row, `isLeadPax` per passenger, Title limited to TBO's three, and
+     `TboPassengerMapper` for the string→integer encoding.
   4. **Read TBO's own agency balance.** Ticketing draws down **our** TBO balance, not the internal
      e-wallet — a ticket can fail for insufficient TBO funds after we have already debited the agency.
 - **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a
