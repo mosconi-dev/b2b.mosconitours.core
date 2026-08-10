@@ -24,12 +24,22 @@ class StoreBookingRequest extends FormRequest
             'traceId' => ['required', 'string', 'max:255'],
             'resultIndex' => ['required', 'string', 'max:8192'],
 
+            // Collected once and fanned onto every passenger — TBO's Book method wants
+            // an address, mobile and email on each one. See Passenger.
             'contact.email' => ['required', 'email', 'max:255'],
             'contact.phone' => ['required', 'string', 'max:32'],
+            'contact.mobileCountryCode' => ['required', 'string', 'max:5'],
+            'contact.addressLine1' => ['required', 'string', 'max:128'],
+            'contact.addressLine2' => ['nullable', 'string', 'max:128'],
+            'contact.city' => ['required', 'string', 'max:64'],
+            'contact.countryCode' => ['required', 'string', 'size:2', 'alpha'],
 
             'passengers' => ['required', 'array', 'min:1', 'max:9'],
             'passengers.*.type' => ['required', Rule::in(['Adult', 'Child', 'Infant'])],
-            'passengers.*.title' => ['required', 'string', 'max:8'],
+            // TBO's title enum has exactly three values (Mr=0, Miss=1, Mrs=2), so the
+            // wizard offers only those — see TboPassengerMapper.
+            'passengers.*.title' => ['required', Rule::in(['Mr', 'Mrs', 'Miss'])],
+            'passengers.*.isLeadPax' => ['nullable', 'boolean'],
             'passengers.*.firstName' => ['required', 'string', 'max:64'],
             'passengers.*.lastName' => ['required', 'string', 'max:64'],
             'passengers.*.gender' => ['nullable', Rule::in(['M', 'F'])],

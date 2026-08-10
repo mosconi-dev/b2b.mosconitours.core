@@ -7,6 +7,12 @@ use Illuminate\Contracts\Support\Arrayable;
 /**
  * A passenger on a booking. Passport fields are optional here and only enforced
  * by BookingService when the fare's FareQuote flags passport as mandatory.
+ *
+ * TBO's Book method also wants an address, city, country, mobile and email on
+ * *every* passenger. Those are not per-passenger facts — asking an agent to type an
+ * address for a two-year-old is nonsense — so they are collected once as the
+ * booking's contact details and fanned onto each stored pax row by BookingService.
+ * Only what genuinely varies per passenger lives here.
  */
 class Passenger implements Arrayable
 {
@@ -22,7 +28,15 @@ class Passenger implements Arrayable
         public readonly ?string $nationality = null,
         public readonly ?string $baggage = null,  // selected SSR baggage code
         public readonly ?string $meal = null,     // selected SSR meal code
+        // TBO requires exactly one lead passenger per booking; BookingService
+        // guarantees one even when the caller flags none.
+        public readonly bool $isLeadPax = false,
     ) {}
+
+    public function isAdult(): bool
+    {
+        return strcasecmp($this->type, 'Adult') === 0;
+    }
 
     public function isInfant(): bool
     {
@@ -51,6 +65,17 @@ class Passenger implements Arrayable
             nationality: $data['nationality'] ?? null,
             baggage: $data['baggage'] ?? null,
             meal: $data['meal'] ?? null,
+            isLeadPax: (bool) ($data['isLeadPax'] ?? false),
+        );
+    }
+
+    /** A copy of this passenger with the lead flag set either way. */
+    public function withLead(bool $isLeadPax): self
+    {
+        return new self(
+            $this->type, $this->title, $this->firstName, $this->lastName, $this->gender,
+            $this->dateOfBirth, $this->passportNo, $this->passportExpiry, $this->nationality,
+            $this->baggage, $this->meal, isLeadPax: $isLeadPax,
         );
     }
 
@@ -69,6 +94,7 @@ class Passenger implements Arrayable
             'passportNo' => $this->passportNo,
             'passportExpiry' => $this->passportExpiry,
             'nationality' => $this->nationality,
+            'isLeadPax' => $this->isLeadPax,
         ];
     }
 }

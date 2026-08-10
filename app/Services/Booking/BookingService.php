@@ -11,6 +11,7 @@ use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\TboAirService;
 use App\Services\Wallet\WalletService;
+use App\Support\Countries;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -49,7 +50,10 @@ class BookingService
             }
         }
 
+        $passengers = $this->withLeadPax($passengers);
+
         [$pax, $ancillaryTotal] = $this->applyAncillaries($selection, $passengers);
+        $pax = $this->applyContact($pax, $contact);
 
         $total = number_format((float) $quote->price['offeredFare'] + $ancillaryTotal, 2, '.', '');
 
@@ -112,6 +116,80 @@ class BookingService
         } catch (WalletException $e) {
             throw new BookingException($e->getMessage());
         }
+    }
+
+    /**
+     * Guarantee exactly one lead passenger.
+     *
+     * TBO wants `IsLeadPax` on the Book payload and expects precisely one. The lead
+     * must be an adult — the lead is who the airline contacts, and a child cannot hold
+     * that role — so a flag on a child or infant is not honoured. When nothing usable
+     * is flagged the first adult takes it, which is what an agent means anyway.
+     *
+     * @param  array<int, Passenger>  $passengers
+     * @return array<int, Passenger>
+     */
+    private function withLeadPax(array $passengers): array
+    {
+        $lead = null;
+
+        foreach ($passengers as $i => $passenger) {
+            if ($passenger->isLeadPax && $passenger->isAdult()) {
+                $lead = $i;
+                break;
+            }
+        }
+
+        if ($lead === null) {
+            foreach ($passengers as $i => $passenger) {
+                if ($passenger->isAdult()) {
+                    $lead = $i;
+                    break;
+                }
+            }
+        }
+
+        if ($lead === null) {
+            throw new BookingException('A booking needs at least one adult passenger.');
+        }
+
+        return array_map(
+            fn (Passenger $p, int $i): Passenger => $p->withLead($i === $lead),
+            $passengers,
+            array_keys($passengers),
+        );
+    }
+
+    /**
+     * Fan the booking's shared contact details onto every passenger row.
+     *
+     * TBO's Book method wants an address, city, country, mobile and email on *each*
+     * passenger, but none of that varies per passenger — it is one contact block. It
+     * is copied in at persistence time so every stored row is Book-ready, and the
+     * country name is derived from the code rather than collected, so the two cannot
+     * disagree.
+     *
+     * @param  array<int, array<string, mixed>>  $pax
+     * @param  array<string, mixed>  $contact
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyContact(array $pax, array $contact): array
+    {
+        $countryCode = strtoupper(trim((string) ($contact['countryCode'] ?? '')));
+
+        $shared = [
+            'email' => $contact['email'] ?? null,
+            'mobile' => $contact['phone'] ?? null,
+            'mobileCountryCode' => $contact['mobileCountryCode'] ?? null,
+            'addressLine1' => $contact['addressLine1'] ?? null,
+            'addressLine2' => $contact['addressLine2'] ?? null,
+            'city' => $contact['city'] ?? null,
+            'countryCode' => $countryCode ?: null,
+            'countryName' => $countryCode === '' ? null : Countries::name($countryCode),
+        ];
+
+        // Union, not merge: anything already on the row wins over the shared block.
+        return array_map(fn (array $row): array => $row + $shared, $pax);
     }
 
     /**

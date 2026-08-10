@@ -194,9 +194,35 @@
                             <div>
                                 <label class="mb-1 block text-xs font-medium text-gray-600">Contact number</label>
                                 <div class="flex">
-                                    <span class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-3 text-sm text-gray-500">+63</span>
+                                    <span class="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 pl-3 text-sm text-gray-500">+</span>
+                                    <input type="text" x-model="contact.mobileCountryCode" maxlength="4" placeholder="63" class="w-14 border-y border-gray-300 bg-gray-50 px-1 text-sm text-gray-700 focus:border-blue-500 focus:ring-0" />
                                     <input type="tel" x-model="contact.phone" placeholder="e.g. 917 123 4567" class="w-full rounded-r-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
+                            </div>
+                        </div>
+
+                        {{-- Billing address. TBO requires an address on every passenger;
+                             it is collected once here and copied onto each of them. --}}
+                        <div class="border-t border-gray-100 pt-4">
+                            <h3 class="text-sm font-semibold text-brand-900">Billing address</h3>
+                            <p class="mt-0.5 text-xs text-gray-500">Required by the airline for every guest on the booking.</p>
+                        </div>
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div class="sm:col-span-2">
+                                <label class="mb-1 block text-xs font-medium text-gray-600">Address line 1</label>
+                                <input type="text" x-model="contact.addressLine1" placeholder="e.g. 123 Rizal Street" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="mb-1 block text-xs font-medium text-gray-600">Address line 2 <span class="font-normal text-gray-400">· optional</span></label>
+                                <input type="text" x-model="contact.addressLine2" placeholder="e.g. Barangay San Antonio" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label class="mb-1 block text-xs font-medium text-gray-600">City</label>
+                                <input type="text" x-model="contact.city" placeholder="e.g. Makati" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label class="mb-1 block text-xs font-medium text-gray-600">Country</label>
+                                <input type="text" x-model="contact.countryCode" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
                             </div>
                         </div>
                     </div>
@@ -209,11 +235,21 @@
                                 <p x-show="quote.isPassportMandatory" x-cloak class="mt-0.5 text-xs text-blue-700">Passport details are required for this fare.</p>
                             </div>
 
+                            {{-- Exactly one lead guest, and only an adult may hold it. --}}
+                            <label x-show="p.type === 'Adult'" x-cloak class="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                                <input type="radio" name="leadPax" class="mt-0.5 border-gray-300 text-blue-600 focus:ring-blue-500"
+                                       :checked="p.isLeadPax" @change="setLeadPax(i)" />
+                                <span class="text-xs text-gray-600">
+                                    <span class="font-medium text-gray-800">Lead guest</span> — the airline's point of contact for this booking.
+                                </span>
+                            </label>
+
                             <div class="grid grid-cols-2 gap-4 sm:grid-cols-12">
                                 <div class="col-span-2 sm:col-span-2">
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Title</label>
                                     <select x-model="p.title" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500">
-                                        <option>Mr</option><option>Mrs</option><option>Ms</option><option>Mstr</option><option>Miss</option>
+                                        {{-- TBO accepts exactly these three (Mr=0, Miss=1, Mrs=2). --}}
+                                        <option>Mr</option><option>Mrs</option><option>Miss</option>
                                     </select>
                                 </div>
                                 <div class="col-span-1 sm:col-span-5">

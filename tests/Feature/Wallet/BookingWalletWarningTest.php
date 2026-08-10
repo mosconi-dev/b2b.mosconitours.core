@@ -156,7 +156,10 @@ class BookingWalletWarningTest extends TestCase
             ->postJson(route('bookings.store'), [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
-                'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+                'contact' => [
+                    'email' => 'agent@example.com', 'phone' => '09170000000', 'mobileCountryCode' => '63',
+                    'addressLine1' => '123 Rizal Street', 'city' => 'Makati', 'countryCode' => 'PH',
+                ],
                 'passengers' => [
                     ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
                 ],

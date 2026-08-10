@@ -48,7 +48,14 @@ class BookingTest extends TestCase
         return array_merge([
             'traceId' => 'trace-abc-123',
             'resultIndex' => str_repeat('R', 400),
-            'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+            'contact' => [
+                'email' => 'agent@example.com',
+                'phone' => '09170000000',
+                'mobileCountryCode' => '63',
+                'addressLine1' => '123 Rizal Street',
+                'city' => 'Makati',
+                'countryCode' => 'PH',
+            ],
             'passengers' => [
                 ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
             ],
@@ -186,6 +193,77 @@ class BookingTest extends TestCase
         $this->assertArrayNotHasKey('Source', $booking->quote);
     }
 
+    public function test_store_copies_the_contact_block_onto_every_passenger(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F'],
+                ],
+            ]))
+            ->assertRedirect();
+
+        // TBO wants an address on each passenger, so the shared block is fanned out —
+        // including onto the child, who obviously did not type one.
+        foreach (Booking::firstOrFail()->pax as $row) {
+            $this->assertSame('123 Rizal Street', $row['addressLine1']);
+            $this->assertSame('Makati', $row['city']);
+            $this->assertSame('63', $row['mobileCountryCode']);
+            $this->assertSame('agent@example.com', $row['email']);
+            $this->assertSame('PH', $row['countryCode']);
+            // Derived from the code, never collected, so the two cannot disagree.
+            $this->assertSame('Philippines', $row['countryName']);
+        }
+    }
+
+    public function test_store_marks_exactly_one_adult_as_lead_passenger(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    // A child flagged as lead, which TBO will not accept...
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => true],
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                    ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F'],
+                ],
+            ]))
+            ->assertRedirect();
+
+        $pax = Booking::firstOrFail()->pax;
+
+        // ...so the flag moves to the first adult, and only that one carries it.
+        $this->assertSame([false, true, false], array_column($pax, 'isLeadPax'));
+    }
+
+    public function test_store_rejects_a_title_tbo_cannot_encode(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Dr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                ],
+            ]))
+            ->assertSessionHasErrors('passengers.0.title');
+    }
+
+    public function test_store_requires_the_address_tbo_asks_for(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+            ]))
+            ->assertSessionHasErrors(['contact.addressLine1', 'contact.city', 'contact.countryCode', 'contact.mobileCountryCode']);
+    }
+
     public function test_store_enforces_passport_when_the_fare_requires_it(): void
     {
         $this->fakeQuote('farequote-passport.json'); // IsPassportRequiredAtBook = true
@@ -262,10 +340,28 @@ class BookingTest extends TestCase
 
         $this->actingAs($this->bookingUser())
             ->post(route('bookings.store'), $this->payload([
-                'passengers' => [[
-                    'type' => 'Infant', 'title' => 'Mstr', 'firstName' => 'Baby', 'lastName' => 'Cruz',
-                    'baggage' => 'PBAG20',
-                ]],
+                // An accompanying adult, so this exercises the infant baggage guard
+                // rather than the "needs an adult" one. TBO's title enum has no
+                // Mstr — an infant boy is Mr, its only male value.
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                    ['type' => 'Infant', 'title' => 'Mr', 'firstName' => 'Baby', 'lastName' => 'Cruz', 'baggage' => 'PBAG20'],
+                ],
+            ]))
+            ->assertSessionHasErrors('booking');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_store_rejects_a_booking_with_no_adult(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F'],
+                ],
             ]))
             ->assertSessionHasErrors('booking');
 

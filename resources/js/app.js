@@ -836,7 +836,9 @@ Alpine.data('bookingWizard', (config = {}) => ({
     priceGateOpen: false, // shown on load if the re-price differs from the searched fare
     detailsOpen: false, // full itinerary + fare conditions under the summary card
     passengers: [],
-    contact: { email: '', phone: '' },
+    // Address/mobile are collected once and copied onto every passenger server-side —
+    // TBO wants them per passenger, but they do not vary per passenger.
+    contact: { email: '', phone: '', mobileCountryCode: '63', addressLine1: '', addressLine2: '', city: '', countryCode: 'PH' },
     guestTab: 'contact', // active Guest-details sub-section: 'contact' or a passenger index
     submitting: false,
     error: null,
@@ -907,14 +909,24 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     buildPassengers() {
-        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '' });
+        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '', isLeadPax: false });
         const list = [];
         (this.quote?.fareBreakdown ?? []).forEach((b) => {
             const n = Number(b.count) || 0;
             for (let i = 0; i < n; i++) list.push(blank(b.passengerType || 'Adult'));
         });
         if (! list.length) list.push(blank('Adult'));
+
+        // Default the first adult to lead; the server does the same if none is set.
+        const firstAdult = list.findIndex((p) => p.type === 'Adult');
+        if (firstAdult !== -1) list[firstAdult].isLeadPax = true;
+
         return list;
+    },
+
+    /** Exactly one lead guest — selecting one clears the rest. */
+    setLeadPax(index) {
+        this.passengers.forEach((p, i) => { p.isLeadPax = i === index; });
     },
 
     get hasSsr() {
@@ -923,7 +935,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
 
     get canProceedGuests() {
         return this.passengers.every((p) => p.firstName.trim() && p.lastName.trim()) &&
-            this.contact.email.trim() && this.contact.phone.trim();
+            this.contactComplete;
     },
 
     // Guest-details sub-sections: contact first, then one per passenger.
@@ -940,7 +952,12 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     get contactComplete() {
-        return !! (this.contact.email.trim() && this.contact.phone.trim());
+        const c = this.contact;
+
+        // addressLine2 is the only optional field here — the rest are mandatory on
+        // TBO's Book payload, so a gap would only surface as a supplier rejection.
+        return !! (c.email.trim() && c.phone.trim() && c.mobileCountryCode.trim() &&
+            c.addressLine1.trim() && c.city.trim() && c.countryCode.trim());
     },
 
     passengerComplete(p) {
