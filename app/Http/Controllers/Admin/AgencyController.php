@@ -75,7 +75,7 @@ class AgencyController extends Controller
             // Created on first view so the office always has something to adjust.
             $wallet = $this->wallets->for($agency);
             $entries = WalletTransaction::where('wallet_id', $wallet->id)
-                ->with(['user:id,name', 'reversal:id,reversed_transaction_id'])
+                ->with('user:id,name')
                 ->latest('created_at')
                 ->latest('id')
                 ->paginate(20)

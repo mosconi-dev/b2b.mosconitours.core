@@ -7,13 +7,11 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletLoadRequest;
-use App\Models\WalletTransaction;
 use App\Policies\AgencyPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\UserPolicy;
 use App\Policies\WalletLoadRequestPolicy;
 use App\Policies\WalletPolicy;
-use App\Policies\WalletTransactionPolicy;
 use App\Services\Rbac\PermissionRegistry;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -34,7 +32,6 @@ class AuthServiceProvider extends ServiceProvider
         Gate::policy(User::class, UserPolicy::class);
         Gate::policy(Wallet::class, WalletPolicy::class);
         Gate::policy(WalletLoadRequest::class, WalletLoadRequestPolicy::class);
-        Gate::policy(WalletTransaction::class, WalletTransactionPolicy::class);
 
         foreach ($registry->permissionNames() as $name) {
             Gate::define($name, fn (User $user): bool => $user->hasPermissionTo($name));

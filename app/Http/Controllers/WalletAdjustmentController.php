@@ -2,17 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ReverseWalletTransactionRequest;
 use App\Http\Requests\StoreWalletAdjustmentRequest;
 use App\Models\Wallet;
-use App\Models\WalletTransaction;
 use App\Services\Rbac\AuditLogger;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\RedirectResponse;
 
 /**
- * Manual corrections to a wallet. Both actions post a NEW ledger entry — nothing
- * is ever edited or removed, so the mistake and its correction both remain visible.
+ * Manual corrections to a wallet. Posts a NEW ledger entry — nothing is ever
+ * edited or removed, so the mistake and its correction both remain visible.
  */
 class WalletAdjustmentController extends Controller
 {
@@ -40,20 +38,5 @@ class WalletAdjustmentController extends Controller
         ]);
 
         return back()->with('status', "Adjustment posted: {$entry->signedAmount()}. New balance {$wallet->fresh()->formattedBalance()}.");
-    }
-
-    public function reverse(ReverseWalletTransactionRequest $request, WalletTransaction $transaction): RedirectResponse
-    {
-        $entry = $this->wallets->reverse($transaction, $request->user(), $request->validated('reason'));
-
-        $this->audit->log('wallet.reversed', $entry, [
-            'agency_id' => $entry->agency_id,
-            'reversed_transaction_id' => $transaction->id,
-            'amount' => (string) $entry->amount,
-            'balance_after' => (string) $entry->balance_after,
-            'reason' => $request->validated('reason'),
-        ]);
-
-        return back()->with('status', "Entry reversed: {$entry->signedAmount()}. New balance {$entry->wallet->formattedBalance()}.");
     }
 }

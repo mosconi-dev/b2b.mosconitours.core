@@ -6,8 +6,9 @@
         <div>
             <h2 class="text-base font-semibold text-brand-900">Manual adjustment</h2>
             <p class="mt-1 text-sm text-gray-600">
-                Posts a new ledger entry. Use this for corrections that are not tied to a single
-                entry — to undo one specific entry, use <span class="font-medium">Reverse</span> on its row.
+                Posts a new ledger entry rather than editing history. Use it to correct a load
+                approved in error — a discrepancy spotted <em>before</em> approval should be rejected
+                so the agency can reissue instead.
             </p>
         </div>
         <button type="button" x-on:click="open = ! open"

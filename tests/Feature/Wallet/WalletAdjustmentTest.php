@@ -13,9 +13,9 @@ use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
 /**
- * Manual corrections: reversing a single entry (the fix for a wrong approval) and
- * posting a free adjustment. Both append a new opposing entry — the ledger is never
- * edited, so the mistake and its correction both remain on the record.
+ * Manual adjustment — the one way to move money outside the load-request cycle.
+ * It appends a new ledger entry; nothing is ever edited, so a correction and the
+ * entry it corrects both remain on the record.
  */
 class WalletAdjustmentTest extends TestCase
 {
@@ -42,125 +42,6 @@ class WalletAdjustmentTest extends TestCase
     private function credit(string $amount = '5000.00', ?string $description = 'Wallet load LR-TEST'): WalletTransaction
     {
         return app(WalletService::class)->credit($this->wallet, $amount, null, null, $description);
-    }
-
-    // ---- Reversal — the fix for a wrong approval -------------------------
-
-    public function test_reversing_a_credit_takes_the_money_back(): void
-    {
-        $entry = $this->credit('5000.00');
-        $this->assertSame('5000.00', (string) $this->wallet->fresh()->balance);
-
-        $this->actingAs($this->officer())
-            ->patch(route('wallet.reverse', $entry), ['reason' => 'Load approved twice'])
-            ->assertRedirect();
-
-        $this->assertSame('0.00', (string) $this->wallet->fresh()->balance);
-    }
-
-    public function test_a_reversal_is_a_new_entry_and_never_edits_the_original(): void
-    {
-        $entry = $this->credit('5000.00');
-
-        $this->actingAs($this->officer())
-            ->patch(route('wallet.reverse', $entry), ['reason' => 'Duplicate'])
-            ->assertRedirect();
-
-        $original = $entry->fresh();
-        $this->assertSame('credit', $original->direction, 'the original must be untouched');
-        $this->assertSame('5000.00', (string) $original->amount);
-        $this->assertTrue($original->isReversed());
-
-        $correction = $original->reversal;
-        $this->assertSame('debit', $correction->direction);
-        $this->assertSame('5000.00', (string) $correction->amount);
-        $this->assertSame('Duplicate', $correction->description);
-        $this->assertSame($this->wallet->id, $correction->wallet_id);
-        $this->assertSame(2, $this->wallet->transactions()->count());
-    }
-
-    public function test_the_same_entry_cannot_be_reversed_twice(): void
-    {
-        $entry = $this->credit('1000.00');
-        $officer = $this->officer();
-
-        $this->actingAs($officer)->patch(route('wallet.reverse', $entry), ['reason' => 'First'])->assertRedirect();
-        // No longer reversible, so the policy refuses the replay outright.
-        $this->actingAs($officer)->patch(route('wallet.reverse', $entry), ['reason' => 'Second'])->assertForbidden();
-
-        $this->assertSame('0.00', (string) $this->wallet->fresh()->balance);
-        $this->assertSame(2, $this->wallet->transactions()->count());
-    }
-
-    public function test_a_correction_cannot_itself_be_reversed(): void
-    {
-        $entry = $this->credit('1000.00');
-        $officer = $this->officer();
-
-        $this->actingAs($officer)->patch(route('wallet.reverse', $entry), ['reason' => 'Wrong'])->assertRedirect();
-        $correction = $entry->fresh()->reversal;
-
-        $this->actingAs($officer)
-            ->patch(route('wallet.reverse', $correction), ['reason' => 'Undo the undo'])
-            ->assertForbidden();
-    }
-
-    public function test_a_reversal_may_drive_the_balance_negative(): void
-    {
-        // 5,000 credited in error, 3,000 already spent. The claw-back is still owed:
-        // refusing to record it would leave the books wrong.
-        $entry = $this->credit('5000.00');
-        app(WalletService::class)->debit($this->wallet, '3000.00', null, null, 'Spent');
-
-        $this->actingAs($this->officer())
-            ->patch(route('wallet.reverse', $entry), ['reason' => 'Credited in error'])
-            ->assertRedirect();
-
-        $this->assertSame('-3000.00', (string) $this->wallet->fresh()->balance);
-    }
-
-    public function test_a_reason_is_required(): void
-    {
-        $entry = $this->credit();
-
-        $this->actingAs($this->officer())
-            ->patch(route('wallet.reverse', $entry), ['reason' => ''])
-            ->assertSessionHasErrors('reason');
-
-        $this->assertSame('5000.00', (string) $this->wallet->fresh()->balance);
-    }
-
-    public function test_reversing_requires_the_adjust_permission(): void
-    {
-        $entry = $this->credit();
-        $viewer = $this->userWith(['wallet.view']);
-
-        $this->actingAs($viewer)
-            ->patch(route('wallet.reverse', $entry), ['reason' => 'Nope'])
-            ->assertForbidden();
-
-        $this->assertSame('5000.00', (string) $this->wallet->fresh()->balance);
-    }
-
-    public function test_an_agency_cannot_reverse_another_agencys_entry(): void
-    {
-        $entry = $this->credit();
-        $outsider = $this->agencyUserWith(Agency::factory()->create(), ['wallet.view', 'wallet.adjust']);
-
-        $this->actingAs($outsider)
-            ->patch(route('wallet.reverse', $entry), ['reason' => 'Not mine'])
-            ->assertForbidden();
-    }
-
-    public function test_the_reversal_is_audited(): void
-    {
-        $entry = $this->credit('750.00');
-
-        $this->actingAs($this->officer())
-            ->patch(route('wallet.reverse', $entry), ['reason' => 'Duplicate load'])
-            ->assertRedirect();
-
-        $this->assertDatabaseHas('audit_logs', ['event' => 'wallet.reversed']);
     }
 
     // ---- Free adjustment -------------------------------------------------
@@ -229,9 +110,13 @@ class WalletAdjustmentTest extends TestCase
         $service = app(WalletService::class);
         $officer = $this->officer();
 
-        $a = $this->credit('1000.00');
+        $this->credit('1000.00');
         $this->credit('250.50');
-        $this->actingAs($officer)->patch(route('wallet.reverse', $a), ['reason' => 'Wrong'])->assertRedirect();
+        // Undo the first load with an offsetting debit — the correction path now that
+        // entry-level reversal is gone.
+        $this->actingAs($officer)->post(route('wallet.adjust', $this->wallet), [
+            'direction' => 'debit', 'amount' => '1000.00', 'reason' => 'Load approved in error',
+        ])->assertRedirect();
         $this->actingAs($officer)->post(route('wallet.adjust', $this->wallet), [
             'direction' => 'debit', 'amount' => '0.50', 'reason' => 'Rounding',
         ])->assertRedirect();
@@ -260,8 +145,7 @@ class WalletAdjustmentTest extends TestCase
             ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'wallet']))
             ->assertOk()
             ->assertSee('1,500.00')
-            ->assertSee('Manual adjustment')
-            ->assertSee('Reverse');
+            ->assertSee('Manual adjustment');
     }
 
     public function test_the_wallet_tab_hides_corrections_without_the_permission(): void
@@ -273,7 +157,6 @@ class WalletAdjustmentTest extends TestCase
             ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'wallet']))
             ->assertOk()
             ->assertSee('1,500.00')
-            ->assertDontSee('Manual adjustment')
-            ->assertDontSee('>Reverse<', escape: false);
+            ->assertDontSee('Manual adjustment');
     }
 }

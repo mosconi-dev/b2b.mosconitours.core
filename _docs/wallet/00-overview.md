@@ -54,7 +54,7 @@ thousands separators first, since bcmath would read `"1,500.00"` as `1`.
 | Ability | Meaning |
 | --- | --- |
 | `wallet.view` | See your agency's balance and ledger (`/wallet`) |
-| `wallet.adjust` | Reverse an entry, or post a manual adjustment — **moves money with no request and no second pair of eyes** |
+| `wallet.adjust` | Post a manual adjustment — **moves money with no request and no second pair of eyes** |
 | `wallet.load.view` | See the load-request queue |
 | `wallet.load.create` | Raise a top-up request |
 | `wallet.load.approve` | Decide a request — approve **or** reject (two outcomes of one act) |
@@ -75,38 +75,41 @@ and four-eyes. `create` additionally requires an agency — platform staff have 
 `wallet.load_requested`, `wallet.load_approved` (with the resulting balance), `wallet.load_rejected`,
 `wallet.load_cancelled` — all through the existing `AuditLogger`, so they inherit agency scoping.
 
-## Corrections (migration `2026_08_10_000007`)
+## Corrections
 
-Nothing on the ledger is ever edited or deleted. A correction is a **new opposing entry**, so the
-mistake and its fix both stay on the record. Two shapes, both behind `wallet.adjust`:
+Nothing on the ledger is ever edited or deleted. A correction is a **new entry**, so the mistake and
+its fix both stay on the record.
 
-**Reverse** — the fix for a load approved in error. Pick the entry; amount and direction come from the
-entry itself, so there is nothing to mistype. The correction points back via
-`wallet_transactions.reversed_transaction_id`.
+**How a discrepancy is handled depends on when it is caught:**
 
-- An entry can be reversed **at most once**: an explicit check, a re-check under lock, and a **unique
-  index** on `reversed_transaction_id` as the database-level backstop.
-- A correction cannot itself be reversed — reversing a reversal is confusing; post an adjustment.
-- The load request's status is **not** changed. Approved stays terminal; the ledger tells the story.
+| When | What happens |
+| --- | --- |
+| Before approval | **Reject** the request. The agency reissues a corrected one. No money moved. |
+| After approval | **Manual adjustment** — an offsetting debit, behind `wallet.adjust`. |
 
-**Adjust** — a discretionary credit or debit not tied to one entry (a fee, goodwill, a balance brought
-over). Both shapes **require a reason**, recorded on the ledger and in the audit trail.
+An adjustment is a credit or debit with a **required reason**, recorded on the ledger and in the audit
+trail. The load request's status is never rewound: approved stays terminal, which is what makes a double
+credit impossible. The ledger tells the story instead.
 
-### Corrections may go negative
+> Entry-level *reversal* (undoing one specific ledger row) was built and then removed — it was a second
+> correction mechanism covering ground manual adjustment already covers. See migrations
+> `2026_08_10_000007` and `..._000008`.
 
-`post()` takes `allowNegative`, set only by `reverse()` and `adjust()`. If 5,000 was credited in error
-and 3,000 already spent, the claw-back is still owed — refusing to record it would leave the books
-wrong rather than merely uncomfortable, so the balance goes to −3,000 and is shown in red. Ordinary
-operational debits keep the insufficient-funds guard.
+### Adjustments may go negative
+
+`post()` takes `allowNegative`, set only by `adjust()`. If 5,000 was credited in error and 3,000 already
+spent, the claw-back is still owed — refusing to record it would leave the books wrong rather than
+merely uncomfortable, so the balance goes to −3,000 and is shown in red. Ordinary operational debits
+keep the insufficient-funds guard.
 
 ### Where it lives
 
 The agency hub gains a **Wallet** tab (`/admin/agencies/{agency}?tab=wallet`) with the balance, the
-ledger, per-row **Reverse**, and the adjustment form — this is how the office corrects an agency's
-wallet, since `/wallet` only ever shows the signed-in user's own. Both surfaces share
-`wallet/_ledger.blade.php` and `wallet/_adjust.blade.php`.
+ledger and the adjustment form — this is how the office reaches an agency's wallet at all, since
+`/wallet` only ever shows the signed-in user's own. Both surfaces share `wallet/_ledger.blade.php` and
+`wallet/_adjust.blade.php`.
 
-Audit events: `wallet.adjusted`, `wallet.reversed` (both with the reason and resulting balance).
+Audit event: `wallet.adjusted`, with the reason and resulting balance.
 
 > **`wallet.adjust` is effectively the right to mint money.** Unlike a load request there is no
 > request/approve split, so one holder can credit a wallet unilaterally. Keep it on office/platform

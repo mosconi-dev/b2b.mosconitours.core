@@ -45,54 +45,13 @@ class WalletService
     }
 
     /**
-     * Undo one entry by posting its exact opposite, linked back to the original.
+     * A manual correction, always with a reason. This is the one way to move money
+     * outside the load-request cycle: a discrepancy caught before approval is
+     * rejected and reissued, one caught afterwards is corrected here.
      *
-     * This is the correction for a load approved in error: the amount and direction
-     * come from the entry itself, so there is nothing to mistype. Neither row is
-     * edited — the mistake and its correction both stay on the ledger.
-     *
-     * A reversal may drive the balance negative. If funds were credited in error and
-     * partly spent, the claw-back is still owed, and refusing to record it would
-     * leave the books wrong rather than merely uncomfortable.
-     */
-    public function reverse(WalletTransaction $entry, User $actor, string $reason): WalletTransaction
-    {
-        if ($entry->isReversal()) {
-            throw new WalletException('This entry is itself a correction and cannot be reversed. Post an adjustment instead.');
-        }
-
-        if ($entry->isReversed()) {
-            throw new WalletException('This entry has already been reversed.');
-        }
-
-        return DB::transaction(function () use ($entry, $actor, $reason): WalletTransaction {
-            // Re-check under lock: two people clicking Reverse together both passed above.
-            /** @var WalletTransaction $locked */
-            $locked = WalletTransaction::whereKey($entry->getKey())->lockForUpdate()->firstOrFail();
-
-            if ($locked->isReversed()) {
-                throw new WalletException('This entry has already been reversed.');
-            }
-
-            return $this->post(
-                $locked->wallet,
-                $locked->opposingDirection(),
-                (string) $locked->amount,
-                $actor,
-                null,
-                $reason,
-                allowNegative: true,
-                reverses: $locked,
-            );
-        });
-    }
-
-    /**
-     * A discretionary correction not tied to an existing entry — a fee, a goodwill
-     * credit, a balance brought over from elsewhere. Always carries a reason.
-     *
-     * Also allowed to go negative: someone correcting the books should not be
-     * blocked by the very balance they are correcting.
+     * Allowed to go negative: someone correcting the books should not be blocked by
+     * the very balance they are correcting. If funds were credited in error and
+     * partly spent, the claw-back is still owed.
      */
     public function adjust(Wallet $wallet, string $direction, string $amount, User $actor, string $reason): WalletTransaction
     {
@@ -110,7 +69,7 @@ class WalletService
      * both read the same balance and overdraw it — the second waits, then re-reads
      * the balance the first one wrote.
      */
-    private function post(Wallet $wallet, string $direction, string $amount, ?User $actor, ?Model $source, ?string $description, bool $allowNegative = false, ?WalletTransaction $reverses = null): WalletTransaction
+    private function post(Wallet $wallet, string $direction, string $amount, ?User $actor, ?Model $source, ?string $description, bool $allowNegative = false): WalletTransaction
     {
         $amount = $this->normalize($amount);
 
@@ -118,13 +77,13 @@ class WalletService
             throw new WalletException('The amount must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($wallet, $direction, $amount, $actor, $source, $description, $allowNegative, $reverses): WalletTransaction {
+        return DB::transaction(function () use ($wallet, $direction, $amount, $actor, $source, $description, $allowNegative): WalletTransaction {
             /** @var Wallet $locked */
             $locked = Wallet::whereKey($wallet->getKey())->lockForUpdate()->firstOrFail();
 
             $balance = $this->normalize((string) $locked->balance);
 
-            // Corrections bypass this on purpose (see reverse()/adjust()); ordinary
+            // Manual corrections bypass this on purpose (see adjust()); ordinary
             // operational debits must never overdraw.
             if (! $allowNegative && $direction === WalletTransaction::DEBIT && bccomp($balance, $amount, self::SCALE) < 0) {
                 throw new WalletException(
@@ -145,7 +104,6 @@ class WalletService
                 'balance_after' => $balanceAfter,
                 'source_type' => $source?->getMorphClass(),
                 'source_id' => $source?->getKey(),
-                'reversed_transaction_id' => $reverses?->getKey(),
                 'description' => $description,
                 'user_id' => $actor?->getKey(),
                 'created_at' => now(),
