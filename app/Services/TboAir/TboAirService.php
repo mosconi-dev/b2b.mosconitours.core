@@ -5,6 +5,7 @@ namespace App\Services\TboAir;
 use App\Enums\TripType;
 use App\Services\Settings\Settings;
 use App\Services\TboAir\DTO\AgencyBalance;
+use App\Services\TboAir\DTO\BookingResult;
 use App\Services\TboAir\DTO\FareQuote;
 use App\Services\TboAir\DTO\FareRule;
 use App\Services\TboAir\DTO\FlightOffer;
@@ -53,6 +54,27 @@ class TboAirService
     public function ssr(SelectionInput $selection): Ssr
     {
         return $this->withReauth(fn (string $token): Ssr => $this->doSsr($selection, $token));
+    }
+
+    /**
+     * The authoritative state of a booking at TBO, keyed on PNR.
+     *
+     * TBO requires this after every state-changing step, and it is the only way to
+     * resolve an ambiguous Book/Ticket outcome. Never cached: the entire value of this
+     * call is that it is current.
+     */
+    public function bookingDetails(string $pnr): BookingResult
+    {
+        return $this->withReauth(function (string $token) use ($pnr): BookingResult {
+            $data = $this->client->bookingDetails($pnr, $token);
+            $this->guardSession($data);
+
+            if (data_get($data, 'Response.ResponseStatus') === 2 || data_get($data, 'IsSuccess') === false) {
+                throw new TboAirException($this->firstError($data, "TBO returned no booking for PNR {$pnr}."));
+            }
+
+            return BookingResult::fromResponse($data);
+        });
     }
 
     /**

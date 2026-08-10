@@ -1,0 +1,43 @@
+{
+    "Response": {
+        "ResponseStatus": 1,
+        "Error": {
+            "ErrorCode": 0,
+            "ErrorMessage": ""
+        },
+        "TraceId": "bb3bce1e-1ee3-4833-b147-122456c2e3c5",
+        "FlightItinerary": {
+            "PNR": "QWER12",
+            "BookingId": 884213,
+            "IsDomestic": true,
+            "Source": 6,
+            "Origin": "MNL",
+            "Destination": "CEB",
+            "AirlineCode": "PR",
+            "ValidatingAirlineCode": "PR",
+            "IsLCC": true,
+            "NonRefundable": false,
+            "FareType": "PUB",
+            "Status": 1,
+            "TicketStatus": 1,
+            "InvoiceNo": "IN/2026/00412",
+            "Passenger": [
+                {
+                    "PaxId": 1,
+                    "Title": "Mr",
+                    "FirstName": "Juan",
+                    "LastName": "Cruz",
+                    "PaxType": 1,
+                    "IsLeadPax": true,
+                    "Ticket": {
+                        "TicketId": 771201,
+                        "TicketNumber": "0792412345678",
+                        "IssueDate": "2026-08-10T11:04:00",
+                        "ValidatingAirline": "PR",
+                        "Status": "Ticketed"
+                    }
+                }
+            ]
+        }
+    }
+}
