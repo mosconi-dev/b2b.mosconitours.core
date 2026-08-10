@@ -90,7 +90,8 @@ cheap to fix while the config is open:
 
 **DTOs** (`app/Services/TboAir/DTO/`): `SearchInput`, `FlightOffer` (carries `resultIndex`),
 `SelectionInput` (`traceId` + `resultIndex` — the price/SSR request), `FareQuote` (offered fare, price
-breakdown, `isLcc`, `isRefundable`, `isPassportMandatory`, `isPriceChanged`), `FareRule`, `Ssr`
+breakdown, `isLcc`, `isRefundable`, `isPassportMandatory`, `isPriceChanged`, plus **`raw`** — the whole
+untransformed response, excluded from `toArray()`), `FareRule`, `Ssr`
 (baggage + meal options, priced).
 
 ### `app/Services/Booking/`
@@ -106,7 +107,8 @@ Enums (`app/Enums/`): `TripType`, `CabinClass`, **`BookingStatus`** (`quoted` �
 
 ## Data model
 
-- **`Booking`** (`bookings` table, migrations `2026_07_09_000012` + `…000013`) —
+- **`Booking`** (`bookings` table, migrations `2026_07_09_000012` + `…000013` + `2026_08_10_000009`
+  which adds nullable **`quote_raw`** — the verbatim FareQuote response Book will echo back) —
   `#[Fillable]` reference/user/status/currency/fares/passengers(json)/contact(json)/ancillary_total/…;
   `status` cast to `BookingStatus`; `user()` relation. A booking is a **priced quote** until Phase 4.
 - Supplier logging: **`TboAirApiLog`** (`tbo_air_api_logs`) — `type`, `environment`, `endpoint`,
@@ -180,7 +182,7 @@ for Phase 4. Seat-map selection is deferred. See `03-implementation-plan.md`.
 Three structural gaps surfaced by reading TBO's Book/Ticket method pages (§5 of
 `01-tbo-api-reference.md`). Each needs a decision *before* `BookingService::book()` is written:
 
-### 1. We discard most of what Book has to echo back
+### 1. ~~We discard most of what Book has to echo back~~ — FIXED
 
 Book re-sends the whole priced itinerary — `NoOfSeatAvailable`, `OperatingCarrier`, `ETicketEligible`,
 `FlightStatus`, `StopOver`, `BookingClass`, `AirportName`, `CountryCode`/`CountryName`, and per-passenger
@@ -192,8 +194,11 @@ response: `ItineraryMapper` emits a UI-shaped subset (`airlineCode`, `airport`, 
 `duration`, `fareClass`, `stops`, …) and `price`/`fareBreakdown` are narrowed to four keys each.
 The transform is lossy in exactly the fields Book wants.
 
-→ **Persist the raw FareQuote JSON** (a `quote_raw` json column, or store raw and derive the DTO on
-read). Schema change, so decide it first.
+✅ **Fixed** (migration `2026_08_10_000009`): a nullable **`bookings.quote_raw`** json column stores the
+FareQuote response verbatim, written beside the snapshot by `BookingService::createFromQuote()`.
+`FareQuote::$raw` carries it and is **deliberately excluded from `toArray()`** — that method is both the
+`quote` snapshot and the JSON the wizard receives, and the browser has no use for the raw response.
+Nullable because pre-existing bookings have none and backfilling would mean re-pricing a moved fare.
 
 ### 2. `Passenger` is missing ~8 mandatory Book fields, and the enums are integers
 

@@ -43,8 +43,8 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   plan, detail in `01`§5 and `02`'s gaps section):
   1. **Ask TBO whether `ResultId`/`TrackingId` are our `ResultIndex`/`TraceId`** — Book/Ticket sit on a
      different host and route style than search, and their docs use different names.
-  2. **Persist the raw FareQuote JSON.** Book echoes the whole priced itinerary back, and our stored
-     quote is a lossy UI transform that drops most of the fields it wants. **Schema change.**
+  2. ~~**Persist the raw FareQuote JSON.**~~ ✅ **done** — nullable `bookings.quote_raw` keeps the
+     FareQuote response verbatim, since Book echoes the whole priced itinerary back.
   3. **Extend `Passenger`** — ~8 mandatory Book fields missing (address, city, country, mobile, email,
      `IsLeadPax`, FF nulls) and TBO wants **integer enums** where we store strings.
   4. **Read TBO's own agency balance.** Ticketing draws down **our** TBO balance, not the internal
