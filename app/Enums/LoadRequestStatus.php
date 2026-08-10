@@ -48,6 +48,14 @@ enum LoadRequestStatus: string
     }
 
     /**
+     * @return array<int, string>
+     */
+    public static function values(): array
+    {
+        return array_column(self::cases(), 'value');
+    }
+
+    /**
      * Tailwind pill classes for rendering the status as a badge.
      */
     public function badgeClasses(): string

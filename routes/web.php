@@ -12,7 +12,10 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\FlightController;
+use App\Http\Controllers\LoadRequestController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\WalletController;
+use App\Models\WalletLoadRequest;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -37,6 +40,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/', [BookingController::class, 'store'])->name('store')->middleware('can:booking.create');
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show')->whereNumber('booking')->middleware('can:booking.view');
     });
+    /*
+    | Wallet — the agency e-wallet and its load-request cycle. Every step is
+    | permission-gated; the policy adds agency scope, the pending check and
+    | four-eyes on approval.
+    */
+    Route::prefix('wallet')->name('wallet.')->group(function () {
+        Route::get('/', [WalletController::class, 'index'])->name('index')->middleware('can:wallet.view');
+
+        Route::prefix('requests')->name('requests.')->group(function () {
+            Route::get('/', [LoadRequestController::class, 'index'])->name('index')->middleware('can:wallet.load.view');
+            Route::get('/create', [LoadRequestController::class, 'create'])->name('create')
+                ->middleware('can:create,'.WalletLoadRequest::class);
+            Route::post('/', [LoadRequestController::class, 'store'])->name('store');
+            // approve and reject are two outcomes of one act, so they share `review`.
+            Route::patch('/{loadRequest}/approve', [LoadRequestController::class, 'approve'])->name('approve');
+            Route::patch('/{loadRequest}/reject', [LoadRequestController::class, 'reject'])->name('reject');
+            Route::patch('/{loadRequest}/cancel', [LoadRequestController::class, 'cancel'])->name('cancel')
+                ->middleware('can:cancel,loadRequest');
+        });
+    });
+
     Route::get('/api-logs', [ApiLogController::class, 'index'])->name('api-logs')->middleware('can:apilog.view');
     Route::get('/api-logs/{apiLog}', [ApiLogController::class, 'show'])->name('api-logs.show')->whereNumber('apiLog')->middleware('can:apilog.view');
 });

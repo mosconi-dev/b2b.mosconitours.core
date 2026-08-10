@@ -32,6 +32,8 @@ return [
         'sync' => 'Sync',
         'manage' => 'Manage',
         'live' => 'Use Live',
+        'request' => 'Request',
+        'approve' => 'Approve',
     ],
 
     /*
@@ -166,6 +168,29 @@ return [
             'icon' => 'clipboard',
             'actions' => ['view'],
         ],
+        // ---- Wallet ---------------------------------------------------------
+        // The wallet belongs to the agency, so these permissions say what a member
+        // may do with THEIR agency's balance. Who may approve is decided purely by
+        // ticking wallet.load.approve on a role — there is no privileged agency type.
+        'wallet' => [
+            'label' => 'Wallet',
+            'section' => 'travel_operations',
+            'group' => 'Wallet',
+            'route' => 'wallet.index',
+            'icon' => 'wallet',
+            'actions' => ['view'],
+        ],
+        'wallet.load' => [
+            'label' => 'Load Requests',
+            'section' => 'travel_operations',
+            'group' => 'Wallet',
+            'route' => 'wallet.requests.index',
+            'icon' => 'wallet',
+            // create = raise a top-up request; approve = decide it (approve or reject);
+            // cancel = withdraw a pending one.
+            'actions' => ['view', 'create', 'approve', 'cancel'],
+        ],
+
         'apilog' => [
             'label' => 'API Logs',
             'section' => 'travel_operations',
