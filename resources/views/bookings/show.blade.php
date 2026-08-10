@@ -174,6 +174,5 @@
             </dl>
         </div>
 
-        <p class="text-xs text-gray-400">Ticketing (Book / Ticket) is not enabled yet — this booking is a saved, priced quote.</p>
     </div>
 </x-app-layout>

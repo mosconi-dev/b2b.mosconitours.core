@@ -200,6 +200,21 @@ class TicketingRoutesTest extends TestCase
             ->assertDontSee('Hold PNR');
     }
 
+    /**
+     * The page carried "Ticketing (Book / Ticket) is not enabled yet" from before
+     * Phase 4.1 and kept saying it underneath a working Issue button.
+     */
+    public function test_the_page_does_not_claim_ticketing_is_unavailable(): void
+    {
+        $this->fake();
+        $user = $this->agent(['flight.issue']);
+
+        $this->actingAs($user)
+            ->get(route('bookings.show', $this->booking($user)))
+            ->assertOk()
+            ->assertDontSee('not enabled');
+    }
+
     public function test_a_live_booking_is_flagged_before_issuing(): void
     {
         $this->fake();
