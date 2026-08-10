@@ -83,7 +83,7 @@
                     @foreach ($breakdown as $b)
                         <div class="flex items-center justify-between py-2">
                             <span class="text-gray-600">{{ $b['count'] ?? 1 }} × {{ $b['passengerType'] ?? 'Passenger' }}</span>
-                            <span class="text-brand-900">{{ $booking->currency }} {{ number_format((((float) ($b['baseFare'] ?? 0)) + ((float) ($b['tax'] ?? 0))) * ((int) ($b['count'] ?? 1))) }}</span>
+                            <span class="text-brand-900">{{ $booking->currency }} {{ number_format((((float) ($b['baseFare'] ?? 0)) + ((float) ($b['tax'] ?? 0))) * ((int) ($b['count'] ?? 1)), 2) }}</span>
                         </div>
                     @endforeach
                 </div>

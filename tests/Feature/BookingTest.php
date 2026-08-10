@@ -271,6 +271,31 @@ class BookingTest extends TestCase
             ->assertDontSee('MT-OTHER001');
     }
 
+    public function test_prices_are_displayed_to_the_centavo(): void
+    {
+        // The wallet is debited to the centavo, so a rounded display would show a
+        // figure nobody is actually charged. 6400.75 must not render as 6,401.
+        $user = $this->bookingUser();
+        $booking = Booking::factory()->create([
+            'user_id' => $user->id,
+            'reference' => 'MT-CENTAVO1',
+            'total_amount' => '6400.75',
+            'ancillary_total' => '250.25',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('bookings.index'))
+            ->assertOk()
+            ->assertSee('6,400.75')
+            ->assertDontSee('6,401');
+
+        $this->actingAs($user)
+            ->get(route('bookings.show', $booking))
+            ->assertOk()
+            ->assertSee('6,400.75')
+            ->assertSee('250.25');
+    }
+
     public function test_show_renders_the_users_booking(): void
     {
         $user = $this->bookingUser();

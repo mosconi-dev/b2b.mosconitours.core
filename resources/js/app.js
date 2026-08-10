@@ -185,8 +185,10 @@ function formatDuration(mins) {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+// Always two decimals: these amounts are charged against the agency wallet to the
+// centavo, and rounding the display would show a figure nobody is actually billed.
 function money(amount) {
-    return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /**

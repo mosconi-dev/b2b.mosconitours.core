@@ -47,7 +47,7 @@
                                         ])>{{ $booking->environment }}</span>
                                     </td>
                                     <td class="px-5 py-3.5 text-gray-600">{{ count($booking->pax ?? []) }}</td>
-                                    <td class="whitespace-nowrap px-5 py-3.5 font-medium text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->total_amount) }}</td>
+                                    <td class="whitespace-nowrap px-5 py-3.5 font-medium text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }}</td>
                                     <td class="whitespace-nowrap px-5 py-3.5 text-gray-500">{{ $booking->created_at?->format('M j, Y H:i') }}</td>
                                     <td class="px-5 py-3.5 text-right">
                                         <a href="{{ route('bookings.show', $booking) }}" class="text-xs font-medium text-blue-600 hover:text-blue-700">View</a>
