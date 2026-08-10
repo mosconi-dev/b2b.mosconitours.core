@@ -8,6 +8,9 @@ export default {
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',
         './resources/views/**/*.blade.php',
+        // Enums return Tailwind class strings (e.g. AgencyType/BookingStatus::badgeClasses()),
+        // so they must be scanned too or those utilities get purged from the build.
+        './app/**/*.php',
         './node_modules/flowbite/**/*.js',
     ],
 
