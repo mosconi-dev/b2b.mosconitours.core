@@ -1,0 +1,11 @@
+{
+    "Currency": "PHP",
+    "TotalAvailableLimit": "125,430.50",
+    "LocalCurrency": "PHP",
+    "LocalCurrencyROE": "1",
+    "IsSuccess": true,
+    "TokenId": "balance-token-abc123",
+    "TrackingId": null,
+    "ErrorCode": 0,
+    "ErrorMessage": ""
+}

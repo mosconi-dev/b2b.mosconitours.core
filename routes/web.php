@@ -146,6 +146,9 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             ->whereIn('env', ['test', 'live'])->middleware('can:supplier.tbo.manage');
         Route::post('/tbo/flush/{env}', [SettingController::class, 'flushToken'])->name('tbo.flush')
             ->whereIn('env', ['test', 'live'])->middleware('can:supplier.tbo.manage');
+        // Our balance WITH TBO — a read, so view rather than manage.
+        Route::post('/tbo/balance', [SettingController::class, 'refreshBalance'])->name('tbo.balance')
+            ->middleware('can:supplier.tbo.view');
     });
 });
 

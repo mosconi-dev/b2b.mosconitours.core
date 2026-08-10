@@ -43,6 +43,25 @@ class TboAirClient
     }
 
     /**
+     * Our agency balance with TBO.
+     *
+     * Takes credentials rather than a TokenId — the same shape as Authenticate, and
+     * it likewise returns a fresh TokenId. So it must not run through the service's
+     * re-auth wrapper: there is no session here to expire.
+     *
+     * @return array<string, mixed>
+     */
+    public function agencyBalance(): array
+    {
+        return $this->post('balance', $this->endpoint('agency_balance'), [
+            'UserName' => $this->config['username'],
+            'Password' => $this->config['password'],
+            'BookingMode' => $this->config['auth_mode'],
+            'EndUserIp' => $this->config['ip_address'],
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */

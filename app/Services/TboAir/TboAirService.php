@@ -4,6 +4,7 @@ namespace App\Services\TboAir;
 
 use App\Enums\TripType;
 use App\Services\Settings\Settings;
+use App\Services\TboAir\DTO\AgencyBalance;
 use App\Services\TboAir\DTO\FareQuote;
 use App\Services\TboAir\DTO\FareRule;
 use App\Services\TboAir\DTO\FlightOffer;
@@ -52,6 +53,70 @@ class TboAirService
     public function ssr(SelectionInput $selection): Ssr
     {
         return $this->withReauth(fn (string $token): Ssr => $this->doSsr($selection, $token));
+    }
+
+    /**
+     * Our agency balance with TBO — the funds ticketing actually spends.
+     *
+     * This is *not* the agency e-wallet: that is what our agencies prepay us, while
+     * this is what we hold with the supplier. A Ticket can fail here while the
+     * booking agency's own wallet is fully funded.
+     *
+     * Cached per environment, and deliberately not on a short TTL — the call
+     * authenticates with credentials and hands back a fresh TokenId, and TBO's
+     * published guide still claims one token per day, so polling it risks churning
+     * the token a booking is mid-flight on. Pass $fresh only for a deliberate,
+     * user-initiated refresh.
+     *
+     * No re-auth wrapper: there is no session token in this request to expire.
+     */
+    public function agencyBalance(bool $fresh = false): AgencyBalance
+    {
+        $key = $this->balanceCacheKey();
+
+        if ($fresh) {
+            Cache::forget($key);
+        }
+
+        $cached = Cache::remember(
+            $key,
+            (int) config('tboair.balance_cache_ttl'),
+            function (): array {
+                $data = $this->client->agencyBalance();
+
+                if (data_get($data, 'IsSuccess') !== true) {
+                    throw new TboAirException($this->firstError($data, 'Could not read the TBO agency balance.'));
+                }
+
+                return AgencyBalance::fromResponse($data)->toArray();
+            },
+        );
+
+        return new AgencyBalance(
+            available: (string) ($cached['available'] ?? '0.00'),
+            currency: (string) ($cached['currency'] ?? 'PHP'),
+            localCurrency: $cached['localCurrency'] ?? null,
+            localCurrencyRoe: $cached['localCurrencyRoe'] ?? null,
+        );
+    }
+
+    /**
+     * Whether our TBO balance covers an amount — the guard Phase 4.1 runs before
+     * Ticket, so a booking fails on our side with a clear reason instead of being
+     * rejected by TBO after the agency has already been charged.
+     */
+    public function hasFundsFor(string $amount): bool
+    {
+        return $this->agencyBalance()->covers($amount);
+    }
+
+    /**
+     * Balance cache key, namespaced per environment — a test balance must never be
+     * shown against live, exactly like the token cache.
+     */
+    public function balanceCacheKey(): string
+    {
+        return 'tboair.balance:'.$this->client->environment();
     }
 
     /**
@@ -284,9 +349,24 @@ class TboAirService
      */
     private function firstError(array $data, string $fallback): string
     {
-        return data_get($data, 'Errors.0.UserMessage')
-            ?? data_get($data, 'Response.Error.ErrorMessage')
-            ?? data_get($data, 'Error.ErrorMessage')
-            ?? $fallback;
+        // Checked in order of specificity. The bare `ErrorMessage` is the shape the
+        // credential-authenticated calls (Authenticate, GetAvailableBalance) use —
+        // they report errors flat rather than under an `Error` object.
+        $candidates = [
+            data_get($data, 'Errors.0.UserMessage'),
+            data_get($data, 'Response.Error.ErrorMessage'),
+            data_get($data, 'Error.ErrorMessage'),
+            data_get($data, 'ErrorMessage'),
+        ];
+
+        foreach ($candidates as $message) {
+            // Non-null but empty is the common success case; it must not win over the
+            // fallback and leave the caller with a blank error.
+            if (filled($message)) {
+                return (string) $message;
+            }
+        }
+
+        return $fallback;
     }
 }
