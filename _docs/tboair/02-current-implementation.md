@@ -46,13 +46,14 @@ POST /bookings  (can:booking.create)
 | `token_ttl` | `82800` (23h) | inside the ~24h token validity |
 | `search_cache_ttl` | `300` (5 min) | **safely under the 15-min TraceId window** |
 | `recent_ttl` | `86400` (1 day) | per-user "recent searches" shortcut cache |
+| `balance_cache_ttl` | `300` (5 min) | our TBO balance, per env — read on demand, never polled |
 | `timeout` / `connect_timeout` | `300` / `10` | seconds |
 | `logging` | `true` | toggles `TboAirApiLog` writes |
 
-**Endpoint keys (both `test` + `live`):** `authentication`, `search`, `fare_rule`, `fare_quote`, `ssr`,
-`book`, `ticket`, `booking_details`, `release`, `refund` (**live only**). ✅ implemented today:
-`authentication`, `search`, `fare_rule`, `fare_quote`, `ssr`. ⚠️ dormant: `book`, `ticket`,
-`booking_details`, `release`, `refund`.
+**Endpoint keys (both `test` + `live`):** `authentication`, `agency_balance`, `search`, `fare_rule`,
+`fare_quote`, `ssr`, `book`, `ticket`, `booking_details`, `release`, `refund` (**live only**).
+✅ implemented today: `authentication`, `agency_balance`, `search`, `fare_rule`, `fare_quote`, `ssr`.
+⚠️ dormant: `book`, `ticket`, `booking_details`, `release`, `refund`.
 
 ### ⚠️ Known problems in the dormant endpoint config
 
@@ -77,8 +78,8 @@ cheap to fix while the config is open:
 
 | Class | Key public API | Purpose |
 | --- | --- | --- |
-| `TboAirService` | `search(SearchInput): array` · `fareQuote(SelectionInput): FareQuote` · `fareRule(SelectionInput): FareRule` · `ssr(SelectionInput): Ssr` · `token()` · `environment()` · `tokenTtl()` · `cacheKey()` | Orchestrates token caching + the five implemented calls; single `ErrorCode 6` re-auth retry; maps errors |
-| `TboAirClient` | `authenticate()` · `search()` · `fareQuote()` · `fareRule()` · `ssr()` · `environment()` · `ipAddress()` | Thin per-env HTTP wrapper; logs every call; masks `Password`; omits `Accept: application/json` (TBO gateway can hang) |
+| `TboAirService` | `search(SearchInput): array` · `fareQuote(SelectionInput): FareQuote` · `fareRule(SelectionInput): FareRule` · `ssr(SelectionInput): Ssr` · `agencyBalance(fresh:): AgencyBalance` · `hasFundsFor(string): bool` · `token()` · `environment()` · `tokenTtl()` · `cacheKey()` · `balanceCacheKey()` | Orchestrates token caching + the implemented calls; single `ErrorCode 6` re-auth retry; maps errors. **`agencyBalance()` skips the re-auth wrapper** — it is credential-authenticated, with no session token to expire |
+| `TboAirClient` | `authenticate()` · `agencyBalance()` · `search()` · `fareQuote()` · `fareRule()` · `ssr()` · `environment()` · `ipAddress()` | Thin per-env HTTP wrapper; logs every call; masks `Password`; omits `Accept: application/json` (TBO gateway can hang) |
 | `TboAirConfig` | `static for(env): array` | Flattens base + `environments[env]` into the client config shape |
 | `TboEnvironmentResolver` | `resolve(?User)` · `normalize()` | per-user override → global setting → config default; per-user `live` requires `supplier.tbo.live` |
 | `FlightSearchCache` | `remember(userId, env, SearchInput, Closure)` · `key(...)` | Per-user + per-env result cache: `flight_search:{env}:{user}:{hash}` (5 min) |
@@ -159,7 +160,8 @@ FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`
 
 ## Console commands (`app/Console/Commands/`)
 
-`tboair:auth {--fresh}`, `tboair:logs {id?} {--limit=} {--type=} {--failed}`,
+`tboair:auth {--fresh}`, `tboair:balance {--fresh}` (our TBO balance, with the e-wallet distinction
+spelled out in the output), `tboair:logs {id?} {--limit=} {--type=} {--failed}`,
 `tboair:search {origin} {destination} {departure} …` (live smoke tests need a whitelisted server).
 
 ## Tests & fixtures
@@ -169,14 +171,18 @@ Coverage includes `FlightSearchTest`, `FlightSearchCacheTest` (+ `Unit`), `Recen
 `Unit/FlightResultTransformerTest`, `Unit/SearchInputTest`, `Unit/TboPassengerMapperTest` (enum
 encoding, retired titles, refused gender), `BookingTest` (create/store, gates, fare-gone redirect,
 embedded edit form, **raw quote kept verbatim, contact fan-out, lead-pax rules, title constraint**),
-`Feature/TboAir/*` (env resolver, per-user env, live routing), `ApiLogTest`, and the admin
-settings/logs tests.
+`Feature/TboAir/*` (env resolver, per-user env, live routing, **agency balance** — caching, the real
+`Agency.*` envelope, credential-not-token request, gating, and the admin panel making **no** supplier
+call on render), `Unit/AgencyBalanceTest` (separators, both envelopes, bccomp edges), `ApiLogTest`,
+and the admin settings/logs tests. Balance fixtures: `balance.json` (flat, as documented) and
+`balance-agency.json` (nested, as observed).
 
 ## Environment variables
 
 `TBOAIR_ENV`, `TBOAIR_TEST_USERNAME`/`_PASSWORD`, `TBOAIR_LIVE_USERNAME`/`_PASSWORD`, `TBOAIR_IP_ADDRESS`,
 `TBOAIR_AUTH_MODE`, `TBOAIR_BOOKING_MODE`, `TBOAIR_TOKEN_TTL`, `TBOAIR_CACHE_KEY`,
-`TBOAIR_SEARCH_CACHE_TTL`, `TBOAIR_RECENT_TTL`, `TBOAIR_TIMEOUT`, `TBOAIR_CONNECT_TIMEOUT`,
+`TBOAIR_SEARCH_CACHE_TTL`, `TBOAIR_RECENT_TTL`, `TBOAIR_BALANCE_CACHE_TTL`, `TBOAIR_TIMEOUT`,
+`TBOAIR_CONNECT_TIMEOUT`,
 `TBOAIR_LOGGING`, and per-endpoint overrides `TBOAIR_AUTH_URL` / `TBOAIR_SEARCH_URL`. (Live credentials
 are currently unset — live auth fails until provided.)
 
@@ -233,13 +239,30 @@ Book requires `AddressLine1`, `AddressLine2`, `City`, `CountryCode`, `CountryNam
   Miss/Mr for already-stored bookings, and **refuses to guess a missing gender** — TBO requires it and
   airlines match it against ID. Phase 4.1 builds the payload around it.
 
-### 3. TBO's agency balance is invisible to us
+### 3. ~~TBO's agency balance is invisible to us~~ — FIXED
 
-Nothing reads `Wallet/GetAvailableBalance`, and it is not even in `config/tboair.php`. The e-wallet
-that shipped is **entirely internal** — one balance per agency, debited at `createFromQuote()`. But
-TBO deducts from **our** TBO balance at ticketing, so a Ticket can fail for insufficient TBO funds
-while the booking agency's internal wallet is fully funded — after we have already debited them.
-(`transitionTo` → `failed` does refund the internal charge, so the agency is made whole; the booking
-still fails, and nobody is watching the balance that caused it.)
+Ticketing spends **our** balance with TBO, not the internal e-wallet, so a Ticket can fail for
+insufficient TBO funds while the booking agency's own wallet is full — after we have already debited
+them. (`transitionTo` → `failed` refunds the internal charge, so the agency is made whole; the booking
+still fails.)
 
-→ Add the balance read, a pre-ticket check, and an ops-facing display.
+✅ **Fixed:**
+
+- **`agency_balance` endpoint** in both environments. The test URL is **verified live** (HTTP 200 with
+  a real TrackingId) — unusual among the dormant endpoints. It currently answers `IsSuccess: false`
+  purely because dev is not IP-whitelisted, the same as `tboair:auth`.
+- **`DTO\AgencyBalance`** — decimal **string** + bcmath `covers()`, thousands separators stripped
+  first (bcmath reads `"1,500.00"` as `1`). Accepts **both** response envelopes TBO ships: the flat
+  documented one and the Authenticate-style `Agency.*` one it actually returned, including TBO's
+  `TotalAailableLimit` misspelling. See `01`§5.5.
+- **`TboAirService::agencyBalance(fresh:)`** — cached per environment (`balance_cache_ttl`, 5 min),
+  **not** wrapped in `withReauth()`: the call is credential-authenticated and carries no session
+  token. **`hasFundsFor()`** is the pre-Ticket seam for Phase 4.1.
+- **Ops surface:** a *Check now* panel on admin Settings (`supplier.tbo.view`), audit event
+  `tbo.balance_checked`, and `php artisan tboair:balance {--fresh}`.
+- **Read on demand, never on page render** — the call mints a TokenId, and TBO's guide still claims
+  one token per day, so polling risks churning the token an in-flight booking is using.
+
+Also fixed while here: `TboAirService::firstError()` only looked for **nested** `Error` objects, so the
+**flat** `ErrorMessage` these credential calls use was dropped, and a present-but-empty message beat
+the fallback and rendered a blank error.

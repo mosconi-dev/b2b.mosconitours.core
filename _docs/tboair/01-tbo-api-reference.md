@@ -213,7 +213,38 @@ not defensive polish.
   **tickets** (**`TicketId`**, `TicketNumber`, `IssueDate`, `ValidatingAirline`, `Status`, `Remarks`);
   segments; fare rules; `InvoiceNo` / `InvoiceCreatedOn`; and an optional `Penalty` block.
 
-### 5.5 ReleasePNR — cancel an unticketed hold
+### 5.5 GetAvailableBalance (GetAgencyBalance) — our funds with TBO
+
+**Verified against the live test host** — one of the few dormant endpoints we have actually called.
+
+- **Request:** `UserName`, `Password`, `BookingMode` (`"API"`), `EndUserIp`. **No `TokenId`** — it is
+  credential-authenticated like Authenticate, and it **returns** a fresh `TokenId`.
+- **Documented response (flat):** `Currency`, `TotalAvailableLimit`, `LocalCurrency`,
+  `LocalCurrencyROE`, `IsSuccess`, `TokenId`, `TrackingId`, `ErrorCode`, `ErrorMessage`.
+- ⚠️ **Actual response is the *Authenticate* envelope**, not the flat shape above:
+
+  ```json
+  { "Agency": null, "Alerts": [], "Errors": [null],
+    "TokenId": null, "IsSuccess": false, "TrackingId": "c4a22e08-…" }
+  ```
+
+  The balance sits under **`Agency`**, and Authenticate spells it **`TotalAailableLimit`** — missing
+  the "v". Our `AgencyBalance` DTO accepts both spellings and both envelopes rather than betting on
+  one. Errors arrive **flat** (`ErrorMessage`) or as `Errors: [null]` with no message at all.
+- **URL:** test `https://xmloutapi.tboair.com/API/V1/Wallet/GetAvailableBalance` (confirmed 200);
+  live `https://searchapi.tboair.com/api/v1/Wallet/GetAvailableBalance` (by analogy with Authenticate).
+- ⚠️ **The Authenticate response already carries this block**, so a token refresh yields a free — if
+  stale — balance. Useful, but not a substitute for a fresh read before ticketing.
+- ⚠️ **Calling it mints a TokenId.** If the published "one token per day" rule is ever literally
+  enforced, polling the balance could invalidate the token an in-flight booking is using. Read it on
+  demand and cache it; do not poll.
+
+> 🔢 **A third token-validity figure.** This page says the returned TokenId is valid **20 hours**. The
+> guide says 12, TBO's meeting said 24, and our TTL is 23h. The `ErrorCode 6` self-heal absorbs the
+> difference, but if the real figure is 20h we serve a dead token for up to 3h before healing —
+> dropping `token_ttl` under 20h costs one extra auth a day. Worth settling with TBO alongside P1.
+
+### 5.6 ReleasePNR — cancel an unticketed hold
 
 - **Request:** `PNR`, **`LastName`**, `Remarks` (e.g. `"RELEASE PNR"`), `TokenId`, `IPAddress`.
 - **Response:** `ResponseMessage`, `IsSuccess`, `Errors[]`, `Alerts[]`, `TokenId`, `TrackingId`.

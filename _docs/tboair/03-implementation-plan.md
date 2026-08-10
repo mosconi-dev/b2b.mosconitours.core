@@ -150,7 +150,7 @@ change the schema or the payload shape. Settle them first; retrofitting them mid
 | **P1** | **Identifier naming/generation.** Book documents `ResultId`/`TrackingId`; we hold `ResultIndex`/`TraceId`. Different host + route style too. | **Ask TBO** (a) are they the same identifiers renamed, and (b) does the `api/v1` booking host accept a TraceId minted by an `InternalAirService.svc` search. Cheapest question, most expensive to get wrong. |
 | ~~**P2**~~ | ~~Book echoes the whole itinerary, and our stored quote is a lossy UI transform.~~ | ✅ **DONE** — nullable `bookings.quote_raw` json column (migration `2026_08_10_000009`) holds the FareQuote response verbatim; `FareQuote::$raw` carries it and is kept out of `toArray()` so it never reaches the browser. |
 | ~~**P3**~~ | ~~`Passenger` lacks ~8 mandatory Book fields; TBO wants integer enums where we store strings.~~ | ✅ **DONE** — address/mobile/email collected once as contact and **fanned onto every pax row**; `isLeadPax` per passenger (exactly one, adult only); Title constrained to `Mr/Mrs/Miss`; `TboPassengerMapper` does the string→ordinal encoding. |
-| **P4** | **TBO's own agency balance is invisible.** Ticket draws down *our* TBO balance, not the internal e-wallet. | Add `Wallet/GetAvailableBalance` to config + client, check it **before** Ticket, and surface it to ops. |
+| ~~**P4**~~ | ~~TBO's own agency balance is invisible.~~ | ✅ **DONE** — `agency_balance` endpoint (**URL verified live**), `AgencyBalance` DTO, `TboAirService::agencyBalance()` / `hasFundsFor()` (the pre-Ticket seam for 4.1), `tboair:balance`, and a **Check now** panel on admin Settings. |
 
 Each is detailed under "Gaps for the booking lifecycle" in `02-current-implementation.md`.
 
@@ -249,5 +249,8 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
 
 Phases 1–3 shipped in that order, so the remaining path is simply **4.0 → 4.1 → 5 → 6**.
 
-**4.0 progress:** **P2** (`quote_raw`) and **P3** (passenger fields) are done. Remaining: **P1** — the
-identifier question to TBO, which has a turnaround time, so send it now — and **P4** (TBO balance).
+**4.0 progress:** **P2** (`quote_raw`), **P3** (passenger fields) and **P4** (TBO balance) are done.
+**Only P1 remains** — the identifier question to TBO. It is the one item we cannot resolve ourselves,
+it has a turnaround time, and **4.1 cannot start without it**, so send it now. Worth folding two more
+questions into the same email: the **token validity** figure (12h / 20h / 24h all appear in TBO's own
+material — see `01`§5.5) and whether **`Booking/RefundApi` or `Queues/RefundApi`** is current.

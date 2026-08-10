@@ -48,17 +48,21 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   3. ~~**Extend `Passenger`.**~~ ✅ **done** — address/mobile/email collected once as contact and fanned
      onto every pax row, `isLeadPax` per passenger, Title limited to TBO's three, and
      `TboPassengerMapper` for the string→integer encoding.
-  4. **Read TBO's own agency balance.** Ticketing draws down **our** TBO balance, not the internal
-     e-wallet — a ticket can fail for insufficient TBO funds after we have already debited the agency.
+  4. ~~**Read TBO's own agency balance.**~~ ✅ **done** — `agencyBalance()` / `hasFundsFor()`,
+     `tboair:balance`, and a *Check now* panel in admin Settings. Ticketing draws down **our** TBO
+     balance, not the internal e-wallet.
+
+  **Only P1 is left, and it is the blocker for 4.1** — it is the one item we cannot answer ourselves.
 - **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a
   price/schedule-change case and an **`InProgress`** case. Four of them need baggage/meal, so Phase 3
   is on the certification path. Submit case by case with PNRs; 4–5 working days.
 
 ## Related in-app tooling
 
-- Admin → **Settings**: switch global env, per-env token TTL + seed/flush.
+- Admin → **Settings**: switch global env, per-env token TTL + seed/flush, and **our TBO balance**
+  (*Check now*, `supplier.tbo.view`) — distinct from the agency e-wallet at `/wallet`.
 - Admin → **Users → Logs**: per-user API calls + activity.
-- Console: `tboair:auth`, `tboair:search`, `tboair:logs` (search/auth smoke tests require a
-  TBO-whitelisted server).
+- Console: `tboair:auth`, `tboair:balance`, `tboair:search`, `tboair:logs` (all live smoke tests
+  require a TBO-whitelisted server).
 - The `/admin` area and every `can:`-gated route/action above are governed by **RBAC** — see
   [`../rbac/00-overview.md`](../rbac/00-overview.md).
