@@ -178,7 +178,10 @@ return [
             'group' => 'Wallet',
             'route' => 'wallet.index',
             'icon' => 'wallet',
-            'actions' => ['view'],
+            // adjust = post a manual correction, or reverse an entry made in error.
+            // Effectively the right to move money without a request, so it belongs on
+            // office/platform roles only.
+            'actions' => ['view', 'adjust'],
         ],
         'wallet.load' => [
             'label' => 'Load Requests',

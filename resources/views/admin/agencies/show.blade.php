@@ -141,6 +141,14 @@
                        'bg-brand-800 text-white shadow-sm' => $tab === 'roles',
                        'text-gray-500 hover:text-gray-700' => $tab !== 'roles',
                    ])>Roles</a>
+                @if (in_array('wallet', $tabs, true))
+                    <a href="{{ route('admin.agencies.show', ['agency' => $agency, 'tab' => 'wallet']) }}"
+                       @class([
+                           'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
+                           'bg-brand-800 text-white shadow-sm' => $tab === 'wallet',
+                           'text-gray-500 hover:text-gray-700' => $tab !== 'wallet',
+                       ])>Wallet</a>
+                @endif
             </div>
         @endif
 
@@ -148,6 +156,37 @@
             <div class="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                 <p class="text-sm font-medium text-brand-900">Nothing more to show</p>
                 <p class="mt-1 text-sm text-gray-500">You do not have permission to view this agency's users or roles.</p>
+            </div>
+        @elseif ($tab === 'wallet')
+            <div class="space-y-6">
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Wallet balance</p>
+                    <p class="mt-1 text-3xl font-semibold tracking-tight {{ bccomp((string) $wallet->balance, '0', 2) < 0 ? 'text-red-700' : 'text-brand-900' }}">
+                        <span class="text-lg font-medium text-gray-400">{{ $wallet->currency }}</span>
+                        {{ $wallet->formattedBalance() }}
+                    </p>
+                    <p class="mt-2 text-xs text-gray-500">Shared by everyone in {{ $agency->name }}.</p>
+                </div>
+
+                @can('adjust', $wallet)
+                    @include('wallet._adjust')
+                @endcan
+
+                <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <div class="border-b border-gray-100 px-6 py-4">
+                        <h2 class="text-base font-semibold text-brand-900">Ledger</h2>
+                        <p class="mt-0.5 text-xs text-gray-500">Append-only. Corrections appear as new opposing entries.</p>
+                    </div>
+
+                    @if ($entries->isEmpty())
+                        <div class="p-12 text-center">
+                            <p class="text-sm font-medium text-brand-900">Nothing yet</p>
+                            <p class="mt-1 text-sm text-gray-500">Approved load requests and adjustments will appear here.</p>
+                        </div>
+                    @else
+                        @include('wallet._ledger')
+                    @endif
+                </div>
             </div>
         @elseif ($tab === 'roles')
             <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  */
 #[Fillable([
     'wallet_id', 'agency_id', 'direction', 'amount', 'balance_after',
-    'source_type', 'source_id', 'description', 'user_id', 'created_at',
+    'source_type', 'source_id', 'reversed_transaction_id', 'description', 'user_id', 'created_at',
 ])]
 class WalletTransaction extends Model
 {
@@ -63,9 +64,47 @@ class WalletTransaction extends Model
         return $this->morphTo();
     }
 
+    /**
+     * The entry this one reverses, if it is a correction.
+     *
+     * @return BelongsTo<WalletTransaction, $this>
+     */
+    public function reversed(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reversed_transaction_id');
+    }
+
+    /**
+     * The correcting entry that reversed this one, if any.
+     *
+     * @return HasOne<WalletTransaction, $this>
+     */
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(self::class, 'reversed_transaction_id');
+    }
+
+    /** This entry undoes an earlier one. */
+    public function isReversal(): bool
+    {
+        return $this->reversed_transaction_id !== null;
+    }
+
+    /** An earlier correction already undid this entry. */
+    public function isReversed(): bool
+    {
+        return $this->reversal()->exists();
+    }
+
     public function isCredit(): bool
     {
         return $this->direction === self::CREDIT;
+    }
+
+    /** The direction that undoes this entry. */
+    public function opposingDirection(): string
+    {
+        return $this->isCredit() ? self::DEBIT : self::CREDIT;
     }
 
     /**

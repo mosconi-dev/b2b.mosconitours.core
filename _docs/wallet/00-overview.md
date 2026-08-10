@@ -54,6 +54,7 @@ thousands separators first, since bcmath would read `"1,500.00"` as `1`.
 | Ability | Meaning |
 | --- | --- |
 | `wallet.view` | See your agency's balance and ledger (`/wallet`) |
+| `wallet.adjust` | Reverse an entry, or post a manual adjustment — **moves money with no request and no second pair of eyes** |
 | `wallet.load.view` | See the load-request queue |
 | `wallet.load.create` | Raise a top-up request |
 | `wallet.load.approve` | Decide a request — approve **or** reject (two outcomes of one act) |
@@ -74,11 +75,46 @@ and four-eyes. `create` additionally requires an agency — platform staff have 
 `wallet.load_requested`, `wallet.load_approved` (with the resulting balance), `wallet.load_rejected`,
 `wallet.load_cancelled` — all through the existing `AuditLogger`, so they inherit agency scoping.
 
+## Corrections (migration `2026_08_10_000007`)
+
+Nothing on the ledger is ever edited or deleted. A correction is a **new opposing entry**, so the
+mistake and its fix both stay on the record. Two shapes, both behind `wallet.adjust`:
+
+**Reverse** — the fix for a load approved in error. Pick the entry; amount and direction come from the
+entry itself, so there is nothing to mistype. The correction points back via
+`wallet_transactions.reversed_transaction_id`.
+
+- An entry can be reversed **at most once**: an explicit check, a re-check under lock, and a **unique
+  index** on `reversed_transaction_id` as the database-level backstop.
+- A correction cannot itself be reversed — reversing a reversal is confusing; post an adjustment.
+- The load request's status is **not** changed. Approved stays terminal; the ledger tells the story.
+
+**Adjust** — a discretionary credit or debit not tied to one entry (a fee, goodwill, a balance brought
+over). Both shapes **require a reason**, recorded on the ledger and in the audit trail.
+
+### Corrections may go negative
+
+`post()` takes `allowNegative`, set only by `reverse()` and `adjust()`. If 5,000 was credited in error
+and 3,000 already spent, the claw-back is still owed — refusing to record it would leave the books
+wrong rather than merely uncomfortable, so the balance goes to −3,000 and is shown in red. Ordinary
+operational debits keep the insufficient-funds guard.
+
+### Where it lives
+
+The agency hub gains a **Wallet** tab (`/admin/agencies/{agency}?tab=wallet`) with the balance, the
+ledger, per-row **Reverse**, and the adjustment form — this is how the office corrects an agency's
+wallet, since `/wallet` only ever shows the signed-in user's own. Both surfaces share
+`wallet/_ledger.blade.php` and `wallet/_adjust.blade.php`.
+
+Audit events: `wallet.adjusted`, `wallet.reversed` (both with the reason and resulting balance).
+
+> **`wallet.adjust` is effectively the right to mint money.** Unlike a load request there is no
+> request/approve split, so one holder can credit a wallet unilaterally. Keep it on office/platform
+> roles; do not grant it to agency roles.
+
 ## Not built yet
 
 - **Spending.** Nothing debits the wallet — bookings do not draw on it. `WalletService::debit()` exists,
   is tested (including the insufficient-funds refusal), and takes a `source` morph, so wiring booking
   payment is additive.
-- **Manual adjustment.** There is no way to correct a load approved in error; the intended shape is a
-  `wallet.adjust` permission over `debit()`, posting an opposing entry rather than editing history.
 - **Notifications.** Nobody is told a request is waiting; today the queue must be checked.

@@ -9,7 +9,9 @@ use App\Http\Requests\Admin\UpdateAgencyRequest;
 use App\Models\Agency;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use App\Services\Rbac\AgencyService;
+use App\Services\Wallet\WalletService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -17,7 +19,10 @@ use Illuminate\View\View;
 
 class AgencyController extends Controller
 {
-    public function __construct(private readonly AgencyService $agencies) {}
+    public function __construct(
+        private readonly AgencyService $agencies,
+        private readonly WalletService $wallets,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -45,6 +50,7 @@ class AgencyController extends Controller
         $tabs = array_values(array_filter([
             $actor->can('user.view') ? 'users' : null,
             $actor->can('role.view') ? 'roles' : null,
+            $actor->can('wallet.view') ? 'wallet' : null,
         ]));
 
         $requested = $request->query('tab');
@@ -62,8 +68,19 @@ class AgencyController extends Controller
 
         $users = null;
         $roles = null;
+        $wallet = null;
+        $entries = null;
 
-        if ($tab === 'roles') {
+        if ($tab === 'wallet') {
+            // Created on first view so the office always has something to adjust.
+            $wallet = $this->wallets->for($agency);
+            $entries = WalletTransaction::where('wallet_id', $wallet->id)
+                ->with(['user:id,name', 'reversal:id,reversed_transaction_id'])
+                ->latest('created_at')
+                ->latest('id')
+                ->paginate(20)
+                ->withQueryString();
+        } elseif ($tab === 'roles') {
             $roles = Role::visibleTo($actor)
                 ->where('agency_id', $agency->id)
                 ->withCount(['users', 'permissions'])
@@ -79,7 +96,7 @@ class AgencyController extends Controller
                 ->withQueryString();
         }
 
-        return view('admin.agencies.show', compact('agency', 'tab', 'tabs', 'users', 'roles'));
+        return view('admin.agencies.show', compact('agency', 'tab', 'tabs', 'users', 'roles', 'wallet', 'entries'));
     }
 
     public function create(Request $request): View

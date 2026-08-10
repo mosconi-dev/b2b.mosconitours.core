@@ -14,6 +14,7 @@ use App\Http\Controllers\BookingController;
 use App\Http\Controllers\FlightController;
 use App\Http\Controllers\LoadRequestController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\WalletAdjustmentController;
 use App\Http\Controllers\WalletController;
 use App\Models\WalletLoadRequest;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +48,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     */
     Route::prefix('wallet')->name('wallet.')->group(function () {
         Route::get('/', [WalletController::class, 'index'])->name('index')->middleware('can:wallet.view');
+
+        // Manual corrections. Both post a new opposing entry rather than editing
+        // history; authorization is the wallet.adjust permission via policy.
+        Route::post('/{wallet}/adjustments', [WalletAdjustmentController::class, 'store'])->name('adjust')
+            ->whereNumber('wallet');
+        Route::patch('/transactions/{transaction}/reverse', [WalletAdjustmentController::class, 'reverse'])->name('reverse')
+            ->whereNumber('transaction');
 
         Route::prefix('requests')->name('requests.')->group(function () {
             Route::get('/', [LoadRequestController::class, 'index'])->name('index')->middleware('can:wallet.load.view');

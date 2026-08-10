@@ -50,7 +50,7 @@
             {{-- Balance --}}
             <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Available balance</p>
-                <p class="mt-1 text-3xl font-semibold tracking-tight text-brand-900">
+                <p class="mt-1 text-3xl font-semibold tracking-tight {{ bccomp((string) $wallet->balance, '0', 2) < 0 ? 'text-red-700' : 'text-brand-900' }}">
                     <span class="text-lg font-medium text-gray-400">{{ $wallet->currency }}</span>
                     {{ $wallet->formattedBalance() }}
                 </p>
@@ -58,6 +58,10 @@
                     Shared by everyone in {{ $agency->name }} — the wallet belongs to the agency, not to a user.
                 </p>
             </div>
+
+            @can('adjust', $wallet)
+                @include('wallet._adjust')
+            @endcan
 
             {{-- Ledger --}}
             <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -72,36 +76,7 @@
                         <p class="mt-1 text-sm text-gray-500">Approved load requests will appear here.</p>
                     </div>
                 @else
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-100 text-sm">
-                            <thead>
-                                <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                    <th class="px-5 py-3">Date</th>
-                                    <th class="px-5 py-3">Description</th>
-                                    <th class="px-5 py-3">By</th>
-                                    <th class="px-5 py-3 text-right">Amount</th>
-                                    <th class="px-5 py-3 text-right">Balance</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                @foreach ($entries as $entry)
-                                    <tr class="transition hover:bg-gray-50">
-                                        <td class="whitespace-nowrap px-5 py-3.5 text-gray-500">{{ $entry->created_at?->format('d M Y H:i') }}</td>
-                                        <td class="px-5 py-3.5 text-gray-700">{{ $entry->description ?? '—' }}</td>
-                                        <td class="px-5 py-3.5 text-gray-500">{{ $entry->user?->name ?? '—' }}</td>
-                                        <td class="whitespace-nowrap px-5 py-3.5 text-right font-medium {{ $entry->isCredit() ? 'text-emerald-700' : 'text-red-700' }}">
-                                            {{ $entry->signedAmount() }}
-                                        </td>
-                                        <td class="whitespace-nowrap px-5 py-3.5 text-right text-gray-700">{{ number_format((float) $entry->balance_after, 2) }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-
-                    @if ($entries->hasPages())
-                        <div class="border-t border-gray-100 px-5 py-3">{{ $entries->links() }}</div>
-                    @endif
+                    @include('wallet._ledger')
                 @endif
             </div>
         @endif
