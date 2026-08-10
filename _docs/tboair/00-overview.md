@@ -39,6 +39,19 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   TTL), appended on each successful search (deduped, capped at 6), and click-to-refill.
 - **Next step:** **Phase 4 (Book + Ticket)** — the money step (needs the whitelisted server for a real
   ticket). Seat-map selection is deferred. See `03-implementation-plan.md`.
+- **Four things to settle before Phase 4 code** (from TBO's Book/Ticket method pages — Phase 4.0 in the
+  plan, detail in `01`§5 and `02`'s gaps section):
+  1. **Ask TBO whether `ResultId`/`TrackingId` are our `ResultIndex`/`TraceId`** — Book/Ticket sit on a
+     different host and route style than search, and their docs use different names.
+  2. **Persist the raw FareQuote JSON.** Book echoes the whole priced itinerary back, and our stored
+     quote is a lossy UI transform that drops most of the fields it wants. **Schema change.**
+  3. **Extend `Passenger`** — ~8 mandatory Book fields missing (address, city, country, mobile, email,
+     `IsLeadPax`, FF nulls) and TBO wants **integer enums** where we store strings.
+  4. **Read TBO's own agency balance.** Ticketing draws down **our** TBO balance, not the internal
+     e-wallet — a ticket can fail for insufficient TBO funds after we have already debited the agency.
+- **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a
+  price/schedule-change case and an **`InProgress`** case. Four of them need baggage/meal, so Phase 3
+  is on the certification path. Submit case by case with PNRs; 4–5 working days.
 
 ## Related in-app tooling
 

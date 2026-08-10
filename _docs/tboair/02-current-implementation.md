@@ -54,6 +54,19 @@ POST /bookings  (can:booking.create)
 `authentication`, `search`, `fare_rule`, `fare_quote`, `ssr`. ⚠️ dormant: `book`, `ticket`,
 `booking_details`, `release`, `refund`.
 
+### ⚠️ Known problems in the dormant endpoint config
+
+Found by checking `config/tboair.php` against TBO's endpoint help page — all Phase 4/5 concerns, but
+cheap to fix while the config is open:
+
+| Problem | Detail |
+| --- | --- |
+| **`refund` is on the wrong controller** | Configured as `…/api/v1/Booking/RefundApi`, but TBO documents `RefundApi` and `RefundRequest` under **`Queues`**, not `Booking`. The refund flow is also documented as a *change request* (`SendChangeRequest.aspx`). |
+| **`refund` is live-only** | The `test` environment has no `refund` URL at all, so the flow cannot be exercised before go-live. |
+| **Void is missing entirely** | No `Queues/GetVoidAmountDetails` or `Queues/VoidRequest` keys. |
+| **`GetLastTicketDate` is missing** | Needed to respect the ticketing time limit on a held non-LCC PNR. |
+| **`GetAgencyBalance` is missing** | `Wallet/GetAvailableBalance` — **our** balance with TBO, the pot ticketing draws down. Distinct from the internal agency e-wallet; see the gaps section below. |
+
 - Test search/fare/ssr: `api-stage.tboair.com/InternalAirService.svc/rest/…`; auth: `xmloutapi.tboair.com`;
   book/ticket host: `xmloutbookingapi.tboair.com/api/v1/Booking/…` (dormant).
 - Live: `tbo-api.tboair.com/…`, auth `searchapi.tboair.com`, booking `bookingapi.tboair.com/…`.
@@ -71,6 +84,8 @@ POST /bookings  (can:booking.create)
 | `FlightSearchCache` | `remember(userId, env, SearchInput, Closure)` · `key(...)` | Per-user + per-env result cache: `flight_search:{env}:{user}:{hash}` (5 min) |
 | `RecentSearchStore` | `get(userId)` · `put(userId, array)` · `key(userId)` | Per-user "recent searches" list in the cache (`flight_recent:{user}`, ~1 day); client owns list shape |
 | `FlightResultTransformer` | `transform(array): FlightOffer[]` | Envelope-agnostic mapping of TBO search results |
+| `ItineraryMapper` | `trips(mixed)` · `legs()` · `lowestAllowance()` · `static isNestedList()` | Normalizes TBO's `Segments` (nested-per-direction **or** flat with `TripIndicator`) into trips of legs; shared by search results and FareQuote so the booking page renders the same itinerary without a second call |
+| `FareTotal` | `static for(array $result): float` | The trip total for one result. TBO intermittently blanks a result's headline `Fare` block (no `OfferedFare`/`PublishedFare`, `Tax` reset to 0) while `FareBreakdown` still holds the real numbers — so it falls through alternatives rather than trusting one key, which was showing "PHP 0" and would have written a 0 total onto a booking |
 | `Exceptions\TboAirException` | `static auth()` · `isAuthError()` · `isTimeout()` | Drives the re-auth retry; timeout vs other for messaging |
 
 **DTOs** (`app/Services/TboAir/DTO/`): `SearchInput`, `FlightOffer` (carries `resultIndex`),
@@ -128,7 +143,11 @@ FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`
   Confirmation. Guest Details uses a left section-rail + contained form; **the search bar is editable in
   place** (reuses `flights/form.blade.php` via `flightSearch` "embedded" mode) and submitting it hands
   back to the Select Flight page with the new search. A **price-change gate** shows only if the re-price
-  differs. **Payment is a stub**; Confirmation shows the saved `quoted` booking.
+  differs. Confirmation shows the saved `quoted` booking.
+- **Payment** is no longer a bare stub: it shows the agency **wallet balance** and *remaining after
+  booking*, reddens a shortfall, blocks **Complete booking** and offers *Request a load*. It is
+  advisory — the server re-checks under lock at submit. There is still **no card/gateway step**, and no
+  TBO commitment happens here. See [`../wallet/00-overview.md`](../wallet/00-overview.md).
 
 ## Console commands (`app/Console/Commands/`)
 
@@ -157,3 +176,43 @@ Not implemented (client lacks these calls; the config URLs are dormant): **Book,
 GetBookingDetails, ReleasePNR, Refund**. A `Booking` is only ever a **priced quote** — no PNR is held and
 no ticket is issued. `BookingService::transitionTo` and the `booked`/`ticketed`/… statuses are the seams
 for Phase 4. Seat-map selection is deferred. See `03-implementation-plan.md`.
+
+Three structural gaps surfaced by reading TBO's Book/Ticket method pages (§5 of
+`01-tbo-api-reference.md`). Each needs a decision *before* `BookingService::book()` is written:
+
+### 1. We discard most of what Book has to echo back
+
+Book re-sends the whole priced itinerary — `NoOfSeatAvailable`, `OperatingCarrier`, `ETicketEligible`,
+`FlightStatus`, `StopOver`, `BookingClass`, `AirportName`, `CountryCode`/`CountryName`, and per-passenger
+`FareBasisCode`, `FareRestriction`, `ValidatingAirlineCode`, `LastTicketDate`, `OtherCharges`,
+`ServiceFee` — with fares "sent exactly as received in the fare quote, without modifications."
+
+**We keep none of them.** `bookings.quote` stores the **transformed** `FareQuote` DTO, not the raw
+response: `ItineraryMapper` emits a UI-shaped subset (`airlineCode`, `airport`, `city`, `terminal`,
+`duration`, `fareClass`, `stops`, …) and `price`/`fareBreakdown` are narrowed to four keys each.
+The transform is lossy in exactly the fields Book wants.
+
+→ **Persist the raw FareQuote JSON** (a `quote_raw` json column, or store raw and derive the DTO on
+read). Schema change, so decide it first.
+
+### 2. `Passenger` is missing ~8 mandatory Book fields, and the enums are integers
+
+`App\Services\Booking\DTO\Passenger` carries type/title/names/gender/DOB/passport/nationality/
+baggage/meal. Book additionally requires `AddressLine1`, `AddressLine2`, `City` (code + name),
+`CountryCode`, `CountryName`, `Mobile1`, `Mobile1CountryCode`, `Email`, `IsLeadPax`, and
+`FFAirline`/`FFNumber` (send NULL). It also wants **integer enums** — `Title` `Mr=0/Miss=1/Mrs=2`
+(no Ms/Mstr), `Gender` `Male=1/Female=2`, `Type` `Adult=1/Child=2/Infant=3` — where we store strings.
+
+→ Extend the DTO + Guest Details form, constrain the Title list to what TBO accepts, and add a
+string→enum mapping layer at the client boundary.
+
+### 3. TBO's agency balance is invisible to us
+
+Nothing reads `Wallet/GetAvailableBalance`, and it is not even in `config/tboair.php`. The e-wallet
+that shipped is **entirely internal** — one balance per agency, debited at `createFromQuote()`. But
+TBO deducts from **our** TBO balance at ticketing, so a Ticket can fail for insufficient TBO funds
+while the booking agency's internal wallet is fully funded — after we have already debited them.
+(`transitionTo` → `failed` does refund the internal charge, so the agency is made whole; the booking
+still fails, and nobody is watching the balance that caused it.)
+
+→ Add the balance read, a pre-ticket check, and an ops-facing display.
