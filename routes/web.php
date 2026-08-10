@@ -40,10 +40,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/create', [BookingController::class, 'create'])->name('create')->middleware('can:booking.create');
         Route::post('/', [BookingController::class, 'store'])->name('store')->middleware('can:booking.create');
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show')->whereNumber('booking')->middleware('can:booking.view');
-        // The money step. Separate abilities: holding a PNR costs nothing, issuing
-        // spends the agency wallet and our supplier balance.
+        // The money step. Holding a PNR costs nothing, issuing spends — but holding
+        // requires BOTH abilities: a reservation nobody is allowed to ticket just
+        // occupies airline seats until someone releases it.
         Route::post('/{booking}/book', [BookingController::class, 'book'])->name('book')
-            ->whereNumber('booking')->middleware('can:flight.book');
+            ->whereNumber('booking')->middleware(['can:flight.book', 'can:flight.issue']);
         Route::post('/{booking}/issue', [BookingController::class, 'issue'])->name('issue')
             ->whereNumber('booking')->middleware('can:flight.issue');
     });

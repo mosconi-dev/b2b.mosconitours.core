@@ -120,8 +120,14 @@ untransformed response, excluded from `toArray()`), `FareRule`, `Ssr`
 ### `app/Services/Booking/`
 
 **Booking abilities are split by risk.** `booking.create` quotes; **`flight.book`** holds a PNR and
-costs nothing; **`flight.issue`** spends the agency wallet and our TBO balance. Holding one does not
-imply the other.
+costs nothing; **`flight.issue`** spends. Holding additionally **requires `flight.issue`**: a
+reservation nobody here is allowed to complete leaves seats held at the airline until someone releases
+them.
+
+**The agency e-wallet is checked at *Complete booking*, not at ticketing** — that is where the debit
+happens. An overdraw is refused by `WalletService::debit()` with the figures named ("Insufficient
+wallet balance: 100.00 available, 6,400.00 required.") and the whole booking rolls back: no booking
+row, no ledger entry, balance untouched. The Payment step warns before submit.
 
 | Class | Key public API | Purpose |
 | --- | --- | --- |
@@ -157,7 +163,8 @@ guessing — see `01`§5.3), **`BookingStatus`** (`quoted` → `booked` → `tic
   select-time detail calls (`FareDetailRequest` → `SelectionInput`).
 - `bookings` group: `GET /` (index, `can:booking.view`), `GET /create` + `POST /` (`can:booking.create`),
   `GET /{booking}` (show, `can:booking.view`), and the **money step**:
-  `POST /{booking}/book` (`can:flight.book`) and `POST /{booking}/issue` (`can:flight.issue`).
+  `POST /{booking}/book` (**`flight.book` AND `flight.issue`** — a hold nobody may ticket just
+  occupies airline seats) and `POST /{booking}/issue` (`can:flight.issue`).
   Both re-check **ownership on the write**, not just the read, so an id cannot be posted for someone
   else's booking.
 - `GET /api-logs` + `/api-logs/{id}` (`can:apilog.view`).

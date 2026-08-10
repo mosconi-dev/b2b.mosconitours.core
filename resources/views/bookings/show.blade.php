@@ -83,7 +83,9 @@
 
                 <div class="mt-4 flex flex-wrap items-center gap-3">
                     @if ($canHold)
-                        @can('flight.book')
+                        {{-- Both abilities: holding a PNR you may not ticket leaves a
+                             reservation on the airline that nobody here can complete. --}}
+                        @if (auth()->user()->can('flight.book') && auth()->user()->can('flight.issue'))
                             <form method="POST" action="{{ route('bookings.book', $booking) }}">
                                 @csrf
                                 <button type="submit"
@@ -93,7 +95,7 @@
                             </form>
                         @else
                             <p class="text-sm text-gray-400">You do not have permission to hold this booking.</p>
-                        @endcan
+                        @endif
                     @endif
 
                     @if ($canIssue)

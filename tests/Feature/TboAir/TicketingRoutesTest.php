@@ -90,6 +90,38 @@ class TicketingRoutesTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * Holding requires the ability to ticket as well. A PNR nobody here is allowed to
+     * issue just occupies airline seats until someone releases it.
+     */
+    public function test_holding_also_requires_the_issue_permission(): void
+    {
+        $this->fake();
+        $user = $this->agent(['flight.book']); // can hold, cannot ticket
+
+        $this->actingAs($user)
+            ->post(route('bookings.book', $this->booking($user, ['is_lcc' => false])))
+            ->assertForbidden();
+
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Book'));
+    }
+
+    public function test_the_hold_button_is_hidden_without_the_issue_permission(): void
+    {
+        $this->fake();
+        $user = $this->agent(['flight.book']);
+
+        $booking = $this->booking($user, ['is_lcc' => false]);
+
+        // The explanatory copy mentions "Hold PNR" either way, so assert on the form
+        // target rather than the words.
+        $this->actingAs($user)
+            ->get(route('bookings.show', $booking))
+            ->assertOk()
+            ->assertDontSee(route('bookings.book', $booking))
+            ->assertSee('do not have permission to hold');
+    }
+
     public function test_an_agent_cannot_ticket_someone_elses_booking(): void
     {
         $this->fake();
@@ -231,9 +263,11 @@ class TicketingRoutesTest extends TestCase
         $this->fake();
         $user = $this->agent(['flight.book', 'flight.issue']);
 
+        $booking = $this->booking($user, ['is_lcc' => true]);
+
         $this->actingAs($user)
-            ->get(route('bookings.show', $this->booking($user, ['is_lcc' => true])))
+            ->get(route('bookings.show', $booking))
             ->assertOk()
-            ->assertDontSee('Hold PNR');
+            ->assertDontSee(route('bookings.book', $booking));
     }
 }
