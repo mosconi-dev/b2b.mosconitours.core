@@ -7,23 +7,24 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
 1. **[01 — TBO API Reference](01-tbo-api-reference.md)** — the external TBO Air API: endpoints, the
    required booking workflow, token/TraceId rules, LCC vs non-LCC, error codes, certification.
 2. **[02 — Current Implementation](02-current-implementation.md)** — what exists in our codebase
-   today (Authenticate + Search + environment switching + logging), with file references.
+   today, with file references, and — just as important — **what is still untested against the real
+   supplier**.
 3. **[03 — Implementation Plan](03-implementation-plan.md)** — the phase-by-phase plan to grow from
    search into the full **search → price → book → ticket → manage** lifecycle.
 4. **[04 — The Live Reference Implementation](04-live-reference-implementation.md)** — how
    `b2b.philippineexplorer.com`, the system live today, actually books and tickets. Better evidence
-   than TBO's own docs, which it contradicts. **Read before writing Phase 4.1.**
+   than TBO's own docs, which it contradicts. **Read before changing Book/Ticket** — it also lists the
+   defects in that system which ours deliberately does not copy.
 
 ## TL;DR
 
-- **Built:** the **search → price → book-as-quote** path — Authenticate, **Search**, **FareRule**,
-  **FareQuote**, **SSR** — plus test/live **environment switching** (global + per-user, permission-gated),
+- **Built:** the full **search → price → book → ticket** path — Authenticate, **Search**, **FareRule**,
+  **FareQuote**, **SSR**, **GetAgencyBalance**, **Book**, **Ticket**, **GetBookingDetails** — plus test/live **environment switching** (global + per-user, permission-gated),
   per-user/env result caching, per-user **recent-searches** cache, and full **API request/response
   logging** (global + per-user pages). The **"Select" action is live** and drives a full-page booking
   **wizard** that persists a `quoted` **Booking**.
-- **Not built:** **Book, Ticket, GetBookingDetails, ReleasePNR, Refund** — no PNR is held and no ticket
-  is issued (a Booking is only ever a priced quote). The endpoint URLs already exist (dormant) in
-  `config/tboair.php`.
+- **Not built:** **ReleasePNR, Void, Refund** (Phase 5) and the **domestic round-trip two-PNR** split.
+  Those endpoint URLs exist but sit dormant in `config/tboair.php`.
 - **Two facts that shape the booking work:** the auth **token is valid ~24h** (TBO meeting — the
   published "12h" doc is stale; our 23h TTL is fine), and the **search `TraceId` is valid only ~15
   min**, so pricing/booking must run against a fresh search.
@@ -31,8 +32,9 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   **Phase 3** (SSR baggage + meal ancillaries, priced server-side and folded into the booking total).
 - **Booking UX:** a **full-page wizard** at `/bookings/create` — Select Flight → Guest Details →
   Add-ons → Payment → Confirmation. Steps 1–3 are functional (reuse FareQuote / passengers / SSR);
-  **Payment is a stub** and **Confirmation** shows the saved `quoted` booking — both become real with
-  Phase 4 + a payment provider. **"Select" hands off straight to the wizard**, which does the
+  Payment shows the wallet balance and warns on a shortfall (no gateway yet); **Confirmation** shows the
+  saved `quoted` booking. **Ticketing is a separate, deliberate act on the booking page**, not the end of
+  the wizard. **"Select" hands off straight to the wizard**, which does the
   **single** re-price (FareQuote); it shows a price-change gate (old vs new + breakdown; accept/decline)
   **only if the fare changed**, otherwise Guest Details directly. (No duplicate FareQuote on select.)
   Guest Details uses a left section-rail + contained form, and the search bar is **editable in place**
@@ -40,10 +42,15 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   Select Flight with the new search.
 - **Recent searches** are real, not sample data: kept per-user in the cache (`RecentSearchStore`, ~1-day
   TTL), appended on each successful search (deduped, capped at 6), and click-to-refill.
-- **Next step:** **Phase 4 (Book + Ticket)** — the money step (needs the whitelisted server for a real
-  ticket). Seat-map selection is deferred. See `03-implementation-plan.md`.
-- **Four things to settle before Phase 4 code** (from TBO's Book/Ticket method pages — Phase 4.0 in the
-  plan, detail in `01`§5 and `02`'s gaps section):
+- **Phase 4 is built.** Book, Ticket and GetBookingDetails all exist, behind `flight.book` /
+  `flight.issue`, with a ticketing panel on the booking page. **But no Book or Ticket call has ever
+  been made** — it was written entirely against fakes, because dev is not IP-whitelisted with TBO.
+- **Next step:** get the server whitelisted, then run **Phase 6's certification matrix** — the 11 cases
+  are exactly the coverage the real endpoint needs. Two things to settle first: **`Fare_BE`** (we mirror
+  production over the docs) and the **domestic round-trip two-PNR** split, which is not implemented and
+  affects four of the 11 cases. Then **Phase 5** (cancel / void / refund). Seat maps stay deferred.
+- **Phase 4.0's four prerequisites — all now done** (from TBO's Book/Ticket method pages; detail in
+  `01`§5 and `02`):
   1. ~~**Ask TBO whether `ResultId`/`TrackingId` are our `ResultIndex`/`TraceId`.**~~ ✅ **done** —
      answered by the live system rather than TBO: they are the same identifiers, and the mixed hosts
      work in production. See [`04`](04-live-reference-implementation.md).
@@ -56,7 +63,7 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
      `tboair:balance`, and a *Check now* panel in admin Settings. Ticketing draws down **our** TBO
      balance, not the internal e-wallet.
 
-  **Phase 4.0 is complete and 4.1 is unblocked.** One small fix to carry along: our **token refresh
+  **Phases 4.0 and 4.1 are both complete.** One small fix still worth doing: our **token refresh
   has no lock**, so concurrent cache misses can each re-authenticate (`04`§6.2). Our `ErrorCode 6`
   re-auth is confirmed working against a real logged expiry — no change needed there (`02`§4).
 - **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a

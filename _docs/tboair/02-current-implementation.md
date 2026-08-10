@@ -1,10 +1,17 @@
 # TBO Air — Current Implementation
 
-What exists in the codebase today. The **search → price → book-as-quote** path is built end-to-end:
-**Authenticate, Search, FareRule, FareQuote, SSR** (Phases 1–3), plus a persisted **Booking** domain and
-a full-page booking **wizard**. The money step — **Book + Ticket** (Phase 4) — and the manage endpoints
-(GetBookingDetails, ReleasePNR, Refund) are **not built**; their config URLs sit dormant. Namespaces:
-`App\Services\TboAir` (supplier) and `App\Services\Booking` (our booking domain).
+What exists in the codebase today. The **search → price → book → ticket** path is built end-to-end:
+**Authenticate, Search, FareRule, FareQuote, SSR, GetAgencyBalance, Book, Ticket, GetBookingDetails**,
+plus a persisted **Booking** domain, a full-page booking **wizard**, and a permission-gated ticketing
+action. Namespaces: `App\Services\TboAir` (supplier) and `App\Services\Booking` (our booking domain).
+
+> ⚠️ **No Book or Ticket call has ever been made.** Phase 4.1 was built and tested entirely against
+> `Http::fake` fixtures, because the dev machine is not IP-whitelisted with TBO. The code is complete
+> and green; it has never met the real endpoint. See "Untested against the supplier" below before the
+> first live attempt.
+
+Still not built: **ReleasePNR, Void, Refund** (Phase 5), and the **domestic round-trip two-PNR** split
+(see the gaps section).
 
 ## Request flow
 
@@ -32,6 +39,20 @@ POST /bookings  (can:booking.create)
         └─ re-prices server-side (FareQuote) → persists a `quoted` Booking, no TBO commitment
 ```
 
+**Book → Ticket** (booking detail page, Phase 4.1). Nothing exists at the airline until one of these:
+
+```
+POST /bookings/{booking}/book   (can:flight.book)    — non-LCC only, holds a PNR, spends nothing
+POST /bookings/{booking}/issue  (can:flight.issue)   — LCC: books + issues; non-LCC: tickets the PNR
+   └─ BookingService::book() / issue()
+        ├─ Cache::lock("booking:{id}:write")         — one writer at a time
+        ├─ guard environment + status (+ PNR, + our TBO balance before issue)
+        ├─ TboAirService::book()/ticket() → TboBookPayload::for(...)
+        ├─ persist PNR/BookingId immediately
+        ├─ ambiguous? → GetBookingDetails → still ambiguous? → leave alone, raise `unresolved`
+        └─ transitionTo(Booked | Ticketed | Failed)
+```
+
 `TboAirClient` is **bound per request** (`AppServiceProvider`) to the env resolved by
 `TboEnvironmentResolver`, so every call reflects the current global/per-user environment.
 
@@ -52,13 +73,13 @@ POST /bookings  (can:booking.create)
 
 **Endpoint keys (both `test` + `live`):** `authentication`, `agency_balance`, `search`, `fare_rule`,
 `fare_quote`, `ssr`, `book`, `ticket`, `booking_details`, `release`, `refund` (**live only**).
-✅ implemented today: `authentication`, `agency_balance`, `search`, `fare_rule`, `fare_quote`, `ssr`.
-⚠️ dormant: `book`, `ticket`, `booking_details`, `release`, `refund`.
+✅ implemented today: `authentication`, `agency_balance`, `search`, `fare_rule`, `fare_quote`, `ssr`,
+**`book`, `ticket`, `booking_details`**. ⚠️ still dormant: `release`, `refund` (Phase 5).
 
-### ⚠️ Known problems in the dormant endpoint config
+### ⚠️ Known problems in the remaining dormant config (Phase 5)
 
-Found by checking `config/tboair.php` against TBO's endpoint help page — all Phase 4/5 concerns, but
-cheap to fix while the config is open:
+Found by checking `config/tboair.php` against TBO's endpoint help page. The Phase 4 entries have since
+been fixed; these are what is left, all Phase 5:
 
 | Problem | Detail |
 | --- | --- |
@@ -66,10 +87,9 @@ cheap to fix while the config is open:
 | **`refund` is live-only** | The `test` environment has no `refund` URL at all, so the flow cannot be exercised before go-live. |
 | **Void is missing entirely** | No `Queues/GetVoidAmountDetails` or `Queues/VoidRequest` keys. |
 | **`GetLastTicketDate` is missing** | Needed to respect the ticketing time limit on a held non-LCC PNR. |
-| **`GetAgencyBalance` is missing** | `Wallet/GetAvailableBalance` — **our** balance with TBO, the pot ticketing draws down. Distinct from the internal agency e-wallet; see the gaps section below. |
 
 - Test search/fare/ssr: `api-stage.tboair.com/InternalAirService.svc/rest/…`; auth: `xmloutapi.tboair.com`;
-  book/ticket host: `xmloutbookingapi.tboair.com/api/v1/Booking/…` (dormant).
+  book/ticket/booking-details host: `xmloutbookingapi.tboair.com/api/v1/Booking/…`.
 - Live: `tbo-api.tboair.com/…`, auth `searchapi.tboair.com`, booking `bookingapi.tboair.com/…`.
 
 ## Service layer
@@ -78,14 +98,15 @@ cheap to fix while the config is open:
 
 | Class | Key public API | Purpose |
 | --- | --- | --- |
-| `TboAirService` | `search(SearchInput): array` · `fareQuote(SelectionInput): FareQuote` · `fareRule(SelectionInput): FareRule` · `ssr(SelectionInput): Ssr` · `agencyBalance(fresh:): AgencyBalance` · `hasFundsFor(string): bool` · `token()` · `environment()` · `tokenTtl()` · `cacheKey()` · `balanceCacheKey()` | Orchestrates token caching + the implemented calls; single `ErrorCode 6` re-auth retry; maps errors. **`agencyBalance()` skips the re-auth wrapper** — it is credential-authenticated, with no session token to expire |
-| `TboAirClient` | `authenticate()` · `agencyBalance()` · `search()` · `fareQuote()` · `fareRule()` · `ssr()` · `environment()` · `ipAddress()` | Thin per-env HTTP wrapper; logs every call; masks `Password`; omits `Accept: application/json` (TBO gateway can hang) |
+| `TboAirService` | `search(SearchInput): array` · `fareQuote(SelectionInput): FareQuote` · `fareRule(SelectionInput): FareRule` · `ssr(SelectionInput): Ssr` · `agencyBalance(fresh:): AgencyBalance` · `hasFundsFor(string): bool` · `book(Booking): BookingResult` · `ticket(Booking, ?pnr): BookingResult` · `bookingDetails(pnr): BookingResult` · `token()` · `environment()` · `tokenTtl()` · `cacheKey()` · `balanceCacheKey()` | Orchestrates token caching + the implemented calls; single `ErrorCode 6` re-auth retry; maps errors. **`agencyBalance()` skips the re-auth wrapper** — it is credential-authenticated, with no session token to expire |
+| `TboAirClient` | `authenticate()` · `agencyBalance()` · `search()` · `fareQuote()` · `fareRule()` · `ssr()` · `book()` · `ticket()` · `bookingDetails()` · `environment()` · `ipAddress()` | Thin per-env HTTP wrapper; logs every call; masks `Password`; omits `Accept: application/json` (TBO gateway can hang) |
 | `TboAirConfig` | `static for(env): array` | Flattens base + `environments[env]` into the client config shape |
 | `TboEnvironmentResolver` | `resolve(?User)` · `normalize()` | per-user override → global setting → config default; per-user `live` requires `supplier.tbo.live` |
 | `FlightSearchCache` | `remember(userId, env, SearchInput, Closure)` · `key(...)` | Per-user + per-env result cache: `flight_search:{env}:{user}:{hash}` (5 min) |
 | `RecentSearchStore` | `get(userId)` · `put(userId, array)` · `key(userId)` | Per-user "recent searches" list in the cache (`flight_recent:{user}`, ~1 day); client owns list shape |
 | `FlightResultTransformer` | `transform(array): FlightOffer[]` | Envelope-agnostic mapping of TBO search results |
 | `ItineraryMapper` | `trips(mixed)` · `legs()` · `lowestAllowance()` · `static isNestedList()` | Normalizes TBO's `Segments` (nested-per-direction **or** flat with `TripIndicator`) into trips of legs; shared by search results and FareQuote so the booking page renders the same itinerary without a second call |
+| `TboBookPayload` | `static for(Booking, token, ip, ?userAgent, ?pnr): array` | Builds the Book/Ticket request body. **One builder for both** — Ticket is this payload plus a `PNR` (null for LCC). Segments and fare go back verbatim from `quote_raw`; the two search-only fields (`NoOfSeatAvailable`, `ResultType`) are restored from their own columns. Pure assembly, no network |
 | `FareTotal` | `static for(array $result): float` | The trip total for one result. TBO intermittently blanks a result's headline `Fare` block (no `OfferedFare`/`PublishedFare`, `Tax` reset to 0) while `FareBreakdown` still holds the real numbers — so it falls through alternatives rather than trusting one key, which was showing "PHP 0" and would have written a 0 total onto a booking |
 | `TboPassengerMapper` | `static title(): int` · `gender(): int` · `paxType(): int` | Encodes our passenger strings as TBO's Book/Ticket enum ordinals — the only place those integers belong. Folds retired `Ms`/`Mstr` titles; throws rather than guess a missing gender |
 | `Exceptions\TboAirException` | `static auth()` · `isAuthError()` · `isTimeout()` | Drives the re-auth retry; timeout vs other for messaging |
@@ -98,20 +119,28 @@ untransformed response, excluded from `toArray()`), `FareRule`, `Ssr`
 
 ### `app/Services/Booking/`
 
+**Booking abilities are split by risk.** `booking.create` quotes; **`flight.book`** holds a PNR and
+costs nothing; **`flight.issue`** spends the agency wallet and our TBO balance. Holding one does not
+imply the other.
+
 | Class | Key public API | Purpose |
 | --- | --- | --- |
-| `BookingService` | `createFromQuote(User, SelectionInput, passengers[], contact): Booking` · `transitionTo(Booking, BookingStatus, attrs): Booking` | Re-prices server-side (FareQuote), persists a `quoted` Booking; `transitionTo` is the status seam for Phase 4. Privately: `withLeadPax()` (exactly one, adult only) and `applyContact()` (fans the shared contact block onto every pax row) |
+| `BookingService` | `createFromQuote(...): Booking` · **`book(Booking, ?userAgent): Booking`** · **`issue(Booking, ?userAgent): Booking`** · `transitionTo(Booking, BookingStatus, attrs): Booking` | Re-prices server-side (FareQuote), persists a `quoted` Booking, and owns the money step. `book()` holds a non-LCC PNR; `issue()` tickets (LCC straight from `quoted`). Privately: `withLeadPax()` (exactly one, adult only), `applyContact()` (fans the shared contact block onto every pax row), `withBookingLock()`, `resolve()`, `rememberSupplierIds()`, `guardSupplierFunds()`, `guardEnvironment()` |
 | `DTO\Passenger` | readonly (`type,title,firstName,lastName,gender,dateOfBirth,passport…,nationality,baggage,meal,isLeadPax`) · `isInfant()` · `isAdult()` · `hasPassport()` · `withLead()` · `toArray()` | One passenger the store request builds. Address/mobile/email are **not** here — they are contact-level and fanned on at persistence |
-| `Exceptions\BookingException` | — | Domain failures (fare gone, validation) → controller 422 |
+| `Exceptions\BookingException` | `static unresolved(Booking, ?pnr)` · `$unresolved` | Domain failures (fare gone, validation) → controller 422. **`unresolved`** marks the one case that is not a failure: the supplier's answer could not be established, the booking keeps its status, and a person must look |
 
-Enums (`app/Enums/`): `TripType`, `CabinClass`, **`BookingStatus`** (`quoted` → `booked` → `ticketed`;
+Enums (`app/Enums/`): `TripType`, `CabinClass`, **`TboBookingStatus`** (TBO's ten codes; `isAmbiguous()`
+marks the four that mean "unknown" and `toBookingStatus()` returns **null** for them rather than
+guessing — see `01`§5.3), **`BookingStatus`** (`quoted` → `booked` → `ticketed`;
 `failed`/`cancelled`/`refunded`). Support helpers: `app/Support/Airports.php`,
 `app/Support/Countries.php` (ISO code → country name, for the Book address).
 
 ## Data model
 
 - **`Booking`** (`bookings` table, migrations `2026_07_09_000012` + `…000013` + `2026_08_10_000009`
-  which adds nullable **`quote_raw`** — the verbatim FareQuote response Book will echo back) —
+  which adds nullable **`quote_raw`** — the verbatim FareQuote response Book echoes back — plus
+  `…000010` **`seats_available`** and `…000011` **`result_type`**, the two search-only fields FareQuote
+  drops and Book requires) —
   `#[Fillable]` reference/user/status/currency/fares/passengers(json)/contact(json)/ancillary_total/…;
   `status` cast to `BookingStatus`; `user()` relation. A booking is a **priced quote** until Phase 4.
 - Supplier logging: **`TboAirApiLog`** (`tbo_air_api_logs`) — `type`, `environment`, `endpoint`,
@@ -127,7 +156,10 @@ Enums (`app/Enums/`): `TripType`, `CabinClass`, **`BookingStatus`** (`quoted` �
 - `POST /flights/fare-quote` · `/flights/fare-rule` · `/flights/ssr` (`can:flight.search`) — the
   select-time detail calls (`FareDetailRequest` → `SelectionInput`).
 - `bookings` group: `GET /` (index, `can:booking.view`), `GET /create` + `POST /` (`can:booking.create`),
-  `GET /{booking}` (show, `can:booking.view`).
+  `GET /{booking}` (show, `can:booking.view`), and the **money step**:
+  `POST /{booking}/book` (`can:flight.book`) and `POST /{booking}/issue` (`can:flight.issue`).
+  Both re-check **ownership on the write**, not just the read, so an id cannot be posted for someone
+  else's booking.
 - `GET /api-logs` + `/api-logs/{id}` (`can:apilog.view`).
 
 FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`,
@@ -153,6 +185,10 @@ FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`
   country) and a **mobile country code** beside the number — required because TBO wants them on every
   passenger. Per guest: title (**Mr/Mrs/Miss** only), names, gender, DOB, passport when the fare
   demands it, and a **Lead guest** radio shown only for adults (first adult preselected).
+- **Ticketing lives on the booking detail page**, not at the end of the wizard — a quoted booking is
+  reviewed and then issued as a deliberate second act, rather than money moving as a side effect of
+  finishing a form. The panel offers **Hold PNR** (non-LCC only) and **Issue ticket**, each behind its
+  own permission, and a **LIVE** booking gets a red warning banner and a red button.
 - **Payment** is no longer a bare stub: it shows the agency **wallet balance** and *remaining after
   booking*, reddens a shortfall, blocks **Complete booking** and offers *Request a load*. It is
   advisory — the server re-checks under lock at submit. There is still **no card/gateway step**, and no
@@ -174,7 +210,13 @@ embedded edit form, **raw quote kept verbatim, contact fan-out, lead-pax rules, 
 `Feature/TboAir/*` (env resolver, per-user env, live routing, **agency balance** — caching, the real
 `Agency.*` envelope, credential-not-token request, gating, and the admin panel making **no** supplier
 call on render), `Unit/AgencyBalanceTest` (separators, both envelopes, bccomp edges), `ApiLogTest`,
-and the admin settings/logs tests. Balance fixtures: `balance.json` (flat, as documented) and
+`Unit/TboBookingStatusTest` (the ten codes, and the four that must refuse to map),
+`Feature/TboAir/BookPayloadTest` (verbatim segments, restored seats, enum encoding, infant guards,
+Book-vs-Ticket PNR), `Feature/TboAir/BookAndIssueTest` (LCC vs non-LCC, idempotency, the write lock,
+reconciliation, unresolved outcomes, supplier-funds guard, **a failed Book never reaching Ticket**),
+`Feature/TboAir/SeatAvailabilityTest`, `Feature/TboAir/TicketingRoutesTest` (both permissions,
+ownership, LIVE flag, timeout wording), and the admin settings/logs tests.
+Balance fixtures: `balance.json` (flat, as documented) and
 `balance-agency.json` (nested, as observed).
 
 ## Environment variables
@@ -188,10 +230,41 @@ are currently unset — live auth fails until provided.)
 
 ## Gaps for the booking lifecycle
 
-Not implemented (client lacks these calls; the config URLs are dormant): **Book, Ticket,
-GetBookingDetails, ReleasePNR, Refund**. A `Booking` is only ever a **priced quote** — no PNR is held and
-no ticket is issued. `BookingService::transitionTo` and the `booked`/`ticketed`/… statuses are the seams
-for Phase 4. Seat-map selection is deferred. See `03-implementation-plan.md`.
+Book, Ticket and GetBookingDetails now exist. What remains:
+
+### ⚠️ Untested against the supplier
+
+**Not one Book or Ticket call has ever been made.** Everything in Phase 4.1 was built against
+`Http::fake` fixtures, because dev is not IP-whitelisted with TBO. Two consequences:
+
+- **The server must be whitelisted before the first attempt.** Until then every call fails at the
+  gateway, exactly as `tboair:auth` does today.
+- **`Fare_BE` is the assumption most worth checking first.** TBO's docs describe a *per-passenger*
+  fare split; the live production system sends the **whole itinerary `Fare` object on every
+  passenger** and tickets successfully, so that is what we mirror (`04`§3). If a real Book rejects the
+  payload, this is the first field to look at.
+
+Phase 6's certification matrix is the natural way to exercise all of it — the 11 cases are exactly the
+coverage the real endpoint needs, and the API Logs already capture the evidence.
+
+### Domestic round-trip is not split into two PNRs
+
+TBO returns **two result indexes** for a domestic round trip — outbound and inbound — and the whole
+chain is meant to run OB first, then IB, producing **two separate PNRs** (`01`§3). We build a single
+payload from one `ResultIndex` and derive `SearchType` from the segments' `TripIndicator`, so a
+domestic return would go up as one booking. International returns are unaffected.
+
+This has not been hit because nothing has been booked yet. It needs deciding before certification —
+cases 3, 5, 8 and 9 are returns.
+
+### Still to build (Phase 5)
+
+**ReleasePNR, Void, Refund** — the config entries are dormant and, for refund, probably on the wrong
+controller (see above). `GetLastTicketDate` is unimplemented, so a held PNR's ticketing deadline is not
+enforced. Per-passenger `TicketId`/`TicketNumber` are not yet read out of GetBookingDetails and stored,
+and ReleasePNR needs them. Seat-map selection remains deferred.
+
+See `03-implementation-plan.md`.
 
 Three structural gaps surfaced by reading TBO's Book/Ticket method pages (§5 of
 `01-tbo-api-reference.md`). Each needs a decision *before* `BookingService::book()` is written:

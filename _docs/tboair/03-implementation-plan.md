@@ -136,7 +136,7 @@ see §4 of `01-tbo-api-reference.md`.
 
 ---
 
-## Phase 4 — Book & Ticket (the money step)
+## Phase 4 — Book & Ticket (the money step) — DONE (untested against TBO)
 
 **Goal:** issue tickets. Branch on `IsLCC` from FareQuote.
 
@@ -154,7 +154,23 @@ change the schema or the payload shape. Settle them first; retrofitting them mid
 
 Each is detailed under "Gaps for the booking lifecycle" in `02-current-implementation.md`.
 
-### Phase 4.1 — The calls
+### Phase 4.1 — The calls (DONE)
+
+> **Shipped:** `TboBookingStatus` (TBO's ten codes; the four ambiguous ones refuse to map),
+> `BookingResult` + `TboAirService::bookingDetails()`, the two search-only fields carried to the
+> booking (`seats_available`, `result_type`), **`TboBookPayload`** (one builder — Ticket is Book plus a
+> PNR), `BookingService::book()`/`issue()` with the write lock, environment/status/PNR/supplier-funds
+> guards and GetBookingDetails reconciliation, and `POST /bookings/{booking}/book` + `/issue` behind
+> `flight.book` / `flight.issue` with a ticketing panel on the booking page (LIVE gets a red warning).
+> Covered by `BookPayloadTest`, `BookAndIssueTest`, `TicketingRoutesTest`, `SeatAvailabilityTest`,
+> `TboBookingStatusTest`.
+>
+> ⚠️ **No Book or Ticket call has ever been made** — all of it is `Http::fake`. The server needs TBO
+> whitelisting first, and **`Fare_BE`** (whole fare object per passenger, mirroring production over the
+> docs) is the assumption most worth checking. **Domestic round-trip two-PNR is not implemented** —
+> decide before certification, since four of the 11 cases are returns. See `02`'s gaps section.
+
+#### As originally planned
 
 > **Start from the live implementation, not the doc pages.**
 > [`04-live-reference-implementation.md`](04-live-reference-implementation.md) covers a working
