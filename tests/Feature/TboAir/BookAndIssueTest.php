@@ -228,18 +228,23 @@ class BookAndIssueTest extends TestCase
             '*Booking/Ticket*' => Http::response(['PNR' => '', 'Status' => 8], 200),
         ]);
 
-        $booking = $this->service()->issue($this->booking());
+        $booking = $this->booking();
 
-        $this->assertSame(BookingStatus::Failed, $booking->status);
+        $this->assertThrows(fn () => $this->service()->issue($booking), BookingException::class);
+        $this->assertSame(BookingStatus::Failed, $booking->fresh()->status);
     }
 
-    public function test_an_outright_failure_marks_the_booking_failed(): void
+    public function test_an_outright_failure_marks_the_booking_failed_and_says_so(): void
     {
         $this->fake([
             '*Booking/Ticket*' => Http::response(['PNR' => '', 'Status' => 2], 200),
         ]);
 
-        $this->assertSame(BookingStatus::Failed, $this->service()->issue($this->booking())->status);
+        $booking = $this->booking();
+
+        // A failed ticket must never travel back as a success — it did once.
+        $this->assertThrows(fn () => $this->service()->issue($booking), BookingException::class);
+        $this->assertSame(BookingStatus::Failed, $booking->fresh()->status);
     }
 
     /**
@@ -253,9 +258,10 @@ class BookAndIssueTest extends TestCase
             '*Booking/Book*' => Http::response(['PNR' => '', 'Status' => 2], 200),
         ]);
 
-        $booking = $this->service()->book($this->booking(['is_lcc' => false]));
+        $booking = $this->booking(['is_lcc' => false]);
 
-        $this->assertSame(BookingStatus::Failed, $booking->status);
+        $this->assertThrows(fn () => $this->service()->book($booking), BookingException::class);
+        $this->assertSame(BookingStatus::Failed, $booking->fresh()->status);
         Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Ticket'));
     }
 
@@ -271,34 +277,42 @@ class BookAndIssueTest extends TestCase
         $this->service()->issue($this->booking(['environment' => 'live']));
     }
 
-    public function test_it_refuses_to_ticket_when_our_supplier_balance_is_short(): void
+    /**
+     * The balance is not pre-checked at all. TBO reports insufficient funds on the
+     * Book/Ticket response itself, which is authoritative; a second source could only
+     * disagree with it, and reading it costs a call that mints a token.
+     */
+    public function test_ticketing_does_not_read_the_supplier_balance(): void
     {
-        $this->fake([
-            '*GetAvailableBalance*' => Http::response(['Currency' => 'PHP', 'TotalAvailableLimit' => '10.00', 'IsSuccess' => true], 200),
-        ]);
+        $this->fake();
 
-        try {
-            $this->service()->issue($this->booking());
-            $this->fail('ticketing must stop when the supplier account cannot cover it');
-        } catch (BookingException $e) {
-            $this->assertStringContainsString('supplier has insufficient funds', $e->getMessage());
-        }
+        $this->service()->issue($this->booking());
 
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Ticket'));
-        $this->assertSame(BookingStatus::Quoted, $this->booking()->status);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'GetAvailableBalance'));
     }
 
     /**
-     * A balance we cannot read is not a reason to block a sale — the supplier will
-     * reject it anyway if the funds really are short.
+     * ...which means TBO's own words are how a funds problem reaches the agent.
      */
-    public function test_an_unreadable_balance_does_not_block_ticketing(): void
+    public function test_a_supplier_refusal_is_reported_in_tbos_own_words(): void
     {
         $this->fake([
-            '*GetAvailableBalance*' => Http::response(['IsSuccess' => false, 'ErrorMessage' => 'nope'], 200),
+            '*Booking/Ticket*' => Http::response([
+                'PNR' => '', 'Status' => 2,
+                'Error' => ['ErrorCode' => 12, 'ErrorMessage' => 'Insufficient balance in agency account'],
+            ], 200),
         ]);
 
-        $this->assertSame(BookingStatus::Ticketed, $this->service()->issue($this->booking())->status);
+        $booking = $this->booking();
+
+        try {
+            $this->service()->issue($booking);
+            $this->fail('a refused ticket must not return as though it succeeded');
+        } catch (BookingException $e) {
+            $this->assertStringContainsString('Insufficient balance in agency account', $e->getMessage());
+        }
+
+        $this->assertSame(BookingStatus::Failed, $booking->fresh()->status);
     }
 
     public function test_a_non_lcc_without_a_pnr_cannot_be_ticketed(): void

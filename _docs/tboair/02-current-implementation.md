@@ -46,7 +46,7 @@ POST /bookings/{booking}/book   (can:flight.book)    — non-LCC only, holds a P
 POST /bookings/{booking}/issue  (can:flight.issue)   — LCC: books + issues; non-LCC: tickets the PNR
    └─ BookingService::book() / issue()
         ├─ Cache::lock("booking:{id}:write")         — one writer at a time
-        ├─ guard environment + status (+ PNR, + our TBO balance before issue)
+        ├─ guard environment + status (+ PNR for a non-LCC ticket)
         ├─ TboAirService::book()/ticket() → TboBookPayload::for(...)
         ├─ persist PNR/BookingId immediately
         ├─ ambiguous? → GetBookingDetails → still ambiguous? → leave alone, raise `unresolved`
@@ -333,7 +333,9 @@ still fails.)
   `TotalAailableLimit` misspelling. See `01`§5.5.
 - **`TboAirService::agencyBalance(fresh:)`** — cached per environment (`balance_cache_ttl`, 5 min),
   **not** wrapped in `withReauth()`: the call is credential-authenticated and carries no session
-  token. **`hasFundsFor()`** is the pre-Ticket seam for Phase 4.1.
+  token. It is **not** consulted before ticketing: TBO reports insufficient funds on the Book/Ticket response
+  itself, which is authoritative, and a cached second opinion could only disagree with it. The balance
+  is an **ops read**, surfaced in admin and on the CLI.
 - **Ops surface:** a *Check now* panel on admin Settings (`supplier.tbo.view`), audit event
   `tbo.balance_checked`, and `php artisan tboair:balance {--fresh}`.
 - **Read on demand, never on page render** — the call mints a TokenId, and TBO's guide still claims

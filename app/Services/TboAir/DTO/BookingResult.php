@@ -70,6 +70,32 @@ class BookingResult implements Arrayable
         return $this->status === null || $this->status->isAmbiguous();
     }
 
+    /**
+     * TBO's own words for why this failed, if it gave any.
+     *
+     * This is how a supplier-side problem — insufficient agency funds, a fare that
+     * has gone, a rejected passenger detail — actually reaches us: on the Book/Ticket
+     * response itself, not from any pre-flight check. Worth surfacing verbatim.
+     */
+    public function message(): ?string
+    {
+        foreach ([
+            'Errors.0.UserMessage',
+            'Response.Error.ErrorMessage',
+            'Error.ErrorMessage',
+            'ErrorMessage',
+            'Response.ErrorMessage',
+        ] as $path) {
+            $message = data_get($this->raw, $path);
+
+            if (filled($message) && is_string($message)) {
+                return trim($message);
+            }
+        }
+
+        return null;
+    }
+
     private static function text(mixed $value): ?string
     {
         $value = is_scalar($value) ? trim((string) $value) : '';

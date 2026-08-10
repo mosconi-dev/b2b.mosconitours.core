@@ -150,14 +150,6 @@ class AgencyBalanceTest extends TestCase
         $this->assertNull(Cache::get($this->service()->balanceCacheKey()));
     }
 
-    public function test_has_funds_for_compares_against_the_balance(): void
-    {
-        $this->fakeBalance();
-
-        $this->assertTrue($this->service()->hasFundsFor('125430.50'));
-        $this->assertFalse($this->service()->hasFundsFor('125430.51'));
-    }
-
     // ---- Admin surface ---------------------------------------------------
 
     public function test_the_settings_page_shows_the_balance_without_calling_tbo(): void

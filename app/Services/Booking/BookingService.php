@@ -130,9 +130,12 @@ class BookingService
             // Book maps its own outcome: TBO's `Successful` here means a PNR was held,
             // not that anything was issued. Reusing the ticketing mapping would mark
             // this booking Ticketed and skip the step that actually spends money.
-            return $this->transitionTo($booking, $status->isFailure()
-                ? BookingStatus::Failed
-                : BookingStatus::Booked);
+            if ($status->isFailure()) {
+                $this->transitionTo($booking, BookingStatus::Failed);
+                throw $this->refused($booking, $result, 'The airline did not hold this booking.');
+            }
+
+            return $this->transitionTo($booking, BookingStatus::Booked);
         });
     }
 
@@ -154,8 +157,6 @@ class BookingService
                 throw new BookingException("Booking {$booking->reference} has no PNR to ticket.");
             }
 
-            $this->guardSupplierFunds($booking);
-
             $result = $this->tbo->ticket($booking, $booking->pnr, $userAgent);
             $this->rememberSupplierIds($booking, $result);
 
@@ -164,6 +165,14 @@ class BookingService
 
             if ($mapped === null) {
                 throw BookingException::unresolved($booking, $result->pnr);
+            }
+
+            // Failed is a real answer, not an exception in the supplier's eyes — but it
+            // must not travel back as though the ticket exists. Move the booking (which
+            // refunds the agency), then say why in TBO's own words.
+            if ($mapped === BookingStatus::Failed) {
+                $this->transitionTo($booking, BookingStatus::Failed);
+                throw $this->refused($booking, $result, 'The airline did not issue this ticket.');
             }
 
             return $this->transitionTo($booking, $mapped);
@@ -225,27 +234,20 @@ class BookingService
     }
 
     /**
-     * Refuse to ticket when our own TBO balance cannot cover it.
+     * Turn a supplier refusal into something an agent can act on.
      *
-     * This is the supplier's pot, not the agency e-wallet — the agency was already
-     * debited at quote time. Catching it here turns an opaque supplier rejection into
-     * a message naming the real problem, and leaves the booking untouched.
+     * TBO's own message is the whole point: an insufficient agency balance, a fare
+     * that has gone, a rejected passenger detail — all of it arrives here, on the
+     * response, which is why there is no pre-flight funds check. Pass it through
+     * verbatim and only fall back when TBO said nothing.
      */
-    private function guardSupplierFunds(Booking $booking): void
+    private function refused(Booking $booking, BookingResult $result, string $fallback): BookingException
     {
-        $amount = (string) $booking->total_amount;
+        $reason = $result->message();
 
-        try {
-            $covered = $this->tbo->hasFundsFor($amount);
-        } catch (TboAirException) {
-            return; // balance unreadable — do not block a ticket on a broken read
-        }
-
-        if (! $covered) {
-            throw new BookingException(
-                'Ticketing is unavailable: the agency account with the airline supplier has insufficient funds. Please contact support.'
-            );
-        }
+        return new BookingException(
+            "Booking {$booking->reference}: ".($reason === null ? $fallback : $reason)
+        );
     }
 
     /**

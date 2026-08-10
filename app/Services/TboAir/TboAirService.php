@@ -161,16 +161,6 @@ class TboAirService
     }
 
     /**
-     * Whether our TBO balance covers an amount — the guard Phase 4.1 runs before
-     * Ticket, so a booking fails on our side with a clear reason instead of being
-     * rejected by TBO after the agency has already been charged.
-     */
-    public function hasFundsFor(string $amount): bool
-    {
-        return $this->agencyBalance()->covers($amount);
-    }
-
-    /**
      * Balance cache key, namespaced per environment — a test balance must never be
      * shown against live, exactly like the token cache.
      */
