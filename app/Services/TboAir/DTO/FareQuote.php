@@ -19,6 +19,7 @@ class FareQuote implements Arrayable, JsonSerializable
      * @param  array<int, array{passengerType: string, count: int, baseFare: float, tax: float}>  $fareBreakdown
      * @param  array<int, array{direction: string, stops: int, duration: int, segments: array<int, array<string, mixed>>}>  $trips
      * @param  array<int, array{type: string, details: string, journeyPoints: string, from: string, to: string, unit: string, onlineRefundAllowed: bool, onlineReissueAllowed: bool}>  $miniFareRules
+     * @param  array<string, mixed>  $raw  the untransformed response — see $raw below
      */
     public function __construct(
         public readonly string $resultIndex,
@@ -33,6 +34,19 @@ class FareQuote implements Arrayable, JsonSerializable
         public readonly array $miniFareRules = [],
         public readonly ?string $baggage = null,
         public readonly ?string $cabinBaggage = null,
+        /**
+         * The whole FareQuote response, untouched.
+         *
+         * Every other property here is a lossy read of it, shaped for the UI. Book
+         * echoes the priced itinerary back to TBO field-for-field, including plenty
+         * this DTO drops, so the response is kept whole rather than extended field by
+         * field each time Phase 4 turns out to need one more. Persisted to
+         * `bookings.quote_raw`; deliberately **not** in toArray(), which is both the
+         * `quote` snapshot and the JSON the wizard receives.
+         *
+         * @var array<string, mixed>
+         */
+        public readonly array $raw = [],
     ) {}
 
     /**
@@ -84,6 +98,7 @@ class FareQuote implements Arrayable, JsonSerializable
             miniFareRules: self::mapMiniFareRules(data_get($result, 'MiniFareRules', [])),
             baggage: $itinerary->lowestAllowance($legs, 'baggage'),
             cabinBaggage: $itinerary->lowestAllowance($legs, 'cabinBaggage'),
+            raw: $data,
         );
     }
 

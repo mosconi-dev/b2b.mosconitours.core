@@ -164,6 +164,28 @@ class BookingTest extends TestCase
         $this->assertStringStartsWith('MT-', $booking->reference);
     }
 
+    public function test_store_keeps_the_raw_fare_quote_response_verbatim(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload())
+            ->assertRedirect();
+
+        $booking = Booking::firstOrFail();
+
+        // Book echoes the priced itinerary back field-for-field, so the response is
+        // stored whole — not the UI transform, which drops most of what Book wants.
+        $this->assertSame($this->fixture('farequote.json'), $booking->quote_raw);
+
+        // Two fields the transform provably loses, to catch a "raw" that is quietly
+        // re-derived from the DTO rather than kept as it arrived.
+        $result = $booking->quote_raw['Response']['Results'];
+        $this->assertSame(6, $result['Source']);
+        $this->assertSame('PHP', $result['FareBreakdown'][0]['Currency']);
+        $this->assertArrayNotHasKey('Source', $booking->quote);
+    }
+
     public function test_store_enforces_passport_when_the_fare_requires_it(): void
     {
         $this->fakeQuote('farequote-passport.json'); // IsPassportRequiredAtBook = true

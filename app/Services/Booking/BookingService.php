@@ -72,6 +72,9 @@ class BookingService
                 'ancillary_total' => $ancillaryTotal,
                 'total_amount' => $total,
                 'quote' => $quote->toArray(),
+                // The lossy UI snapshot above is not enough to build a Book payload —
+                // keep the response TBO actually sent. See the quote_raw migration.
+                'quote_raw' => $quote->raw,
                 'pax' => $pax,
                 'contact' => $contact,
             ]);
