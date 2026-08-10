@@ -243,6 +243,53 @@ class LoadRequestFlowTest extends TestCase
         $this->assertTrue($listed->contains($theirs->id));
     }
 
+    // ---- The pending count on the filter ---------------------------------
+
+    public function test_the_pending_filter_carries_the_count_not_the_header(): void
+    {
+        $this->raise($this->requester());
+        $this->raise($this->requester());
+
+        $response = $this->actingAs($this->reviewer())
+            ->get(route('wallet.requests.index'))
+            ->assertOk();
+
+        $this->assertSame(2, $response->viewData('pendingCount'));
+        // The count belongs on the filter it describes, not floating in the header.
+        $response->assertDontSee('2 pending');
+
+        // Anchored to the Pending link itself, so the badge cannot pass by merely
+        // appearing somewhere else on the page.
+        $this->assertMatchesRegularExpression(
+            '#href="[^"]*status=pending"[^>]*>\s*Pending\s*<span[^>]*>\s*2\s*</span>#',
+            $response->getContent(),
+        );
+    }
+
+    public function test_the_count_is_hidden_when_nothing_is_pending(): void
+    {
+        $request = $this->raise($this->requester());
+        $this->actingAs($this->reviewer())->patch(route('wallet.requests.approve', $request))->assertRedirect();
+
+        $response = $this->actingAs($this->reviewer())
+            ->get(route('wallet.requests.index'))
+            ->assertOk();
+
+        $this->assertSame(0, $response->viewData('pendingCount'));
+    }
+
+    public function test_the_count_only_covers_the_viewers_own_agency(): void
+    {
+        $this->raise($this->requester());
+        WalletLoadRequest::factory()->count(3)->create(['agency_id' => $this->rival->id]);
+
+        $response = $this->actingAs($this->requester())
+            ->get(route('wallet.requests.index'))
+            ->assertOk();
+
+        $this->assertSame(1, $response->viewData('pendingCount'), 'another agency\'s queue must not be counted');
+    }
+
     // ---- The wallet page -------------------------------------------------
 
     public function test_the_wallet_page_shows_the_agency_balance_and_ledger(): void
