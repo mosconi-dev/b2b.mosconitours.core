@@ -31,7 +31,9 @@
                                 "AirportName": "Ninoy Aquino Intl",
                                 "Terminal": "2",
                                 "CityCode": "MNL",
-                                "CityName": "Manila"
+                                "CityName": "Manila",
+                                "CountryCode": "PH",
+                                "CountryName": "Philippines"
                             },
                             "DepTime": "2026-07-01T06:00:00"
                         },
@@ -41,7 +43,9 @@
                                 "AirportName": "Godofredo P. Ramos",
                                 "Terminal": "",
                                 "CityCode": "MPH",
-                                "CityName": "Caticlan"
+                                "CityName": "Caticlan",
+                                "CountryCode": "PH",
+                                "CountryName": "Philippines"
                             },
                             "ArrTime": "2026-07-01T07:15:00"
                         },

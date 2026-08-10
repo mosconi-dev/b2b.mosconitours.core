@@ -38,7 +38,9 @@
                                         "AirportName": "Ninoy Aquino Intl",
                                         "Terminal": "2",
                                         "CityCode": "MNL",
-                                        "CityName": "Manila"
+                                        "CityName": "Manila",
+                                        "CountryCode": "PH",
+                                        "CountryName": "Philippines"
                                     },
                                     "DepTime": "2026-07-01T06:00:00"
                                 },
@@ -48,7 +50,9 @@
                                         "AirportName": "Godofredo P. Ramos",
                                         "Terminal": "",
                                         "CityCode": "MPH",
-                                        "CityName": "Caticlan"
+                                        "CityName": "Caticlan",
+                                        "CountryCode": "PH",
+                                        "CountryName": "Philippines"
                                     },
                                     "ArrTime": "2026-07-01T07:15:00"
                                 },
@@ -89,7 +93,9 @@
                                         "AirportName": "Ninoy Aquino Intl",
                                         "Terminal": "3",
                                         "CityCode": "MNL",
-                                        "CityName": "Manila"
+                                        "CityName": "Manila",
+                                        "CountryCode": "PH",
+                                        "CountryName": "Philippines"
                                     },
                                     "DepTime": "2026-07-01T06:00:00"
                                 },
@@ -99,7 +105,9 @@
                                         "AirportName": "Mactan-Cebu Intl",
                                         "Terminal": "2",
                                         "CityCode": "CEB",
-                                        "CityName": "Cebu"
+                                        "CityName": "Cebu",
+                                        "CountryCode": "PH",
+                                        "CountryName": "Philippines"
                                     },
                                     "ArrTime": "2026-07-01T08:00:00"
                                 },
@@ -123,7 +131,9 @@
                                         "AirportName": "Mactan-Cebu Intl",
                                         "Terminal": "2",
                                         "CityCode": "CEB",
-                                        "CityName": "Cebu"
+                                        "CityName": "Cebu",
+                                        "CountryCode": "PH",
+                                        "CountryName": "Philippines"
                                     },
                                     "DepTime": "2026-07-01T09:30:00"
                                 },
@@ -133,7 +143,9 @@
                                         "AirportName": "Godofredo P. Ramos",
                                         "Terminal": "",
                                         "CityCode": "MPH",
-                                        "CityName": "Caticlan"
+                                        "CityName": "Caticlan",
+                                        "CountryCode": "PH",
+                                        "CountryName": "Philippines"
                                     },
                                     "ArrTime": "2026-07-01T10:20:00"
                                 },

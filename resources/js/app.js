@@ -236,6 +236,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     error: null,
     results: [],
     traceId: null,
+    resultType: null, // search-only, needed by Book — see seats
     currency: 'PHP',
     sort: 'price',
     filters: { stops: [], airlines: [], maxPrice: null, refundableOnly: false },
@@ -402,6 +403,7 @@ Alpine.data('flightSearch', (config = {}) => ({
 
             this.results = data.results ?? [];
             this.traceId = data.traceId ?? null;
+            this.resultType = data.resultType ?? null;
             this.currency = data.currency ?? 'PHP';
             this.resetFilters();
             this.syncUrl();
@@ -451,6 +453,7 @@ Alpine.data('flightSearch', (config = {}) => ({
             // FareQuote response but wants it back on Book, so search is the only place
             // it can be captured — see the seats_available migration.
             seats: (offer.trips ?? []).flatMap((t) => t.segments ?? []).map((s) => s.seats ?? '').join(','),
+            resultType: this.resultType ?? '',
         });
         window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
@@ -827,6 +830,7 @@ Alpine.data('logoDropzone', (config = {}) => ({
 // /bookings on completion.
 Alpine.data('bookingWizard', (config = {}) => ({
     traceId: config.traceId ?? '',
+    resultType: config.resultType ?? null,
     resultIndex: config.resultIndex ?? '',
     quote: config.quote ?? {},
     ssr: config.ssr ?? { baggage: [], meals: [] },
@@ -1062,6 +1066,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
             contact: this.contact,
             passengers: this.passengers,
             seats: this.seats ?? [],
+            resultType: this.resultType,
         });
 
         this.submitting = false;

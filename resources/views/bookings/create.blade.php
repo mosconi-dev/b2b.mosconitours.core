@@ -13,6 +13,7 @@
             // Search-only seat availability, carried through so the booking can hold
             // what Book needs and FareQuote no longer returns.
             'seats' => $seats,
+            'resultType' => $resultType,
             'bookingUrl' => route('bookings.store'),
             // Two different intents: "Book another" starts a fresh search, while
             // "Change flight" / "Decline" go back to Select Flight with the search

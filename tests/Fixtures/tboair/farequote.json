@@ -34,9 +34,36 @@
                 [
                     {
                         "TripIndicator": 1,
-                        "Airline": { "AirlineCode": "5J", "AirlineName": "Cebu Pacific", "FlightNumber": "561", "FareClass": "V" },
-                        "Origin": { "Airport": { "AirportCode": "MNL", "AirportName": "Ninoy Aquino Intl", "CityName": "Manila", "Terminal": "3" }, "DepTime": "2026-07-01T06:00:00" },
-                        "Destination": { "Airport": { "AirportCode": "CEB", "AirportName": "Mactan-Cebu Intl", "CityName": "Cebu", "Terminal": "2" }, "ArrTime": "2026-07-01T07:25:00" },
+                        "Airline": {
+                            "AirlineCode": "5J",
+                            "AirlineName": "Cebu Pacific",
+                            "FlightNumber": "561",
+                            "FareClass": "V"
+                        },
+                        "Origin": {
+                            "Airport": {
+                                "AirportCode": "MNL",
+                                "AirportName": "Ninoy Aquino Intl",
+                                "CityName": "Manila",
+                                "Terminal": "3",
+                                "CityCode": "MNL",
+                                "CountryCode": "PH",
+                                "CountryName": "Philippines"
+                            },
+                            "DepTime": "2026-07-01T06:00:00"
+                        },
+                        "Destination": {
+                            "Airport": {
+                                "AirportCode": "CEB",
+                                "AirportName": "Mactan-Cebu Intl",
+                                "CityName": "Cebu",
+                                "Terminal": "2",
+                                "CityCode": "CEB",
+                                "CountryCode": "PH",
+                                "CountryName": "Philippines"
+                            },
+                            "ArrTime": "2026-07-01T07:25:00"
+                        },
                         "Duration": 85,
                         "CabinClass": 2,
                         "Baggage": "25 KG",
@@ -46,9 +73,36 @@
             ],
             "MiniFareRules": [
                 [
-                    { "Type": "Cancellation", "Details": "4466 PHP (Before)", "JourneyPoints": "MNL-CEB", "From": "", "To": "", "Unit": "", "OnlineRefundAllowed": true, "OnlineReissueAllowed": false },
-                    { "Type": "Cancellation", "Details": "4466 PHP (After)", "JourneyPoints": "MNL-CEB", "From": "", "To": "", "Unit": "", "OnlineRefundAllowed": false, "OnlineReissueAllowed": false },
-                    { "Type": "Reissue", "Details": "2680 PHP (Before)", "JourneyPoints": "MNL-CEB", "From": "", "To": "", "Unit": "", "OnlineRefundAllowed": false, "OnlineReissueAllowed": true }
+                    {
+                        "Type": "Cancellation",
+                        "Details": "4466 PHP (Before)",
+                        "JourneyPoints": "MNL-CEB",
+                        "From": "",
+                        "To": "",
+                        "Unit": "",
+                        "OnlineRefundAllowed": true,
+                        "OnlineReissueAllowed": false
+                    },
+                    {
+                        "Type": "Cancellation",
+                        "Details": "4466 PHP (After)",
+                        "JourneyPoints": "MNL-CEB",
+                        "From": "",
+                        "To": "",
+                        "Unit": "",
+                        "OnlineRefundAllowed": false,
+                        "OnlineReissueAllowed": false
+                    },
+                    {
+                        "Type": "Reissue",
+                        "Details": "2680 PHP (Before)",
+                        "JourneyPoints": "MNL-CEB",
+                        "From": "",
+                        "To": "",
+                        "Unit": "",
+                        "OnlineRefundAllowed": false,
+                        "OnlineReissueAllowed": true
+                    }
                 ]
             ]
         }

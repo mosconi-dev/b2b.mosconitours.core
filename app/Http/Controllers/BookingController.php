@@ -60,6 +60,9 @@ class BookingController extends Controller
             // order. FareQuote does not return it and Book requires it — see the
             // seats_available migration.
             'seats' => ['nullable', 'string', 'max:255', 'regex:/^[0-9,]*$/'],
+            // Search-only too: TBO's ResultRecommendationType, which Book wants back as
+            // ResultType. Observed as both 0 and 1, so it cannot be assumed.
+            'resultType' => ['nullable', 'integer', 'min:0', 'max:99'],
         ]);
 
         $selection = new SelectionInput($data['traceId'], $data['resultIndex']);
@@ -82,6 +85,7 @@ class BookingController extends Controller
             'ssr' => $ssr?->toArray(),
             'oldFare' => (float) ($data['oldFare'] ?? 0),
             'seats' => $this->seats($data['seats'] ?? null),
+            'resultType' => isset($data['resultType']) ? (int) $data['resultType'] : null,
             'search' => (string) $request->query('search', ''),
             // The encoded search token — pre-fills the in-place "Modify" form.
             'q' => (string) $request->query('q', ''),
@@ -137,6 +141,7 @@ class BookingController extends Controller
                 $request->passengers(),
                 $request->contact(),
                 $request->seats(),
+                $request->resultType(),
             );
         } catch (BookingException $e) {
             return $this->storeError($request, $e->getMessage(), 422);

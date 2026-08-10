@@ -39,6 +39,7 @@ class StoreBookingRequest extends FormRequest
             // different fact from zero seats.
             'seats' => ['nullable', 'array', 'max:32'],
             'seats.*' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'resultType' => ['nullable', 'integer', 'min:0', 'max:99'],
 
             'passengers' => ['required', 'array', 'min:1', 'max:9'],
             'passengers.*.type' => ['required', Rule::in(['Adult', 'Child', 'Infant'])],
@@ -94,5 +95,12 @@ class StoreBookingRequest extends FormRequest
     public function seats(): array
     {
         return array_values((array) ($this->validated('seats') ?? []));
+    }
+
+    public function resultType(): ?int
+    {
+        $value = $this->validated('resultType');
+
+        return $value === null ? null : (int) $value;
     }
 }

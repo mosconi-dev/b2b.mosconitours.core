@@ -25,7 +25,7 @@ class TboAirService
     ) {}
 
     /**
-     * @return array{offers: array<int, FlightOffer>, traceId: ?string, currency: string}
+     * @return array{offers: array<int, FlightOffer>, traceId: ?string, currency: string, resultType: ?int}
      */
     public function search(SearchInput $input): array
     {
@@ -212,7 +212,7 @@ class TboAirService
     }
 
     /**
-     * @return array{offers: array<int, FlightOffer>, traceId: ?string, currency: string}
+     * @return array{offers: array<int, FlightOffer>, traceId: ?string, currency: string, resultType: ?int}
      */
     private function doSearch(SearchInput $input, string $token): array
     {
@@ -224,6 +224,9 @@ class TboAirService
         return [
             'offers' => $offers,
             'traceId' => data_get($data, 'Response.TraceId', data_get($data, 'TraceId')),
+            // Search-only, like NoOfSeatAvailable: FareQuote drops it and Book wants
+            // it back as ResultType. Observed as both 0 and 1, so it cannot be defaulted.
+            'resultType' => ($rt = data_get($data, 'Response.ResultRecommendationType')) === null ? null : (int) $rt,
             'currency' => $offers[0]->price['currency'] ?? data_get($data, 'Agency.LocalCurrency', 'PHP'),
         ];
     }
