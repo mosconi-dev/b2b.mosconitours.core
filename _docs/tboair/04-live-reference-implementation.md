@@ -121,23 +121,26 @@ tempted to mirror this code.
 Our design already avoids most of these: the wallet debits under lock against an authoritative ledger,
 `BookingStatus` is a guarded state machine, and the plan requires `GetBookingDetails` reconciliation.
 
-## 6. Two corrections to our own implementation
+## 6. Where our implementation differs
 
-Both are things the live system does differently, and it is the one with production evidence.
+### 6.1 The stale-session signal — different key, same coverage ✅
 
-### 6.1 The stale-session signal may be `ResponseStatus == 4`, not `ErrorCode 6`
+`SearchService.php:45` there retries on `ResponseStatus == 4`; our `withReauth()` keys on
+`Error.ErrorCode == 6`. This looked like a gap and **is not**: TBO sends **both fields on the same
+response**, so either key detects the event. Verified against a real logged expiry — see
+[`01-tbo-api-reference.md`](01-tbo-api-reference.md) §6 for the payload and the full pairing table.
 
-`SearchService.php:45`:
+Our self-heal is also confirmed working end-to-end in `tbo_air_api_logs`:
 
-```php
-if ($bodyResponse->ResponseStatus == 4) {   // token invalid → clear cache, re-auth, retry once
+```
+#214  search        2026-07-11 12:13:02   ResponseStatus 4 / ErrorCode 6 "Invalid Token"
+#215  authenticate  2026-07-11 12:13:05   ← withReauth() re-authenticated
+#216  search        2026-07-11 12:13:26   ← retry succeeded
 ```
 
-Our `TboAirService::withReauth()` keys on `TboAirException::isAuthError()` / `ErrorCode 6`. Both
-signals may exist, but a production system chose 4. **Verify our error mapping catches it** — if it
-does not, we fail where we should self-heal. Worth a look before 4.1.
+No change needed.
 
-### 6.2 Their token TTL is 12 hours
+### 6.2 Their token TTL is 12 hours, and their refresh is locked ⚠️
 
 `SearchService.php:565`: `$ttlHours = 12; // 12 // 24` — the trailing comment is someone else's open
 question about the same contradiction we hit. Refresh is wrapped in a `Cache::lock('tboair-auth-lock')`
@@ -147,5 +150,6 @@ That makes **four** figures for token validity: 12h (guide **and production**), 
 (`GetAgencyBalance` page), 24h (TBO's meeting), 23h (our TTL). Production runs the most conservative
 one. See [`01-tbo-api-reference.md`](01-tbo-api-reference.md) §4.
 
-> Our token cache has **no such lock**. Concurrent requests that all miss the cache can each fire an
-> Authenticate — which matters more if the "one token per day" rule is ever real.
+> **This is the one real gap on our side.** Our token cache has no such lock, so concurrent requests
+> that all miss can each fire an Authenticate — which matters more if the "one token per day" rule is
+> ever real. In 338 logged calls we have seen exactly one expiry, so it has not bitten yet.

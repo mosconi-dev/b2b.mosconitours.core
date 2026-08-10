@@ -56,9 +56,9 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
      `tboair:balance`, and a *Check now* panel in admin Settings. Ticketing draws down **our** TBO
      balance, not the internal e-wallet.
 
-  **Phase 4.0 is complete and 4.1 is unblocked.** Before writing it, note two corrections to our own
-  code that the live system exposed (`04`§6): production re-auths on **`ResponseStatus == 4`** where we
-  only catch `ErrorCode 6`, and it **locks** token refresh where we do not.
+  **Phase 4.0 is complete and 4.1 is unblocked.** One small fix to carry along: our **token refresh
+  has no lock**, so concurrent cache misses can each re-authenticate (`04`§6.2). Our `ErrorCode 6`
+  re-auth is confirmed working against a real logged expiry — no change needed there (`02`§4).
 - **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a
   price/schedule-change case and an **`InProgress`** case. Four of them need baggage/meal, so Phase 3
   is on the certification path. Submit case by case with PNRs; 4–5 working days.

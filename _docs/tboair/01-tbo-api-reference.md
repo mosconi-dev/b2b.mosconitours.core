@@ -99,7 +99,7 @@ Rules that shape the design:
 
 | Identifier | Where | Validity | Notes |
 | --- | --- | --- | --- |
-| **TokenId** | Authenticate → all calls | **contested — see below** | TBO's meeting said 24h; the guide says 12h; the GetAgencyBalance page says 20h; **the live system uses 12h**. Ours is 23h. Do **not** re-auth per request; cache and reuse. Re-auth on `ErrorCode 6` (and possibly `ResponseStatus 4` — §6). |
+| **TokenId** | Authenticate → all calls | **contested — see below** | TBO's meeting said 24h; the guide says 12h; the GetAgencyBalance page says 20h; **the live system uses 12h**. Ours is 23h. Do **not** re-auth per request; cache and reuse. Re-auth on `ErrorCode 6`, which arrives together with `ResponseStatus 4` — §6. |
 | **TraceId** | Search → all downstream calls | **~15 minutes** | Ties FareRule/FareQuote/SSR/Book/Ticket to a search. **Expires fast** — a held search result must be booked within the window or re-searched. |
 | **ResultIndex** | a specific fare in Search results | within TraceId | Selects the exact itinerary/fare to price and book. |
 | **EndUserIp** | every request | — | The whitelisted origin IP. |
@@ -267,11 +267,24 @@ not defensive polish.
 - **`ErrorCode == 0`** ⇒ success.
 - **`ErrorCode == 6`** ⇒ invalid/expired session token ⇒ **re-authenticate once and retry** (our
   self-healing backstop already does this for Search).
-- ⚠️ **`ResponseStatus == 4` is the signal the live system uses** for an invalid token
-  (`SearchService.php:45` there) — not `ErrorCode 6`. Both may exist, but production chose 4. Our
-  re-auth keys on ErrorCode 6 only; see
-  [`04-live-reference-implementation.md`](04-live-reference-implementation.md) §6.1.
-- `ResponseStatus == 1` is the success marker on the search/detail generation (`2` = no results).
+- **`ResponseStatus` and `ErrorCode` are a coarse/fine pair, not alternatives.** An expired token
+  arrives with **both** `ResponseStatus: 4` **and** `Error.ErrorCode: 6` on the same response —
+  confirmed from a real logged expiry (`tbo_air_api_logs #214`):
+
+  ```json
+  { "Error": { "ErrorCode": 6, "ErrorMessage": "Invalid Token" },
+    "ResponseStatus": 4, "TraceId": "bb3bce1e-…" }
+  ```
+
+  So keying on either detects it. We key on `ErrorCode 6`; the live system keys on `ResponseStatus 4`.
+
+Observed pairings across 338 logged calls:
+
+| `ResponseStatus` | `ErrorCode` | Meaning |
+| --- | --- | --- |
+| `1` | `0` | success (283 calls) |
+| `2` | `2`, `25`, `27`, `28` | business errors — no results, fare gone, … (35 calls) |
+| `4` | `6` | invalid/expired token (1 call) |
 - Always persist the raw request/response for support (TBO requires attached logs for tickets).
 
 ## 7. Certification (go-live gate)

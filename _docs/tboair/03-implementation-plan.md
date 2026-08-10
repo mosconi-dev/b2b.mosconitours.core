@@ -272,9 +272,9 @@ Two questions remain genuinely open, but **neither blocks 4.1**: the **token val
 20h / 24h / 23h — see `01`§4) and whether refund is **`Booking/RefundApi` or `Queues/RefundApi`**
 (Phase 5, and unverified in the live system too). Fold them into a TBO email whenever convenient.
 
-Two corrections to *our* code that 4.1 should pick up first — details in `04`§6:
+One small fix worth picking up alongside 4.1 (`04`§6.2): **token refresh has no lock**, so concurrent
+cache misses can each fire an Authenticate. The live system wraps it in a `Cache::lock`.
 
-1. **The re-auth signal.** Production retries on **`ResponseStatus == 4`**; we only catch
-   `ErrorCode 6`. Check our error mapping covers it, or we fail where we should self-heal.
-2. **No lock on token refresh.** Concurrent cache misses can each fire an Authenticate. The live
-   system wraps refresh in a `Cache::lock`.
+(The re-auth *signal* was briefly suspect — production keys on `ResponseStatus == 4`, we key on
+`ErrorCode 6` — but TBO sends both on the same response and our self-heal is confirmed working in the
+logs. Nothing to do. See `02`§4.)
