@@ -206,6 +206,106 @@ class BookPayloadTest extends TestCase
         $this->assertSame($fare, $pax['Fare_BE']);
     }
 
+    // ---- Identity documents -----------------------------------------------
+
+    /**
+     * The document follows the ROUTE, not TBO's flags. Most people flying Manila to
+     * Cebu hold no passport, so a domestic itinerary asks for a government ID and
+     * sends IdType 2.
+     */
+    public function test_a_domestic_itinerary_sends_a_government_id(): void
+    {
+        $booking = $this->booking();
+        $pax = $booking->pax;
+        $pax[0] += ['documentNumber' => 'UMID-1234-5678', 'documentExpiry' => '2032-05-01'];
+        $booking->update(['pax' => $pax]);
+
+        $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
+
+        $this->assertSame(2, $sent['PassengerIdType']);
+        $this->assertSame('UMID-1234-5678', $sent['PassengerIdNo']);
+        $this->assertSame(2, $sent['IdDetails'][0]['IdType']);
+        $this->assertSame('UMID-1234-5678', $sent['IdDetails'][0]['IdNumber']);
+        $this->assertSame(0, $sent['IdDetails'][0]['PaxId']);
+    }
+
+    /**
+     * The case that refused a real booking: a domestic PR fare that flags passport
+     * required. Rather than demand a passport nobody has, the government ID goes into
+     * the passport fields — truncated to the 15 characters TBO accepts.
+     */
+    public function test_a_domestic_fare_that_demands_a_passport_gets_the_id_instead(): void
+    {
+        $quote = $this->fixture('farequote.json');
+        $quote['Response']['Results']['IsPassportRequiredAtTicket'] = true;
+
+        $booking = $this->booking(['quote_raw' => $quote]);
+        $pax = $booking->pax;
+        $pax[0] += ['documentNumber' => 'ABCDEFGHIJKLMNOPQRSTUV', 'documentExpiry' => '2032-05-01'];
+        $booking->update(['pax' => $pax]);
+
+        $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
+
+        $this->assertSame('ABCDEFGHIJKLMNO', $sent['PassportNo'], 'truncated to 15');
+        $this->assertSame('2032-05-01T00:00:00', $sent['PassportExpiry']);
+        $this->assertSame(2, $sent['PassengerIdType'], 'still a domestic ID');
+    }
+
+    public function test_a_domestic_fare_that_does_not_ask_sends_no_passport_at_all(): void
+    {
+        $booking = $this->booking();
+        $pax = $booking->pax;
+        $pax[0] += ['documentNumber' => 'UMID-1234', 'documentExpiry' => '2032-05-01'];
+        $booking->update(['pax' => $pax]);
+
+        $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
+
+        $this->assertNull($sent['PassportNo']);
+        $this->assertNull($sent['PassportExpiry']);
+    }
+
+    public function test_an_international_itinerary_sends_the_passport(): void
+    {
+        $booking = $this->booking(['quote_raw' => $this->fixture('farequote-international.json')]);
+        $pax = $booking->pax;
+        $pax[0] += [
+            'documentNumber' => 'P1234567A', 'documentExpiry' => '2032-05-01',
+            'documentIssueCountry' => 'PH', 'documentIssueDate' => '2022-05-01',
+        ];
+        $booking->update(['pax' => $pax]);
+
+        $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
+
+        $this->assertSame(1, $sent['PassengerIdType']);
+        $this->assertSame('P1234567A', $sent['PassportNo'], 'not truncated');
+        $this->assertSame('PH', $sent['PassportIssueCountryCode']);
+        $this->assertSame('2022-05-01T00:00:00', $sent['PassportIssueDate']);
+        $this->assertSame(1, $sent['IdDetails'][0]['IdType']);
+    }
+
+    /**
+     * A driver's licence or UMID often has no expiry to hand, but TBO still wants one.
+     */
+    public function test_a_domestic_id_without_an_expiry_gets_a_far_future_one(): void
+    {
+        $booking = $this->booking();
+        $pax = $booking->pax;
+        $pax[0] += ['documentNumber' => 'UMID-1234'];
+        $booking->update(['pax' => $pax]);
+
+        $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
+
+        $this->assertSame(now()->addYears(20)->format('Y-m-d').'T00:00:00', $sent['PassengerIdExpiry']);
+    }
+
+    public function test_a_passenger_with_no_document_sends_an_empty_id_block(): void
+    {
+        $sent = $this->build($this->booking())['Itinerary']['Passenger'][0];
+
+        $this->assertSame([], $sent['IdDetails']);
+        $this->assertNull($sent['PassengerIdNo']);
+    }
+
     // ---- Ticket vs Book ---------------------------------------------------
 
     /**

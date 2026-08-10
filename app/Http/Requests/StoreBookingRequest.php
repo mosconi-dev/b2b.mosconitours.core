@@ -51,10 +51,13 @@ class StoreBookingRequest extends FormRequest
             'passengers.*.lastName' => ['required', 'string', 'max:64'],
             'passengers.*.gender' => ['nullable', Rule::in(['M', 'F'])],
             'passengers.*.dateOfBirth' => ['nullable', 'date'],
-            // Passport is optional structurally; BookingService enforces it against the
-            // fresh FareQuote when the fare requires it.
-            'passengers.*.passportNo' => ['nullable', 'string', 'max:32'],
-            'passengers.*.passportExpiry' => ['nullable', 'date'],
+            // The identity document: a passport internationally, any government ID
+            // domestically. Optional structurally; BookingService enforces it against
+            // the fresh FareQuote, which knows both the route and TBO's flags.
+            'passengers.*.documentNumber' => ['nullable', 'string', 'max:32'],
+            'passengers.*.documentExpiry' => ['nullable', 'date'],
+            'passengers.*.documentIssueCountry' => ['nullable', 'string', 'size:2', 'alpha'],
+            'passengers.*.documentIssueDate' => ['nullable', 'date'],
             'passengers.*.nationality' => ['nullable', 'string', 'max:2'],
             // Selected SSR option codes (LCC ancillaries); priced authoritatively server-side.
             'passengers.*.baggage' => ['nullable', 'string', 'max:32'],

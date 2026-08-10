@@ -300,7 +300,7 @@ class BookingTest extends TestCase
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                    'passportNo' => 'P1234567', 'passportExpiry' => '2030-01-01', 'nationality' => 'PH',
+                    'documentNumber' => 'P1234567', 'documentExpiry' => '2030-01-01', 'nationality' => 'PH',
                 ]],
             ]))
             ->assertRedirect();

@@ -921,7 +921,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     buildPassengers() {
-        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '', isLeadPax: false });
+        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', documentNumber: '', documentExpiry: '', documentIssueCountry: '', documentIssueDate: '', nationality: '', baggage: '', meal: '', isLeadPax: false });
         const list = [];
         (this.quote?.fareBreakdown ?? []).forEach((b) => {
             const n = Number(b.count) || 0;
@@ -972,8 +972,21 @@ Alpine.data('bookingWizard', (config = {}) => ({
             c.addressLine1.trim() && c.city.trim() && c.countryCode.trim());
     },
 
+    /**
+     * An international itinerary always needs a passport; a domestic one needs a
+     * government ID whenever the fare asks for a document at all. Mirrors the check
+     * BookingService re-runs against a fresh quote at submit.
+     */
+    get documentRequired() {
+        return !! (this.quote?.isPassportMandatory || this.quote?.isDomestic === false);
+    },
+
     passengerComplete(p) {
-        return !! (p && p.firstName.trim() && p.lastName.trim());
+        if (! p || ! p.firstName.trim() || ! p.lastName.trim()) return false;
+
+        return this.documentRequired
+            ? !! (p.documentNumber?.trim() && p.documentExpiry?.trim())
+            : true;
     },
 
     get currentSectionComplete() {

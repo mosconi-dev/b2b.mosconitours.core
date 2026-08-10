@@ -245,11 +245,20 @@ class TboBookPayload
         $fare = data_get($result, 'Fare', []);
         $rows = (array) ($booking->pax ?? []);
 
+        // Which document a passenger carries follows the ROUTE; whether TBO also
+        // insists on passport fields follows its own flags. The two are independent.
+        $isDomestic = self::isDomestic($result);
+        $passportRequired = (bool) data_get($result, 'IsPassportRequiredAtBook', false)
+            || (bool) data_get($result, 'IsPassportRequiredAtTicket', false)
+            || (bool) data_get($result, 'IsPassportFullDetailRequiredAtBook', false);
+
         if ($rows === []) {
             throw new BookingException("Booking {$booking->reference} has no passengers.");
         }
 
-        return array_values(array_map(function (array $row) use ($fare): array {
+        // Keys are passed alongside, because IdDetails needs each passenger's real
+        // position and two identical rows would otherwise resolve to the same one.
+        return array_values(array_map(function (array $row, int $index) use ($fare, $isDomestic, $passportRequired): array {
             $isInfant = strcasecmp((string) ($row['type'] ?? ''), 'Infant') === 0;
 
             return [
@@ -260,8 +269,7 @@ class TboBookPayload
                 'Gender' => TboPassengerMapper::gender($row['gender'] ?? null),
                 'DateOfBirth' => self::dateTime($row['dateOfBirth'] ?? null),
 
-                'PassportNo' => $row['passportNo'] ?? null,
-                'PassportExpiry' => self::dateTime($row['passportExpiry'] ?? null),
+                ...self::documents($row, $isDomestic, $passportRequired, $index),
 
                 'Nationality' => [
                     'CountryCode' => $row['nationality'] ?? $row['countryCode'] ?? null,
@@ -296,7 +304,95 @@ class TboBookPayload
                 'MealDynamic' => $isInfant ? [] : self::ssrCodes($row, 'meal'),
                 'SeatDynamic' => [],
             ];
-        }, $rows));
+        }, $rows, array_keys($rows)));
+    }
+
+    /**
+     * The identity block TBO wants: `IdDetails`, plus the `Passport*` family.
+     *
+     * `IdType` follows the route — **1 international, 2 domestic** — because that is
+     * what decides which document a traveller actually holds. A passport is asked for
+     * on an international itinerary; on a domestic one any government ID will do, and
+     * most people flying Manila to Cebu do not own a passport.
+     *
+     * When TBO's flags demand passport fields on a *domestic* fare — which they do,
+     * even flagging only `AtTicket` and then rejecting the Book — the government ID is
+     * sent in them, truncated to the 15 characters the field accepts. Without that a
+     * domestic booking is refused with "Passport Number and Passport Expiry should not
+     * be Empty" for a passport the passenger was never going to have.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private static function documents(array $row, bool $isDomestic, bool $passportRequired, int $index = 0): array
+    {
+        $number = $row['documentNumber'] ?? $row['passportNo'] ?? null;
+        $expiry = self::dateTime($row['documentExpiry'] ?? $row['passportExpiry'] ?? null);
+        $country = $row['documentIssueCountry'] ?? $row['nationality'] ?? null;
+        $issued = self::dateTime($row['documentIssueDate'] ?? null);
+
+        // A domestic ID often carries no expiry; TBO still wants one, and a date far
+        // enough out cannot be mistaken for a real expiry.
+        if ($isDomestic && $expiry === null && filled($number)) {
+            $expiry = self::dateTime(now()->addYears(20)->format('Y-m-d'));
+        }
+
+        $passport = $isDomestic
+            // Domestic: only populate the passport fields if TBO insists, and then
+            // from the ID we actually hold.
+            ? ($passportRequired && filled($number)
+                ? ['no' => substr((string) $number, 0, 15), 'expiry' => $expiry, 'country' => $country, 'issued' => null]
+                : ['no' => null, 'expiry' => null, 'country' => null, 'issued' => null])
+            // International: the document IS the passport.
+            : ['no' => $number, 'expiry' => $expiry, 'country' => $country, 'issued' => $issued];
+
+        return [
+            'PassportNo' => $passport['no'],
+            'PassportExpiry' => $passport['expiry'],
+            'PassportIssueCountryCode' => $passport['country'],
+            'PassportIssueDate' => $passport['issued'],
+
+            'PassengerIdType' => $isDomestic ? 2 : 1,
+            'PassengerIdNo' => $number,
+            'PassengerIdExpiry' => $expiry,
+            'PassengerIdIssueCountryCode' => $country,
+            'PassengerIdIssueDate' => $isDomestic ? ($issued ?? self::dateTime(now()->format('Y-m-d'))) : $issued,
+
+            'IdDetails' => filled($number) ? [[
+                'PaxId' => $index,
+                'IdType' => $isDomestic ? 2 : 1,
+                'IdNumber' => $number,
+                'ExpiryDate' => $expiry,
+                'IssuedCountryCode' => $country,
+                'IssueDate' => $isDomestic ? ($issued ?? self::dateTime(now()->format('Y-m-d'))) : $issued,
+            ]] : [],
+        ];
+    }
+
+    /**
+     * Every airport on the priced itinerary sits in the point-of-sale country.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private static function isDomestic(array $result): bool
+    {
+        $segments = self::flatten(data_get($result, 'Segments', []));
+
+        if ($segments === []) {
+            return false;
+        }
+
+        $home = strtoupper((string) config('tboair.point_of_sale', 'PH'));
+
+        foreach ($segments as $segment) {
+            foreach (['Origin', 'Destination'] as $side) {
+                if (strtoupper((string) data_get($segment, "{$side}.Airport.CountryCode", '')) !== $home) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

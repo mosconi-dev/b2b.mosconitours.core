@@ -236,7 +236,10 @@
                         <div x-show="guestTab === i" class="space-y-4">
                             <div>
                                 <h2 class="text-base font-semibold text-brand-900">Guest <span x-text="i + 1"></span> <span class="font-normal text-gray-400">· <span x-text="p.type"></span></span></h2>
-                                <p x-show="quote.isPassportMandatory" x-cloak class="mt-0.5 text-xs text-blue-700">Passport details are required for this fare.</p>
+                                <p x-show="documentRequired" x-cloak class="mt-0.5 text-xs text-blue-700"
+                                   x-text="quote.isDomestic
+                                       ? 'A government ID is required for this fare — any valid ID will do.'
+                                       : 'Passport details are required for this international flight.'"></p>
                             </div>
 
                             {{-- Exactly one lead guest, and only an adult may hold it. --}}
@@ -281,19 +284,35 @@
                                 </div>
                             </div>
 
-                            <div x-show="quote.isPassportMandatory" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            {{-- The identity document. Which one depends on the route, not on
+                                 TBO's flags: a passport abroad, any government ID at home. --}}
+                            <div x-show="documentRequired" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                 <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport no.</label>
-                                    <input type="text" x-model="p.passportNo" placeholder="e.g. P1234567A" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    <label class="mb-1 block text-xs font-medium text-gray-600" x-text="quote.isDomestic ? 'ID number' : 'Passport no.'"></label>
+                                    <input type="text" x-model="p.documentNumber" :placeholder="quote.isDomestic ? 'e.g. UMID / driver&apos;s licence' : 'e.g. P1234567A'"
+                                           class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                                 <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport expiry</label>
-                                    <input type="text" readonly x-flatpickr="{ model: 'p.passportExpiry' }" placeholder="Select date" autocomplete="off"
+                                    <label class="mb-1 block text-xs font-medium text-gray-600" x-text="quote.isDomestic ? 'ID expiry' : 'Passport expiry'"></label>
+                                    <input type="text" readonly x-flatpickr="{ model: 'p.documentExpiry' }" placeholder="Select date" autocomplete="off"
                                            class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>
                                     <input type="text" x-model="p.nationality" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                            </div>
+
+                            {{-- Only a passport carries these; a domestic ID does not. --}}
+                            <div x-show="documentRequired && ! quote.isDomestic" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport issuing country</label>
+                                    <input type="text" x-model="p.documentIssueCountry" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport issue date</label>
+                                    <input type="text" readonly x-flatpickr="{ model: 'p.documentIssueDate', minDate: null, maxDate: 'today' }" placeholder="Select date" autocomplete="off"
+                                           class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                             </div>
                         </div>

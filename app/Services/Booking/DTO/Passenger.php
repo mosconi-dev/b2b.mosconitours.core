@@ -23,8 +23,13 @@ class Passenger implements Arrayable
         public readonly string $lastName,
         public readonly ?string $gender = null,
         public readonly ?string $dateOfBirth = null,
-        public readonly ?string $passportNo = null,
-        public readonly ?string $passportExpiry = null,
+        // The identity document TBO's IdDetails block carries. Which one is asked for
+        // depends on the route, not on TBO's passport flags: a passport
+        // internationally, any government ID domestically — see TboBookPayload.
+        public readonly ?string $documentNumber = null,
+        public readonly ?string $documentExpiry = null,
+        public readonly ?string $documentIssueCountry = null,
+        public readonly ?string $documentIssueDate = null,
         public readonly ?string $nationality = null,
         public readonly ?string $baggage = null,  // selected SSR baggage code
         public readonly ?string $meal = null,     // selected SSR meal code
@@ -43,9 +48,10 @@ class Passenger implements Arrayable
         return strcasecmp($this->type, 'Infant') === 0;
     }
 
-    public function hasPassport(): bool
+    /** Enough of an identity document to satisfy TBO: a number and an expiry. */
+    public function hasDocument(): bool
     {
-        return filled($this->passportNo) && filled($this->passportExpiry);
+        return filled($this->documentNumber) && filled($this->documentExpiry);
     }
 
     /**
@@ -60,8 +66,12 @@ class Passenger implements Arrayable
             lastName: (string) ($data['lastName'] ?? ''),
             gender: $data['gender'] ?? null,
             dateOfBirth: $data['dateOfBirth'] ?? null,
-            passportNo: $data['passportNo'] ?? null,
-            passportExpiry: $data['passportExpiry'] ?? null,
+            // `passportNo`/`passportExpiry` are the pre-document names, still present
+            // on bookings stored before this and on any older client payload.
+            documentNumber: $data['documentNumber'] ?? $data['passportNo'] ?? null,
+            documentExpiry: $data['documentExpiry'] ?? $data['passportExpiry'] ?? null,
+            documentIssueCountry: $data['documentIssueCountry'] ?? null,
+            documentIssueDate: $data['documentIssueDate'] ?? null,
             nationality: $data['nationality'] ?? null,
             baggage: $data['baggage'] ?? null,
             meal: $data['meal'] ?? null,
@@ -72,10 +82,23 @@ class Passenger implements Arrayable
     /** A copy of this passenger with the lead flag set either way. */
     public function withLead(bool $isLeadPax): self
     {
+        // Named throughout: a positional copy silently shifts every field the day one
+        // is inserted, and this constructor keeps growing.
         return new self(
-            $this->type, $this->title, $this->firstName, $this->lastName, $this->gender,
-            $this->dateOfBirth, $this->passportNo, $this->passportExpiry, $this->nationality,
-            $this->baggage, $this->meal, isLeadPax: $isLeadPax,
+            type: $this->type,
+            title: $this->title,
+            firstName: $this->firstName,
+            lastName: $this->lastName,
+            gender: $this->gender,
+            dateOfBirth: $this->dateOfBirth,
+            documentNumber: $this->documentNumber,
+            documentExpiry: $this->documentExpiry,
+            documentIssueCountry: $this->documentIssueCountry,
+            documentIssueDate: $this->documentIssueDate,
+            nationality: $this->nationality,
+            baggage: $this->baggage,
+            meal: $this->meal,
+            isLeadPax: $isLeadPax,
         );
     }
 
@@ -91,8 +114,10 @@ class Passenger implements Arrayable
             'lastName' => $this->lastName,
             'gender' => $this->gender,
             'dateOfBirth' => $this->dateOfBirth,
-            'passportNo' => $this->passportNo,
-            'passportExpiry' => $this->passportExpiry,
+            'documentNumber' => $this->documentNumber,
+            'documentExpiry' => $this->documentExpiry,
+            'documentIssueCountry' => $this->documentIssueCountry,
+            'documentIssueDate' => $this->documentIssueDate,
             'nationality' => $this->nationality,
             'isLeadPax' => $this->isLeadPax,
         ];

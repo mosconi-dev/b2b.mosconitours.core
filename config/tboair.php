@@ -82,6 +82,11 @@ return [
     |
     */
 
+    // The country we sell from. Decides which itineraries count as domestic — and so
+    // whether a passenger is asked for a passport or any government ID — and is sent
+    // to TBO as PointOfSale.
+    'point_of_sale' => env('TBOAIR_POINT_OF_SALE', 'PH'),
+
     'auth_mode' => env('TBOAIR_AUTH_MODE', 'API'),
 
     'booking_mode' => (int) env('TBOAIR_BOOKING_MODE', 5),
