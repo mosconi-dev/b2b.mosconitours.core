@@ -447,6 +447,10 @@ Alpine.data('flightSearch', (config = {}) => ({
             to: offer.arrival?.code || '',
             search: this.summary || '', // carried to the wizard's search-context bar
             q: encodeSearch(this.searchParams()), // exact search that produced this offer, so "Modify" restores it
+            // Per-segment seat availability, in segment order. TBO drops this from the
+            // FareQuote response but wants it back on Book, so search is the only place
+            // it can be captured — see the seats_available migration.
+            seats: (offer.trips ?? []).flatMap((t) => t.segments ?? []).map((s) => s.seats ?? '').join(','),
         });
         window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
@@ -1057,6 +1061,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
             resultIndex: this.resultIndex,
             contact: this.contact,
             passengers: this.passengers,
+            seats: this.seats ?? [],
         });
 
         this.submitting = false;

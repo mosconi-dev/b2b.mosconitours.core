@@ -37,8 +37,9 @@ class BookingService
      *
      * @param  array<int, Passenger>  $passengers
      * @param  array<string, mixed>  $contact
+     * @param  array<int, int|null>  $seats  per-segment availability from the search
      */
-    public function createFromQuote(User $user, SelectionInput $selection, array $passengers, array $contact): Booking
+    public function createFromQuote(User $user, SelectionInput $selection, array $passengers, array $contact, array $seats = []): Booking
     {
         $quote = $this->tbo->fareQuote($selection); // read; throws TboAirException on an expired fare
 
@@ -60,7 +61,7 @@ class BookingService
         // The TBO reads above are deliberately outside the transaction — only the
         // booking row and its wallet charge go in it, so an insufficient balance
         // rolls the booking back rather than leaving one nobody paid for.
-        return DB::transaction(function () use ($user, $selection, $quote, $pax, $ancillaryTotal, $total, $contact): Booking {
+        return DB::transaction(function () use ($user, $selection, $quote, $pax, $ancillaryTotal, $total, $contact, $seats): Booking {
             $booking = Booking::create([
                 'reference' => $this->reference(),
                 'user_id' => $user->getKey(),
@@ -79,6 +80,10 @@ class BookingService
                 // The lossy UI snapshot above is not enough to build a Book payload —
                 // keep the response TBO actually sent. See the quote_raw migration.
                 'quote_raw' => $quote->raw,
+                // Search-only, and Book needs it: TBO drops NoOfSeatAvailable from the
+                // FareQuote response. Kept beside quote_raw rather than merged into it,
+                // so that column stays a verbatim copy of what TBO sent.
+                'seats_available' => $seats,
                 'pax' => $pax,
                 'contact' => $contact,
             ]);

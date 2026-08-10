@@ -34,6 +34,12 @@ class StoreBookingRequest extends FormRequest
             'contact.city' => ['required', 'string', 'max:64'],
             'contact.countryCode' => ['required', 'string', 'size:2', 'alpha'],
 
+            // Per-segment seat availability captured at search time; FareQuote drops it
+            // and Book needs it back. Nullable entries mean "not captured", which is a
+            // different fact from zero seats.
+            'seats' => ['nullable', 'array', 'max:32'],
+            'seats.*' => ['nullable', 'integer', 'min:0', 'max:9999'],
+
             'passengers' => ['required', 'array', 'min:1', 'max:9'],
             'passengers.*.type' => ['required', Rule::in(['Adult', 'Child', 'Infant'])],
             // TBO's title enum has exactly three values (Mr=0, Miss=1, Mrs=2), so the
@@ -80,5 +86,13 @@ class StoreBookingRequest extends FormRequest
     public function contact(): array
     {
         return $this->validated('contact');
+    }
+
+    /**
+     * @return array<int, int|null>
+     */
+    public function seats(): array
+    {
+        return array_values((array) ($this->validated('seats') ?? []));
     }
 }

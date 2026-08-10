@@ -56,6 +56,10 @@ class BookingController extends Controller
             'traceId' => ['required', 'string', 'max:255'],
             'resultIndex' => ['required', 'string', 'max:8192'],
             'oldFare' => ['nullable', 'numeric'], // the searched fare, for the price-change diff
+            // Per-segment seat availability from the search, comma-separated in segment
+            // order. FareQuote does not return it and Book requires it — see the
+            // seats_available migration.
+            'seats' => ['nullable', 'string', 'max:255', 'regex:/^[0-9,]*$/'],
         ]);
 
         $selection = new SelectionInput($data['traceId'], $data['resultIndex']);
@@ -77,6 +81,7 @@ class BookingController extends Controller
             'quote' => $quote->toArray(),
             'ssr' => $ssr?->toArray(),
             'oldFare' => (float) ($data['oldFare'] ?? 0),
+            'seats' => $this->seats($data['seats'] ?? null),
             'search' => (string) $request->query('search', ''),
             // The encoded search token — pre-fills the in-place "Modify" form.
             'q' => (string) $request->query('q', ''),
@@ -131,6 +136,7 @@ class BookingController extends Controller
                 $request->selection(),
                 $request->passengers(),
                 $request->contact(),
+                $request->seats(),
             );
         } catch (BookingException $e) {
             return $this->storeError($request, $e->getMessage(), 422);
@@ -152,6 +158,27 @@ class BookingController extends Controller
         return redirect()
             ->route('bookings.show', $booking)
             ->with('status', "Booking {$booking->reference} created.");
+    }
+
+    /**
+     * Parse the comma-separated seat list carried over from search.
+     *
+     * A blank entry means that segment's availability is genuinely unknown, so it
+     * stays null rather than becoming 0 — zero seats and "not captured" are different
+     * facts, and only one of them should ever stop a booking.
+     *
+     * @return array<int, int|null>
+     */
+    private function seats(?string $seats): array
+    {
+        if (! filled($seats)) {
+            return [];
+        }
+
+        return array_map(
+            fn (string $seat): ?int => trim($seat) === '' ? null : (int) $seat,
+            explode(',', $seats),
+        );
     }
 
     private function storeError(Request $request, string $message, int $status): RedirectResponse|JsonResponse
