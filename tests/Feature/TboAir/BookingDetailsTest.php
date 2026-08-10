@@ -36,10 +36,12 @@ class BookingDetailsTest extends TestCase
     {
         $this->fake();
 
-        $result = $this->service()->bookingDetails('QWER12');
+        $result = $this->service()->bookingDetails('984XIX');
 
-        $this->assertSame('QWER12', $result->pnr);
-        $this->assertSame('884213', $result->bookingId);
+        // The fixture is a real response: the itinerary sits under `Itinerary`, not
+        // the `FlightItinerary` the doc page names.
+        $this->assertSame('984XIX', $result->pnr);
+        $this->assertSame('75133', $result->bookingId);
         $this->assertSame(TboBookingStatus::Successful, $result->status);
         $this->assertTrue($result->hasPnr());
         $this->assertFalse($result->needsReconciliation());
@@ -48,14 +50,14 @@ class BookingDetailsTest extends TestCase
     public function test_it_sends_the_pnr_and_a_token(): void
     {
         $this->fake();
-        $this->service()->bookingDetails('QWER12');
+        $this->service()->bookingDetails('984XIX');
 
         Http::assertSent(function ($request) {
             if (! str_contains($request->url(), 'GetBookingDetails')) {
                 return false;
             }
 
-            return $request->data()['PNR'] === 'QWER12' && filled($request->data()['TokenId']);
+            return $request->data()['PNR'] === '984XIX' && filled($request->data()['TokenId']);
         });
     }
 
@@ -67,8 +69,8 @@ class BookingDetailsTest extends TestCase
     {
         $this->fake();
 
-        $this->service()->bookingDetails('QWER12');
-        $this->service()->bookingDetails('QWER12');
+        $this->service()->bookingDetails('984XIX');
+        $this->service()->bookingDetails('984XIX');
 
         Http::assertSentCount(3); // one Authenticate + two GetBookingDetails
     }

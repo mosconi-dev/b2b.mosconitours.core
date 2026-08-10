@@ -33,8 +33,12 @@ class BookingResult implements Arrayable
     {
         $data = self::unwrap($data);
 
-        // Book/Ticket answer flat; GetBookingDetails nests under FlightItinerary.
-        $itinerary = data_get($data, 'Response.FlightItinerary', data_get($data, 'FlightItinerary'));
+        // Book/Ticket answer flat. GetBookingDetails nests, and the real key is
+        // `Itinerary` — its doc page says `FlightItinerary`, which appears nowhere in
+        // an actual response, so reading only that returned no PNR at all.
+        $itinerary = data_get($data, 'Itinerary')
+            ?? data_get($data, 'Response.FlightItinerary')
+            ?? data_get($data, 'FlightItinerary');
 
         return new self(
             pnr: self::text(data_get($itinerary, 'PNR') ?? data_get($data, 'PNR') ?? data_get($data, 'Response.PNR')),
