@@ -16,6 +16,8 @@
             // that produced this fare, so the results list is restored.
             'flightsUrl' => route('flights'),
             'changeFlightUrl' => $q ? route('flights', ['q' => $q]) : route('flights'),
+            'wallet' => $wallet,
+            'walletRequestUrl' => $walletRequestUrl,
          ]))">
 
         {{-- Search context — carried from the flights search. Editable in place:
@@ -319,13 +321,50 @@
                 <div class="flex items-center justify-between px-4 py-2"><span class="text-gray-500">Fare</span><span class="text-brand-900"><span x-text="currency"></span> <span x-text="money(quote.price.offeredFare)"></span></span></div>
                 <div x-show="ancillaryTotal > 0" x-cloak class="flex items-center justify-between border-t border-gray-100 px-4 py-2"><span class="text-gray-500">Add-ons</span><span class="text-brand-900"><span x-text="currency"></span> <span x-text="money(ancillaryTotal)"></span></span></div>
                 <div class="flex items-center justify-between border-t border-gray-100 px-4 py-2.5"><span class="font-semibold text-brand-900">Total</span><span class="text-base font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(grandTotal)"></span></span></div>
+
+                {{-- Wallet lines: absent for platform staff, who are not charged. --}}
+                <template x-if="hasWallet">
+                    <div>
+                        <div class="flex items-center justify-between border-t border-gray-100 px-4 py-2">
+                            <span class="text-gray-500">Wallet balance</span>
+                            <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money(walletBalance)"></span></span>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-gray-100 px-4 py-2">
+                            <span class="text-gray-500">Remaining after booking</span>
+                            <span :class="walletShort ? 'font-semibold text-red-700' : 'text-brand-900'">
+                                <span x-text="currency"></span> <span x-text="money(walletRemaining)"></span>
+                            </span>
+                        </div>
+                    </div>
+                </template>
             </div>
+
+            {{-- Advisory: the server re-checks the balance under lock at submit, so a
+                 colleague spending the funds while this page is open is still caught. --}}
+            <template x-if="walletShort">
+                <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
+                    <p class="font-semibold text-red-800">Not enough wallet balance</p>
+                    <p class="mt-1 text-red-700">
+                        This booking needs
+                        <span class="font-semibold"><span x-text="currency"></span> <span x-text="money(walletShortfall)"></span></span>
+                        more than your agency has available. Load the wallet, then come back — your selection is kept.
+                    </p>
+                    <template x-if="walletRequestUrl">
+                        <a :href="walletRequestUrl"
+                           class="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                            Request a load
+                        </a>
+                    </template>
+                </div>
+            </template>
 
             <div x-show="error" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" x-text="error"></div>
 
             <div class="flex justify-between border-t border-gray-100 pt-4">
                 <button type="button" @click="back()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
-                <button type="button" @click="complete()" :disabled="submitting" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                <button type="button" @click="complete()" :disabled="submitting || walletShort"
+                        :title="walletShort ? 'Not enough wallet balance for this booking' : null"
+                        class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                     <svg x-show="submitting" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
                     <span x-text="submitting ? 'Confirming…' : 'Complete booking'"></span>
                 </button>

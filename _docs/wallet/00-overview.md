@@ -131,6 +131,12 @@ Audit event: `wallet.adjusted`, with the reason and resulting balance.
   other booking failure — including the 422 JSON the wizard expects — instead of rendering as an
   unrelated wallet error. The agent sees the shortfall: *"Insufficient wallet balance: 100.00
   available, 6,400.00 required."*
+- **The Payment step warns first.** `BookingController::create()` passes the agency balance into the
+  wizard, which shows *Wallet balance* and *Remaining after booking*, turns the remainder red, blocks
+  **Complete booking**, and offers *Request a load* (when the agent holds `wallet.load.create`). This is
+  **advisory only** — the server re-checks under lock at submit, because a colleague can spend the
+  balance while the page is open. The balance is deliberately **not** gated on `wallet.view`: it is money
+  the agent is about to spend, and the failure message already names it.
 - **Platform staff are not charged.** No agency means no wallet; they are the operator, not a customer
   of the balance.
 

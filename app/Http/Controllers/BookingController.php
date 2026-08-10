@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreBookingRequest;
 use App\Models\Booking;
+use App\Models\User;
+use App\Models\Wallet;
+use App\Models\WalletLoadRequest;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\SelectionInput;
@@ -82,7 +85,38 @@ class BookingController extends Controller
                 'from' => (string) $request->query('from', ''),
                 'to' => (string) $request->query('to', ''),
             ],
+            // Lets the Payment step warn about a shortfall before the agent submits.
+            // Advisory only — BookingService re-checks under lock at submit, because
+            // a colleague may spend the balance while this page is open.
+            'wallet' => $this->walletSummary($request->user()),
+            'walletRequestUrl' => $request->user()->can('create', WalletLoadRequest::class)
+                ? route('wallet.requests.create')
+                : null,
         ]);
+    }
+
+    /**
+     * The booker's agency balance, or null when there is nothing to charge.
+     *
+     * Deliberately not gated on wallet.view: this is money the agent is about to
+     * spend, and the insufficient-funds error already names the figure. Gating it
+     * would only move the discovery to after the wizard was filled in.
+     *
+     * @return array{balance: string, currency: string}|null
+     */
+    private function walletSummary(User $user): ?array
+    {
+        if ($user->agency_id === null) {
+            return null;
+        }
+
+        // Read-only: rendering a form must not create a wallet row.
+        $wallet = Wallet::where('agency_id', $user->agency_id)->first(['currency', 'balance']);
+
+        return [
+            'balance' => (string) ($wallet?->balance ?? '0.00'),
+            'currency' => $wallet?->currency ?? 'PHP',
+        ];
     }
 
     /**

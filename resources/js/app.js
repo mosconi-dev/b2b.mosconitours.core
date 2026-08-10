@@ -997,6 +997,32 @@ Alpine.data('bookingWizard', (config = {}) => ({
         return (Number(this.quote?.price?.offeredFare) || 0) + this.ancillaryTotal;
     },
 
+    // ----- wallet ------------------------------------------------------------
+    // config.wallet is null for platform staff, who are not charged at all.
+
+    get hasWallet() {
+        return this.wallet !== null && this.wallet !== undefined;
+    },
+
+    get walletBalance() {
+        return this.hasWallet ? Number(this.wallet.balance) || 0 : 0;
+    },
+
+    // Money compared in centavos: subtracting 2dp floats is not exact, and being
+    // a hundredth out here would either block a payable booking or wave through
+    // one the server then rejects.
+    get walletRemaining() {
+        return (Math.round(this.walletBalance * 100) - Math.round(this.grandTotal * 100)) / 100;
+    },
+
+    get walletShort() {
+        return this.hasWallet && this.walletRemaining < 0;
+    },
+
+    get walletShortfall() {
+        return this.walletShort ? Math.abs(this.walletRemaining) : 0;
+    },
+
     // Same helpers as the results list, so the shared itinerary partial renders
     // identically on both pages.
     formatTime,
