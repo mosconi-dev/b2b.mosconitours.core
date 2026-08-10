@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use RuntimeException;
 
@@ -54,5 +55,33 @@ class Booking extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Wallet movements caused by this booking — the charge, and its refund if the
+     * booking was later cancelled, failed or refunded.
+     *
+     * @return MorphMany<WalletTransaction, $this>
+     */
+    public function walletTransactions(): MorphMany
+    {
+        return $this->morphMany(WalletTransaction::class, 'source');
+    }
+
+    /**
+     * The debit taken when this booking was made, if the booker had an agency.
+     */
+    public function walletCharge(): ?WalletTransaction
+    {
+        return $this->walletTransactions()->where('direction', WalletTransaction::DEBIT)->first();
+    }
+
+    /**
+     * Whether the charge has already been given back — the guard that stops a
+     * booking being refunded twice as it moves through terminal states.
+     */
+    public function wasRefundedToWallet(): bool
+    {
+        return $this->walletTransactions()->where('direction', WalletTransaction::CREDIT)->exists();
     }
 }

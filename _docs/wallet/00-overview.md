@@ -115,9 +115,36 @@ Audit event: `wallet.adjusted`, with the reason and resulting balance.
 > request/approve split, so one holder can credit a wallet unilaterally. Keep it on office/platform
 > roles; do not grant it to agency roles.
 
+## Spending — bookings draw on the wallet
+
+`BookingService::createFromQuote()` debits the booker's agency wallet for the booking's
+`total_amount` (fare + ancillaries), with the booking itself as the ledger entry's `source`.
+
+- **The TBO reads stay outside the transaction**; only the booking row and its charge go in it. An
+  insufficient balance therefore rolls the booking back rather than leaving one nobody paid for.
+- **Insufficient funds is re-thrown as a `BookingException`**, so it travels the same path as every
+  other booking failure — including the 422 JSON the wizard expects — instead of rendering as an
+  unrelated wallet error. The agent sees the shortfall: *"Insufficient wallet balance: 100.00
+  available, 6,400.00 required."*
+- **Platform staff are not charged.** No agency means no wallet; they are the operator, not a customer
+  of the balance.
+
+### Refunds
+
+`transitionTo()` gives the charge back when a booking reaches **Failed**, **Cancelled** or
+**Refunded** — without one, a failed booking would silently eat the funds.
+
+- The refunded amount is read from **the original ledger entry**, not from the booking, so the two
+  cannot drift.
+- Refunded **at most once**: `Ticketed → Cancelled → Refunded` walks through two refunding statuses and
+  only the first moves money (`Booking::wasRefundedToWallet()`).
+- A booking that was never charged (platform staff, or a zero total) has nothing to give back.
+
+> **Cancellation is refunded in full.** There is no airline-penalty or service-fee model, so a cancelled
+> ticket returns the whole amount. Where a real penalty applies, post the difference as a manual
+> adjustment until fees are modelled.
+
 ## Not built yet
 
-- **Spending.** Nothing debits the wallet — bookings do not draw on it. `WalletService::debit()` exists,
-  is tested (including the insufficient-funds refusal), and takes a `source` morph, so wiring booking
-  payment is additive.
 - **Notifications.** Nobody is told a request is waiting; today the queue must be checked.
+- **Cancellation fees**, as above.
