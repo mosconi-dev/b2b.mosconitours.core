@@ -266,3 +266,17 @@ still fails.)
 Also fixed while here: `TboAirService::firstError()` only looked for **nested** `Error` objects, so the
 **flat** `ErrorMessage` these credential calls use was dropped, and a present-but-empty message beat
 the fallback and rendered a blank error.
+
+### 4. Two gaps in our session handling, exposed by the live system — OPEN
+
+Reading the production implementation at `b2b.philippineexplorer.com`
+([`04-live-reference-implementation.md`](04-live-reference-implementation.md) §6) turned up two places
+where it does something we do not. Both are in `TboAirService`, both are cheap, and both are worth
+closing before Phase 4.1 puts money through this path.
+
+| Gap | Ours | Live system |
+| --- | --- | --- |
+| **Stale-session signal** | `withReauth()` retries only on `TboAirException::isAuthError()` / **`ErrorCode 6`** | retries on **`ResponseStatus == 4`** (`SearchService.php:45`). Both signals may exist, but production picked 4 — if our mapping misses it we fail where we should self-heal. |
+| **Token refresh stampede** | `Cache::remember()` — every concurrent miss can fire its own Authenticate | refresh wrapped in `Cache::lock('tboair-auth-lock')`, with waiters blocking for the winner's token. Matters more if TBO's "one token per day" is ever real. |
+
+Their `token_ttl` is also **12h** against our 23h — see `01`§4 for the four conflicting figures.

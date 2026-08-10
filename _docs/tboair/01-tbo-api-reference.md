@@ -99,36 +99,39 @@ Rules that shape the design:
 
 | Identifier | Where | Validity | Notes |
 | --- | --- | --- | --- |
-| **TokenId** | Authenticate → all calls | **~24 hours** | Confirmed 24h by TBO in the integration meeting. The published doc still says "12 hours / one token per day" — **that page is outdated**. Do **not** re-auth per request; cache and reuse. Re-auth on `ErrorCode 6`. |
+| **TokenId** | Authenticate → all calls | **contested — see below** | TBO's meeting said 24h; the guide says 12h; the GetAgencyBalance page says 20h; **the live system uses 12h**. Ours is 23h. Do **not** re-auth per request; cache and reuse. Re-auth on `ErrorCode 6` (and possibly `ResponseStatus 4` — §6). |
 | **TraceId** | Search → all downstream calls | **~15 minutes** | Ties FareRule/FareQuote/SSR/Book/Ticket to a search. **Expires fast** — a held search result must be booked within the window or re-searched. |
 | **ResultIndex** | a specific fare in Search results | within TraceId | Selects the exact itinerary/fare to price and book. |
 | **EndUserIp** | every request | — | The whitelisted origin IP. |
 
-> ⚠️ **Token validity is 24h** (per TBO's meeting) — the published guide's "12 hours (00:00–11:59)
-> and one token per day" is stale, so our `token_ttl` default of 82800s (23h) sits safely inside it.
-> The one hard constraint that remains is the **TraceId ~15-minute window**: we must **not** feed
-> FareQuote/Book with search results cached longer than ~15 minutes, or the TraceId will be dead by
-> booking time. (If the "one token per day" wording were ever literally enforced, a re-auth would
-> invalidate the token a concurrent booking chain is holding. `ErrorCode 6` self-healing covers it,
-> but it is a reason not to re-auth speculatively.)
+> ⚠️ **Token validity has four conflicting figures** — 12h (the published guide **and the live
+> production system**), 20h (the GetAgencyBalance page), 24h (TBO's integration meeting), against our
+> **23h** `token_ttl`. Production runs the most conservative of them. If the real figure is under 23h
+> we serve a dead token until `ErrorCode 6` heals it; dropping the TTL costs one extra auth a day.
+> **Settle this with TBO, or simply follow production down to 12h.**
+>
+> The one hard constraint that is not in doubt is the **TraceId ~15-minute window**: we must **not**
+> feed FareQuote/Book with search results cached longer than ~15 minutes, or the TraceId will be dead
+> by booking time. (If "one token per day" were ever literally enforced, a re-auth would invalidate
+> the token a concurrent booking chain is holding — a reason not to re-auth speculatively. The live
+> system guards its refresh with a `Cache::lock`; **ours does not**.)
 
-### ⚠️ Open question: `TraceId`/`ResultIndex` vs `ResultId`/`TrackingId`
+### ✅ Resolved: `TraceId`/`ResultIndex` **are** `ResultId`/`TrackingId`
 
-The **search/detail** documentation we built against names these `TraceId` and `ResultIndex`. The
-**booking** method pages name them **`TrackingId`** (Book, Ticket) and **`ResultId`** (Book). The two
-are almost certainly the same identifiers under different names — the guide's "Tracking ID is valid
-for 15 minutes" matches the TraceId rule exactly — but the endpoints also sit on **different hosts and
-route styles**:
+The **search/detail** docs name these `TraceId` and `ResultIndex`; the **booking** method pages name
+them **`TrackingId`** (Book, Ticket) and **`ResultId`** (Book). They are the same two identifiers.
+
+This was carried as the unresolved "API-generation check" from Phase 0 through Phase 4.0, and was
+settled not by TBO but by reading the **live production system** — see
+[`04-live-reference-implementation.md`](04-live-reference-implementation.md) §1. It stores the search's
+`TraceId` and `ResultIndex`, then submits them to Book as `TrackingId` and `ResultId`.
+
+**Mixing hosts and route styles is also fine** — the live system does exactly this, and tickets:
 
 | Stage | Host (test) | Route style |
 | --- | --- | --- |
 | Search / FareRule / FareQuote / SSR | `api-stage.tboair.com` | `InternalAirService.svc/rest/{Method}/` |
 | Book / Ticket / GetBookingDetails / ReleasePNR | `xmloutbookingapi.tboair.com` | `api/v1/Booking/{Method}` |
-
-**Confirm with TBO before writing the Book payload:** (a) that `ResultId`/`TrackingId` are our
-`ResultIndex`/`TraceId`, and (b) that the `api/v1` booking host accepts a TraceId minted by an
-`InternalAirService.svc` search. This is the cheapest question to ask and the most expensive to get
-wrong — it was carried as the unresolved "API-generation check" through Phases 0–3.
 
 ## 5. Booking method structures (Phase 4/5 surface)
 
@@ -182,9 +185,15 @@ not be null — see §3.)
 
 ### 5.2 Ticket — LCC books+issues, non-LCC issues a held PNR
 
-- **Non-LCC request** is small: `TokenId`, `TrackingId`, `IPAddress`, `EndUserBrowserAgent`,
-  `UserData`, `PointOfSale`, `RequestOrigin`, `IsHoldEligibleForLcc`, `NoOfSeatAvailable`,
-  `OperatingCarrier`, conditional `SegmentIndicator`.
+> ✅ **In practice it is simply the Book payload plus a PNR** — one builder serves both calls and both
+> carrier types. LCC sends the Book payload with `PNR = null`; non-LCC re-sends *the same payload
+> object* with the PNR from Book. Confirmed against the live system —
+> [`04-live-reference-implementation.md`](04-live-reference-implementation.md) §2. Build 4.1 that way;
+> the two request shapes below are the doc page's framing, not two different payloads.
+
+- **Non-LCC request** is documented small: `TokenId`, `TrackingId`, `IPAddress`,
+  `EndUserBrowserAgent`, `UserData`, `PointOfSale`, `RequestOrigin`, `IsHoldEligibleForLcc`,
+  `NoOfSeatAvailable`, `OperatingCarrier`, conditional `SegmentIndicator`.
 - **LCC request** additionally carries the **full flight block and full passenger detail including
   passport** — essentially the Book payload, because Ticket *is* the booking call for LCC.
 - **Response:** the fare echo (`TotalFare`, `BaseFare`, `OtherCharges`, `ServiceFee`, `Origin`,
@@ -258,6 +267,11 @@ not defensive polish.
 - **`ErrorCode == 0`** ⇒ success.
 - **`ErrorCode == 6`** ⇒ invalid/expired session token ⇒ **re-authenticate once and retry** (our
   self-healing backstop already does this for Search).
+- ⚠️ **`ResponseStatus == 4` is the signal the live system uses** for an invalid token
+  (`SearchService.php:45` there) — not `ErrorCode 6`. Both may exist, but production chose 4. Our
+  re-auth keys on ErrorCode 6 only; see
+  [`04-live-reference-implementation.md`](04-live-reference-implementation.md) §6.1.
+- `ResponseStatus == 1` is the success marker on the search/detail generation (`2` = no results).
 - Always persist the raw request/response for support (TBO requires attached logs for tickets).
 
 ## 7. Certification (go-live gate)

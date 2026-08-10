@@ -10,6 +10,9 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
    today (Authenticate + Search + environment switching + logging), with file references.
 3. **[03 — Implementation Plan](03-implementation-plan.md)** — the phase-by-phase plan to grow from
    search into the full **search → price → book → ticket → manage** lifecycle.
+4. **[04 — The Live Reference Implementation](04-live-reference-implementation.md)** — how
+   `b2b.philippineexplorer.com`, the system live today, actually books and tickets. Better evidence
+   than TBO's own docs, which it contradicts. **Read before writing Phase 4.1.**
 
 ## TL;DR
 
@@ -41,8 +44,9 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   ticket). Seat-map selection is deferred. See `03-implementation-plan.md`.
 - **Four things to settle before Phase 4 code** (from TBO's Book/Ticket method pages — Phase 4.0 in the
   plan, detail in `01`§5 and `02`'s gaps section):
-  1. **Ask TBO whether `ResultId`/`TrackingId` are our `ResultIndex`/`TraceId`** — Book/Ticket sit on a
-     different host and route style than search, and their docs use different names.
+  1. ~~**Ask TBO whether `ResultId`/`TrackingId` are our `ResultIndex`/`TraceId`.**~~ ✅ **done** —
+     answered by the live system rather than TBO: they are the same identifiers, and the mixed hosts
+     work in production. See [`04`](04-live-reference-implementation.md).
   2. ~~**Persist the raw FareQuote JSON.**~~ ✅ **done** — nullable `bookings.quote_raw` keeps the
      FareQuote response verbatim, since Book echoes the whole priced itinerary back.
   3. ~~**Extend `Passenger`.**~~ ✅ **done** — address/mobile/email collected once as contact and fanned
@@ -52,7 +56,9 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
      `tboair:balance`, and a *Check now* panel in admin Settings. Ticketing draws down **our** TBO
      balance, not the internal e-wallet.
 
-  **Only P1 is left, and it is the blocker for 4.1** — it is the one item we cannot answer ourselves.
+  **Phase 4.0 is complete and 4.1 is unblocked.** Before writing it, note two corrections to our own
+  code that the live system exposed (`04`§6): production re-auths on **`ResponseStatus == 4`** where we
+  only catch `ErrorCode 6`, and it **locks** token refresh where we do not.
 - **Certification is 11 specific cases**, now tabulated in `01`§7 — 5 LCC, 4 non-LCC, plus a
   price/schedule-change case and an **`InProgress`** case. Four of them need baggage/meal, so Phase 3
   is on the certification path. Submit case by case with PNRs; 4–5 working days.
