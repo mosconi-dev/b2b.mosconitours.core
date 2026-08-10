@@ -194,7 +194,7 @@
                             <div class="mt-4 border-t border-gray-100 pt-4" x-show="priceBounds.max > 0">
                                 <div class="mb-2 flex items-center justify-between">
                                     <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Max price</p>
-                                    <span class="text-xs font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(filters.maxPrice)"></span></span>
+                                    <span class="text-xs font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="moneyWhole(filters.maxPrice)"></span></span>
                                 </div>
                                 <input type="range" :min="priceBounds.min" :max="priceBounds.max" x-model.number="filters.maxPrice" class="w-full accent-blue-600">
                             </div>

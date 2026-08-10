@@ -191,6 +191,13 @@ function money(amount) {
     return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Whole pesos, for a threshold the user drags rather than an amount they are
+// charged — priceBounds already floors/ceils to integers, so centavos are noise.
+// Never use this for a payable amount; that is what money() is for.
+function moneyWhole(amount) {
+    return Number(amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
 /**
  * flightSearch — state + behaviour for the flight search form and results.
  */
@@ -616,6 +623,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     formatDate,
     formatDuration,
     money,
+    moneyWhole, // the max-price filter label only
 
     stopsLabel(stops) {
         if (stops <= 0) return 'Non-stop';
