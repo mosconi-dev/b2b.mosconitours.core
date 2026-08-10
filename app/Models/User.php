@@ -7,13 +7,15 @@ use App\Services\Rbac\RbacCache;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'is_active', 'tbo_environment'])]
+#[Fillable(['name', 'email', 'password', 'is_active', 'tbo_environment', 'agency_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -40,6 +42,45 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * The single agency this user belongs to, or null for platform staff.
+     *
+     * @return BelongsTo<Agency, $this>
+     */
+    public function agency(): BelongsTo
+    {
+        return $this->belongsTo(Agency::class);
+    }
+
+    /**
+     * Platform staff are not bound to an agency, so no agency scope applies to them.
+     * This is not a permission bypass — they still need the ability like anyone else.
+     */
+    public function isPlatformStaff(): bool
+    {
+        return $this->agency_id === null;
+    }
+
+    /**
+     * Users the given user may see and manage: platform staff manage everyone, an
+     * agency member manages only their own agency's people.
+     *
+     * @param  Builder<User>  $query
+     */
+    public function scopeVisibleTo(Builder $query, self $user): void
+    {
+        if ($user->isPlatformStaff()) {
+            return;
+        }
+
+        $query->where('agency_id', $user->agency_id);
+    }
+
+    public function isInScopeFor(self $actor): bool
+    {
+        return $actor->isPlatformStaff() || $this->agency_id === $actor->agency_id;
     }
 
     /**

@@ -29,6 +29,7 @@
                 <thead>
                     <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <th class="px-5 py-3">User</th>
+                        <th class="px-5 py-3">Agency</th>
                         <th class="px-5 py-3">Roles</th>
                         <th class="px-5 py-3">Status</th>
                         <th class="px-5 py-3">Last login</th>
@@ -48,6 +49,16 @@
                                         <p class="truncate text-xs text-gray-500">{{ $u->email }}</p>
                                     </div>
                                 </div>
+                            </td>
+                            <td class="px-5 py-3.5">
+                                @if ($u->agency)
+                                    <p class="text-gray-700">{{ $u->agency->name }}</p>
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ $u->agency->type->badgeClasses() }}">
+                                        {{ $u->agency->type->label() }}
+                                    </span>
+                                @else
+                                    <span class="text-xs text-gray-400">Platform staff</span>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5">
                                 <div class="flex flex-wrap gap-1">
@@ -99,7 +110,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-5 py-12 text-center">
+                            <td colspan="6" class="px-5 py-12 text-center">
                                 <p class="text-sm font-medium text-brand-900">No users yet</p>
                                 <p class="mt-1 text-sm text-gray-500">Create your first user to get started.</p>
                             </td>

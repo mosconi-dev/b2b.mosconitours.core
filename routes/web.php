@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AgencyController;
+use App\Http\Controllers\Admin\AgencyRoleController;
+use App\Http\Controllers\Admin\AgencyUserController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RoleController;
@@ -55,12 +58,34 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', AdminDashboardController::class)->name('dashboard')->middleware('can:admin.access');
 
+    Route::prefix('agencies')->name('agencies.')->group(function () {
+        Route::get('/', [AgencyController::class, 'index'])->name('index')->middleware('can:agency.view');
+        Route::get('/create', [AgencyController::class, 'create'])->name('create')->middleware('can:agency.create');
+        Route::post('/', [AgencyController::class, 'store'])->name('store');
+        // Registered after /create so the literal segment wins the match.
+        Route::get('/{agency}', [AgencyController::class, 'show'])->name('show')
+            ->whereNumber('agency')->middleware('can:view,agency');
+        // Provisioning from inside an agency — the URL stays under /admin/agencies.
+        // Guarded twice: the ability itself, and the right to touch this agency.
+        Route::get('/{agency}/users/create', [AgencyUserController::class, 'create'])->name('users.create')
+            ->middleware(['can:user.create', 'can:view,agency']);
+        Route::post('/{agency}/users', [AgencyUserController::class, 'store'])->name('users.store');
+        Route::get('/{agency}/roles/create', [AgencyRoleController::class, 'create'])->name('roles.create')
+            ->middleware(['can:role.create', 'can:view,agency']);
+        Route::post('/{agency}/roles', [AgencyRoleController::class, 'store'])->name('roles.store');
+
+        Route::get('/{agency}/edit', [AgencyController::class, 'edit'])->name('edit')->middleware('can:update,agency');
+        Route::put('/{agency}', [AgencyController::class, 'update'])->name('update');
+        Route::patch('/{agency}/toggle-active', [AgencyController::class, 'toggleActive'])->name('toggle-active')->middleware('can:toggleActive,agency');
+        Route::delete('/{agency}', [AgencyController::class, 'destroy'])->name('destroy')->middleware('can:delete,agency');
+    });
+
     Route::prefix('users')->name('users.')->group(function () {
         Route::get('/', [UserController::class, 'index'])->name('index')->middleware('can:user.view');
         Route::get('/create', [UserController::class, 'create'])->name('create')->middleware('can:user.create');
         Route::post('/', [UserController::class, 'store'])->name('store');
-        Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit')->middleware('can:user.update');
-        Route::get('/{user}/logs', [UserController::class, 'logs'])->name('logs')->middleware('can:apilog.view');
+        Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit')->middleware('can:update,user');
+        Route::get('/{user}/logs', [UserController::class, 'logs'])->name('logs')->middleware(['can:apilog.view', 'can:view,user']);
         Route::put('/{user}', [UserController::class, 'update'])->name('update');
         Route::patch('/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('toggle-active')->middleware('can:toggleActive,user');
         Route::put('/{user}/password', [UserController::class, 'resetPassword'])->name('password');
@@ -70,7 +95,7 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     Route::prefix('roles')->name('roles.')->group(function () {
         Route::get('/', [RoleController::class, 'index'])->name('index')->middleware('can:role.view');
         Route::post('/', [RoleController::class, 'store'])->name('store');
-        Route::get('/{role}/edit', [RoleController::class, 'edit'])->name('edit')->middleware('can:role.update');
+        Route::get('/{role}/edit', [RoleController::class, 'edit'])->name('edit')->middleware('can:update,role');
         Route::put('/{role}', [RoleController::class, 'update'])->name('update');
         Route::put('/{role}/permissions', [RoleController::class, 'syncPermissions'])->name('permissions');
         Route::post('/{role}/duplicate', [RoleController::class, 'duplicate'])->name('duplicate');

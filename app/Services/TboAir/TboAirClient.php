@@ -157,6 +157,7 @@ class TboAirClient
                 'successful' => $successful,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 'user_id' => Auth::id(),
+                'agency_id' => Auth::user()?->agency_id,
                 'request' => $this->sanitize($request),
                 'response' => $response,
                 'error' => $error,

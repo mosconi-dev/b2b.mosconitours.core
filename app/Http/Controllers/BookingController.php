@@ -16,9 +16,15 @@ use Illuminate\View\View;
 
 class BookingController extends Controller
 {
+    /**
+     * A user's own bookings. The agency scope is applied on top of ownership: it is
+     * redundant today (your own booking is always your agency's) but keeps the list
+     * correct if visibility is ever widened to "everyone in my agency".
+     */
     public function index(Request $request): View
     {
-        $bookings = Booking::where('user_id', $request->user()->id)
+        $bookings = Booking::visibleTo($request->user())
+            ->where('user_id', $request->user()->id)
             ->latest()
             ->paginate(20);
 
@@ -27,7 +33,10 @@ class BookingController extends Controller
 
     public function show(Request $request, Booking $booking): View
     {
-        abort_unless($booking->user_id === $request->user()->id, 403);
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
 
         return view('bookings.show', compact('booking'));
     }

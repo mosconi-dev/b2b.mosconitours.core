@@ -67,6 +67,13 @@ return [
             'icon' => 'home',
             'actions' => ['access'],
         ],
+        'agency' => [
+            'label' => 'Agencies',
+            'section' => 'administration',
+            'route' => 'admin.agencies.index',
+            'icon' => 'building',
+            'actions' => ['view', 'create', 'update', 'delete'],
+        ],
         'user' => [
             'label' => 'Users',
             'section' => 'administration',

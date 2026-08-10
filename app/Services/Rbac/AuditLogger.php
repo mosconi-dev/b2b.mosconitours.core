@@ -3,6 +3,7 @@
 namespace App\Services\Rbac;
 
 use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -22,8 +23,14 @@ class AuditLogger
      */
     public function log(string $event, ?Model $auditable = null, array $properties = [], ?string $description = null, ?Authenticatable $actor = null): AuditLog
     {
+        $actor ??= Auth::user();
+
         return AuditLog::create([
-            'user_id' => $actor?->getAuthIdentifier() ?? Auth::id(),
+            'user_id' => $actor?->getAuthIdentifier(),
+            // Scoped by the ACTOR's agency: an agency's audit trail is what its own
+            // people did. A platform-staff action stamps null and so stays invisible
+            // to agencies — deliberately failing closed rather than over-sharing.
+            'agency_id' => $actor instanceof User ? $actor->agency_id : null,
             'event' => $event,
             'auditable_type' => $auditable?->getMorphClass(),
             'auditable_id' => $auditable?->getKey(),

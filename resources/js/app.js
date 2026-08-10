@@ -730,6 +730,84 @@ Alpine.data('rolePermissions', (config = {}) => ({
     },
 }));
 
+// logoDropzone — drag-and-drop (or click-to-browse) image picker.
+//
+// It drives a real <input type="file">, assigning the dropped file through a
+// DataTransfer so the surrounding form submits normally with no JS on the server
+// side. With JS unavailable the bare input still works.
+Alpine.data('logoDropzone', (config = {}) => ({
+    dragging: false,
+    error: '',
+    // Existing logo URL when editing; replaced by a local object URL on pick.
+    preview: config.preview || '',
+    fileName: '',
+    objectUrl: '',
+    accept: config.accept ?? ['image/jpeg', 'image/png', 'image/webp'],
+    maxBytes: (config.maxKb ?? 2048) * 1024,
+    removed: false,
+
+    pick() {
+        this.$refs.input.click();
+    },
+
+    onDrop(event) {
+        this.dragging = false;
+        this.assign(event.dataTransfer.files[0]);
+    },
+
+    onChange() {
+        this.assign(this.$refs.input.files[0]);
+    },
+
+    assign(file) {
+        if (!file) return;
+
+        if (!this.accept.includes(file.type)) {
+            this.fail('That file type is not supported. Use a JPG, PNG or WEBP image.');
+            return;
+        }
+
+        if (file.size > this.maxBytes) {
+            this.fail(`That image is ${this.mb(file.size)}MB — the limit is ${this.mb(this.maxBytes)}MB.`);
+            return;
+        }
+
+        // A drop does not populate the input, so hand the file over explicitly.
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        this.$refs.input.files = transfer.files;
+
+        this.error = '';
+        this.removed = false;
+        this.fileName = file.name;
+        this.swapPreview(URL.createObjectURL(file));
+    },
+
+    clear() {
+        this.$refs.input.value = '';
+        this.error = '';
+        this.fileName = '';
+        this.removed = true;
+        this.swapPreview('');
+    },
+
+    // Revoke the previous object URL so repeated picks do not leak blobs.
+    swapPreview(url) {
+        if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+        this.objectUrl = url.startsWith('blob:') ? url : '';
+        this.preview = url;
+    },
+
+    fail(message) {
+        this.error = message;
+        this.$refs.input.value = '';
+    },
+
+    mb(bytes) {
+        return (bytes / 1024 / 1024).toFixed(1);
+    },
+}));
+
 // bookingWizard — the full-page Select Flight → Guest Details → Add-ons → Payment
 // → Confirmation flow. Fare + SSR are injected (fetched server-side); it posts to
 // /bookings on completion.

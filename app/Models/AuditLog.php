@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,11 +10,13 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 
 #[Fillable([
-    'user_id', 'event', 'auditable_type', 'auditable_id',
+    'user_id', 'agency_id', 'event', 'auditable_type', 'auditable_id',
     'description', 'properties', 'ip_address', 'user_agent', 'created_at',
 ])]
 class AuditLog extends Model
 {
+    use BelongsToAgency;
+
     /**
      * Audit rows are append-only — only created_at is tracked.
      */

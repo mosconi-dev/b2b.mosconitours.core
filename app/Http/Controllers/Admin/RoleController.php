@@ -7,48 +7,59 @@ use App\Http\Requests\Admin\DuplicateRoleRequest;
 use App\Http\Requests\Admin\StoreRoleRequest;
 use App\Http\Requests\Admin\SyncRolePermissionsRequest;
 use App\Http\Requests\Admin\UpdateRoleRequest;
-use App\Models\Permission;
+use App\Models\Agency;
 use App\Models\Role;
 use App\Services\Rbac\PermissionRegistry;
 use App\Services\Rbac\RoleService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class RoleController extends Controller
 {
     public function __construct(private readonly RoleService $roles) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $roles = Role::withCount(['users', 'permissions'])
+        $actor = $request->user();
+
+        $roles = Role::visibleTo($actor)
+            ->with('agency:id,name,code')
+            ->withCount(['users', 'permissions'])
             ->orderByDesc('is_system')
             ->orderBy('label')
             ->get();
 
-        return view('admin.roles.index', compact('roles'));
+        return view('admin.roles.index', [
+            'roles' => $roles,
+            // Only platform staff choose which agency a new role belongs to; for an
+            // agency member the owner is forced to their own agency.
+            'agencies' => $actor->isPlatformStaff()
+                ? Agency::active()->orderBy('name')->get(['id', 'name', 'code'])
+                : collect(),
+        ]);
     }
 
     public function store(StoreRoleRequest $request): RedirectResponse
     {
         $role = $this->roles->create(
-            $request->safe()->only(['name', 'description']),
+            $request->safe()->only(['name', 'description', 'agency_id']),
             $request->validated('permissions', []),
+            $request->user(),
         );
 
         return redirect()->route('admin.roles.edit', $role)
             ->with('status', 'Role created — configure its permissions below.');
     }
 
-    public function edit(Role $role, PermissionRegistry $registry): View
+    public function edit(Request $request, Role $role, PermissionRegistry $registry): View
     {
         return view('admin.roles.edit', [
             'role' => $role,
-            'sections' => $this->permissionGrid($registry),
-            'sectionLabels' => [
-                'administration' => 'Administration',
-                'travel_operations' => 'Travel Operations',
-            ],
+            'sections' => $registry->grid($request->user()),
+            'sectionLabels' => $registry->sectionLabels(),
             'selected' => $role->permissions->pluck('id')->all(),
+            'unmanageable' => $this->roles->unmanageablePermissionLabels($role, $request->user()),
         ]);
     }
 
@@ -61,7 +72,7 @@ class RoleController extends Controller
 
     public function syncPermissions(SyncRolePermissionsRequest $request, Role $role): RedirectResponse
     {
-        $this->roles->syncPermissions($role, $request->validated('permissions', []));
+        $this->roles->syncPermissions($role, $request->validated('permissions', []), $request->user());
 
         return back()->with('status', 'Permissions updated.');
     }
@@ -80,37 +91,5 @@ class RoleController extends Controller
 
         return redirect()->route('admin.roles.index')
             ->with('status', 'Role deleted.');
-    }
-
-    /**
-     * Build the permission grid: section -> modules -> action checkboxes,
-     * enriching DB permission rows with registry labels/sections.
-     *
-     * @return array<string, array<int, array<string, mixed>>>
-     */
-    private function permissionGrid(PermissionRegistry $registry): array
-    {
-        $modules = $registry->modules();
-        $labels = config('rbac.action_labels', []);
-        $sections = [];
-
-        foreach (Permission::orderBy('module')->orderBy('id')->get()->groupBy('module') as $moduleKey => $perms) {
-            $meta = $modules[$moduleKey] ?? [];
-            $section = $meta['section'] ?? 'travel_operations';
-
-            $sections[$section][] = [
-                'key' => $moduleKey,
-                'label' => $meta['label'] ?? $moduleKey,
-                'group' => $meta['group'] ?? null,
-                'enabled' => $meta['enabled'] ?? true,
-                'ids' => $perms->pluck('id')->all(),
-                'permissions' => $perms->map(fn (Permission $p): array => [
-                    'id' => $p->id,
-                    'label' => $labels[$p->action] ?? ucfirst($p->action),
-                ])->values()->all(),
-            ];
-        }
-
-        return $sections;
     }
 }

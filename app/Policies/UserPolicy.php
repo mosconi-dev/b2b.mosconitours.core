@@ -18,7 +18,7 @@ class UserPolicy
 
     public function view(User $user, User $model): bool
     {
-        return $user->can('user.view');
+        return $user->can('user.view') && $model->isInScopeFor($user);
     }
 
     public function create(User $user): bool
@@ -28,21 +28,21 @@ class UserPolicy
 
     public function update(User $user, User $model): bool
     {
-        return $user->can('user.update');
+        return $user->can('user.update') && $model->isInScopeFor($user);
     }
 
     public function toggleActive(User $user, User $model): bool
     {
-        return $user->can('user.update') && $user->id !== $model->id;
+        return $user->can('user.update') && $user->id !== $model->id && $model->isInScopeFor($user);
     }
 
     public function resetPassword(User $user, User $model): bool
     {
-        return $user->can('user.update');
+        return $user->can('user.update') && $model->isInScopeFor($user);
     }
 
     public function delete(User $user, User $model): bool
     {
-        return $user->can('user.delete') && $user->id !== $model->id;
+        return $user->can('user.delete') && $user->id !== $model->id && $model->isInScopeFor($user);
     }
 }

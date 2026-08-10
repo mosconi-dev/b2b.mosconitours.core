@@ -36,6 +36,14 @@
                     @endif
                 </div>
 
+                <div class="mt-2">
+                    @if ($role->agency)
+                        <span class="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20">{{ $role->agency->name }}</span>
+                    @else
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/20">Platform</span>
+                    @endif
+                </div>
+
                 @if ($role->description)
                     <p class="mt-2 line-clamp-2 text-sm text-gray-500">{{ $role->description }}</p>
                 @endif
@@ -88,6 +96,21 @@
                     <x-text-input id="role_description" name="description" type="text" class="mt-1 block w-full" :value="old('description')" />
                     <x-input-error :messages="$errors->get('description')" class="mt-2" />
                 </div>
+
+                @if ($agencies->isNotEmpty())
+                    <div>
+                        <x-input-label for="role_agency" value="Owner" />
+                        <select id="role_agency" name="agency_id"
+                                class="mt-1 block w-full rounded-lg border-gray-300 py-2 pl-3.5 pr-8 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="">Platform (all agencies)</option>
+                            @foreach ($agencies as $agency)
+                                <option value="{{ $agency->id }}" @selected((int) old('agency_id') === $agency->id)>{{ $agency->label() }}</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Only this agency's users can be given the role.</p>
+                        <x-input-error :messages="$errors->get('agency_id')" class="mt-2" />
+                    </div>
+                @endif
 
                 <div class="flex justify-end gap-3">
                     <button type="button" x-on:click="$dispatch('close')" class="text-sm font-medium text-gray-600 hover:text-gray-800">Cancel</button>

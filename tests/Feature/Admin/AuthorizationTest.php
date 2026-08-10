@@ -25,6 +25,8 @@ class AuthorizationTest extends TestCase
     {
         return [
             ['admin.dashboard', 'admin.access'],
+            ['admin.agencies.index', 'agency.view'],
+            ['admin.agencies.create', 'agency.create'],
             ['admin.users.index', 'user.view'],
             ['admin.users.create', 'user.create'],
             ['admin.roles.index', 'role.view'],

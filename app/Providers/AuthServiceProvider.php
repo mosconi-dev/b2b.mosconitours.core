@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\Agency;
 use App\Models\Role;
 use App\Models\User;
+use App\Policies\AgencyPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\UserPolicy;
 use App\Services\Rbac\PermissionRegistry;
@@ -21,6 +23,7 @@ class AuthServiceProvider extends ServiceProvider
      */
     public function boot(PermissionRegistry $registry): void
     {
+        Gate::policy(Agency::class, AgencyPolicy::class);
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(User::class, UserPolicy::class);
 

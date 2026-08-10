@@ -45,6 +45,9 @@ class BookingService
         return Booking::create([
             'reference' => $this->reference(),
             'user_id' => $user->getKey(),
+            // Stamped once, like the environment: if the booker later transfers to
+            // another agency, this booking stays with the agency that made it.
+            'agency_id' => $user->agency_id,
             'environment' => $this->tbo->environment(),
             'status' => BookingStatus::Quoted,
             'trace_id' => $selection->traceId,

@@ -2,6 +2,7 @@
 
 namespace Tests\Concerns;
 
+use App\Models\Agency;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -24,7 +25,8 @@ trait InteractsWithRbac
     }
 
     /**
-     * A user whose single role grants exactly the given permissions.
+     * A platform-staff user (no agency) whose single role grants exactly the given
+     * permissions.
      *
      * @param  array<int, string>  $permissionNames
      */
@@ -34,6 +36,23 @@ trait InteractsWithRbac
         $role->permissions()->attach(Permission::whereIn('name', $permissionNames)->pluck('id'));
 
         $user = User::factory()->create();
+        $user->roles()->attach($role->id);
+
+        return $user;
+    }
+
+    /**
+     * A user inside the given agency, holding a role owned by that same agency —
+     * the scope invariant every agency member must satisfy.
+     *
+     * @param  array<int, string>  $permissionNames
+     */
+    protected function agencyUserWith(Agency $agency, array $permissionNames): User
+    {
+        $role = Role::factory()->create(['agency_id' => $agency->id]);
+        $role->permissions()->attach(Permission::whereIn('name', $permissionNames)->pluck('id'));
+
+        $user = User::factory()->create(['agency_id' => $agency->id]);
         $user->roles()->attach($role->id);
 
         return $user;

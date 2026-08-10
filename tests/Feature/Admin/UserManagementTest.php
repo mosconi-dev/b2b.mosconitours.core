@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Models\Agency;
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -99,6 +101,67 @@ class UserManagementTest extends TestCase
         $user->refresh();
         $this->assertSame('New Name', $user->name);
         $this->assertTrue($user->roles->contains($resa->id));
+    }
+
+    public function test_admin_can_assign_a_user_to_an_agency(): void
+    {
+        $agency = Agency::factory()->create();
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.users.store'), [
+                'name' => 'Outlet Agent',
+                'email' => 'outlet.agent@example.com',
+                'password' => 'Password123!',
+                'password_confirmation' => 'Password123!',
+                'agency_id' => $agency->id,
+            ])
+            ->assertRedirect(route('admin.users.index'));
+
+        $user = User::where('email', 'outlet.agent@example.com')->first();
+        $this->assertSame($agency->id, $user->agency_id);
+        $this->assertFalse($user->isPlatformStaff());
+    }
+
+    public function test_a_user_without_an_agency_is_platform_staff(): void
+    {
+        $this->actingAs($this->admin())
+            ->post(route('admin.users.store'), [
+                'name' => 'Platform Person',
+                'email' => 'platform@example.com',
+                'password' => 'Password123!',
+                'password_confirmation' => 'Password123!',
+                'agency_id' => '',
+            ])
+            ->assertRedirect(route('admin.users.index'));
+
+        $user = User::where('email', 'platform@example.com')->first();
+        $this->assertNull($user->agency_id);
+        $this->assertTrue($user->isPlatformStaff());
+    }
+
+    public function test_moving_a_user_between_agencies_is_audited(): void
+    {
+        $from = Agency::factory()->create();
+        $to = Agency::factory()->create();
+        $user = User::factory()->create(['agency_id' => $from->id]);
+
+        $this->actingAs($this->admin())
+            ->put(route('admin.users.update', $user), [
+                'name' => $user->name,
+                'email' => $user->email,
+                'agency_id' => $to->id,
+            ])
+            ->assertRedirect(route('admin.users.index'));
+
+        $this->assertSame($to->id, $user->refresh()->agency_id);
+
+        $log = AuditLog::where('event', 'user.updated')
+            ->where('auditable_id', $user->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertSame($from->id, $log->properties['agency_from']);
+        $this->assertSame($to->id, $log->properties['agency_to']);
     }
 
     public function test_admin_can_reset_a_password(): void

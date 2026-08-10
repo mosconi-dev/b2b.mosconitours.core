@@ -12,6 +12,14 @@ class StoreUserRequest extends FormRequest
         return (bool) $this->user()?->can('user.create');
     }
 
+    protected function prepareForValidation(): void
+    {
+        // An empty select means "platform staff".
+        if ($this->input('agency_id') === '') {
+            $this->merge(['agency_id' => null]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -22,6 +30,8 @@ class StoreUserRequest extends FormRequest
             // Uniqueness includes trashed rows to match the DB constraint.
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::defaults()],
+            // Null = platform staff (no agency scope).
+            'agency_id' => ['nullable', 'integer', 'exists:agencies,id'],
             'roles' => ['nullable', 'array'],
             'roles.*' => ['integer', 'exists:roles,id'],
         ];

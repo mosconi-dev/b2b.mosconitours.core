@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ResetUserPasswordRequest;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Models\Agency;
 use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\TboAirApiLog;
@@ -13,44 +14,55 @@ use App\Models\User;
 use App\Services\Rbac\UserAdminService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class UserController extends Controller
 {
     public function __construct(private readonly UserAdminService $users) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $users = User::with('roles:id,name,label')
+        $users = User::visibleTo($request->user())
+            ->with(['roles:id,name,label', 'agency:id,name,code,type'])
             ->orderBy('name')
             ->paginate(20);
 
         return view('admin.users.index', compact('users'));
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        $actor = $request->user();
+
         return view('admin.users.create', [
-            'roles' => Role::orderBy('label')->get(),
+            // A new user starts in the actor's own agency, so offer that scope's roles.
+            'roles' => $this->roleOptions($actor->agency_id),
+            'agencies' => $this->agencyOptions($actor),
+            'actor' => $actor,
         ]);
     }
 
     public function store(StoreUserRequest $request): RedirectResponse
     {
         $user = $this->users->create(
-            $request->safe()->only(['name', 'email', 'password']),
+            $request->safe()->only(['name', 'email', 'password', 'agency_id']),
             $request->validated('roles', []),
+            $request->user(),
         );
 
         return redirect()->route('admin.users.index')
             ->with('status', "User “{$user->name}” created.");
     }
 
-    public function edit(User $user): View
+    public function edit(Request $request, User $user): View
     {
         return view('admin.users.edit', [
             'user' => $user->load('roles:id'),
-            'roles' => Role::orderBy('label')->get(),
+            // A user may only hold roles from their own scope, so offer exactly those.
+            'roles' => $this->roleOptions($user->agency_id),
+            'agencies' => $this->agencyOptions($request->user()),
+            'actor' => $request->user(),
         ]);
     }
 
@@ -86,14 +98,14 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        $data = $request->safe()->only(['name', 'email']);
+        $data = $request->safe()->only(['name', 'email', 'agency_id']);
 
         // Only TBO managers may set a per-user environment override.
         if ($request->user()->can('supplier.tbo.manage')) {
             $data['tbo_environment'] = $request->validated('tbo_environment');
         }
 
-        $this->users->update($user, $data, $request->validated('roles', []));
+        $this->users->update($user, $data, $request->validated('roles', []), $request->user());
 
         return redirect()->route('admin.users.index')
             ->with('status', 'User updated.');
@@ -119,5 +131,38 @@ class UserController extends Controller
 
         return redirect()->route('admin.users.index')
             ->with('status', 'User deleted.');
+    }
+
+    /**
+     * Agencies a user may be placed in. Inactive ones are excluded so nobody is
+     * assigned into a closed branch by accident. Only platform staff get a choice —
+     * an agency member always places people in their own agency.
+     *
+     * @return Collection<int, Agency>
+     */
+    private function agencyOptions(User $actor): Collection
+    {
+        if (! $actor->isPlatformStaff()) {
+            return collect();
+        }
+
+        return Agency::active()->orderBy('name')->get(['id', 'name', 'code']);
+    }
+
+    /**
+     * Roles that belong to one scope — an agency, or the platform scope when null.
+     *
+     * @return Collection<int, Role>
+     */
+    private function roleOptions(?int $agencyId): Collection
+    {
+        return Role::query()
+            ->when(
+                $agencyId === null,
+                fn ($q) => $q->whereNull('agency_id'),
+                fn ($q) => $q->where('agency_id', $agencyId),
+            )
+            ->orderBy('label')
+            ->get();
     }
 }

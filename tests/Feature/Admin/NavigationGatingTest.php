@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Models\Agency;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
@@ -33,6 +34,31 @@ class NavigationGatingTest extends TestCase
             ->assertOk()
             ->assertDontSee('Administration')
             ->assertSee('Flights');
+    }
+
+    public function test_an_agency_member_gets_a_my_agency_link_to_their_own_agency(): void
+    {
+        $agency = Agency::factory()->create();
+        $member = $this->agencyUserWith($agency, ['agency.view']);
+
+        $this->actingAs($member)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('My Agency')
+            // Matched on the full href: the index URL is a prefix of the show URL,
+            // so a bare substring check would always find it.
+            ->assertSee('href="'.route('admin.agencies.show', $agency).'"', escape: false)
+            // A list of exactly one row is not where they should land.
+            ->assertDontSee('href="'.route('admin.agencies.index').'"', escape: false);
+    }
+
+    public function test_platform_staff_get_the_full_agencies_list(): void
+    {
+        $this->actingAs($this->admin())
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('Agencies')
+            ->assertSee('href="'.route('admin.agencies.index').'"', escape: false);
     }
 
     public function test_nav_items_appear_per_permission(): void

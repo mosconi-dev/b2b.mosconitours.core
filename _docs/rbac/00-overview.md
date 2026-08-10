@@ -25,6 +25,7 @@ segment). One rule covers 2-segment (`flight.search`) and namespaced 3-segment (
 | Module key | Section | Route | Actions |
 | --- | --- | --- | --- |
 | `admin` | administration | `admin.dashboard` | access |
+| `agency` | administration | `admin.agencies.index` | view, create, update, delete |
 | `user` | administration | `admin.users.index` | view, create, update, delete |
 | `role` | administration | `admin.roles.index` | view, create, update, delete |
 | `permission` | administration | `admin.permissions.index` | view, sync |
@@ -54,14 +55,19 @@ modules; `--prune` hard-deletes orphans).
 
 ## Data model (migrations `2026_07_09_00000{1..6}`, cross-DB portable)
 
-- **`roles`** — `name` (unique machine key: `admin`/`itp`/`resa`), `label`, `description`, `is_system`
-  (protects built-ins), `timestamps`, **`softDeletes`**.
+- **`roles`** — `name` (unique machine key: `admin`/`itp`/`resa`; agency-owned roles are namespaced
+  under the agency code, e.g. `acme.agent`), `label`, `description`, `is_system` (protects built-ins),
+  `agency_id` (nullable — NULL = platform-level), `timestamps`, **`softDeletes`**.
 - **`permissions`** — `name` (unique, the Gate ability), `module`, `action`, `label`, `description`.
   **No soft delete** (immutable, registry-managed catalog).
 - **`permission_role`** / **`role_user`** — M2M pivots (`constrained()->cascadeOnDelete()`, composite PK).
 - **`audit_logs`** — `user_id` (nullOnDelete), `event`, `auditable_type`/`auditable_id` (morph),
   `description`, `properties` (json), `ip_address`, `user_agent`, `created_at` (append-only, no updates).
-- **`users`** alter — `is_active`, `last_login_at`, **`softDeletes`**.
+- **`users`** alter — `is_active`, `last_login_at`, **`softDeletes`**, `agency_id` (nullable;
+  NULL = platform staff — see [01-agencies.md](01-agencies.md)).
+- **`agencies`** (migrations `2026_08_10_00000{1,2}`) — the partner model: main office / outlet / ITP.
+  Each agency is an **independent permission scope**; nothing in the authorization layer branches on an
+  agency's type or its parent. See [01-agencies.md](01-agencies.md).
 
 Models: `Role` (`hasPermission`), `Permission`, `AuditLog` (`$timestamps=false`, morphs), `User`
 (`roles()`, `hasRole`/`hasAnyRole`, `permissionNames()`, **`hasPermissionTo($name, $context=null)`** — the
@@ -85,20 +91,24 @@ unused `$context` keeps the signature open for future branch scoping).
 ## Services (thin controllers, business rules here)
 
 - **`RoleService`** — `create`, `update` (system roles: `name` immutable, `label` editable), `duplicate`
-  (copies permissions, forces `is_system=false`), `syncPermissions` (→ `RbacCache::flushRole` + audit),
-  `delete` (soft; guards system + last-admin-capable role).
+  (copies permissions, forces `is_system=false`, keeps the source's agency), `syncPermissions`
+  (→ `RbacCache::flushRole` + audit; capped by the actor's own permissions — see
+  [01-agencies.md](01-agencies.md#the-permission-ceiling)), `delete` (soft; guards system +
+  last-admin-capable role).
 - **`UserAdminService`** — `create` (sets `email_verified_at=now()` so admin-provisioned users clear
   `verified`), `update`, `syncRoles` (→ `flushUser` + audit), `toggleActive`, `resetPassword`, `delete`
   (soft), `adminCapableCount()`.
 - **Last-admin guard** — "admin-capable" = holding a role that grants `role.update`; any op dropping the
   count of active, non-trashed admins to 0 throws (controller → `back()->withErrors`). Also blocks
-  self-deactivate/-delete.
+  self-deactivate/-delete. The count is **per scope** (one agency, or the platform scope).
 
 ## HTTP surface — `/admin` (`app/Http/Controllers/Admin/`, views `resources/views/admin/`)
 
 Route group: `middleware(['auth','verified'])->prefix('admin')->name('admin.')`.
 
 - **Dashboard** `AdminDashboardController` (`can:admin.access`).
+- **Agencies** — index/create/store/edit/update, `toggleActive` (`can:toggleActive,agency`), `destroy`
+  (`can:delete,agency`); see [01-agencies.md](01-agencies.md).
 - **Users** — index/create/edit/store/update, `toggleActive` (`can:toggleActive,user`), `resetPassword`,
   `destroy` (`can:delete,user`), plus `/{user}/logs` (per-user API calls, `can:apilog.view`).
 - **Roles** — index/store, `edit` = permission grid (`rolePermissions` Alpine factory), `update`,
@@ -124,9 +134,14 @@ FormRequests in `app/Http/Requests/Admin/` (`authorize()` → `can(...)`/policy)
 ## Extensibility seams (designed-for, not built)
 
 Modular registry (compose per-module `permissions.php` at the config level — no `PermissionRegistry`
-change), feature flags (`enabled` already gates gate/nav/route), branch scoping (`hasPermissionTo`'s
-`$context` + services are the choke points), version-based cache (swap keys inside `RbacCache` only),
-and broader audit coverage (more `AuditLogger::log()` calls, no schema change).
+change), feature flags (`enabled` already gates gate/nav/route), version-based cache (swap keys inside
+`RbacCache` only), and broader audit coverage (more `AuditLogger::log()` calls, no schema change).
+
+**Branch scoping** is built: an agency defines its own roles, sets their permissions (capped by the
+actor's own — no privilege escalation), and creates its own users, seeing nothing outside its scope.
+The history tables (**bookings, API logs, audit logs**) carry a stamped `agency_id` and every list that
+reads them is scoped by it. `hasPermissionTo`'s `$context` remains a no-op — permissions do not vary by
+agency, so `RbacCache` keys are unchanged. See [01-agencies.md](01-agencies.md).
 
 ## Tests
 

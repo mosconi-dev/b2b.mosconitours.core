@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TboAirApiLog extends Model
 {
+    use BelongsToAgency;
+
     protected $fillable = [
         'type',
         'environment',
@@ -15,6 +18,7 @@ class TboAirApiLog extends Model
         'successful',
         'duration_ms',
         'user_id',
+        'agency_id',
         'request',
         'response',
         'error',

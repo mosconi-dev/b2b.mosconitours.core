@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\BookingStatus;
+use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,12 +12,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use RuntimeException;
 
 #[Fillable([
-    'reference', 'user_id', 'environment', 'status', 'trace_id', 'result_index',
+    'reference', 'user_id', 'agency_id', 'environment', 'status', 'trace_id', 'result_index',
     'is_lcc', 'pnr', 'booking_id', 'currency', 'total_amount', 'ancillary_total', 'quote', 'pax', 'contact',
 ])]
 class Booking extends Model
 {
-    use HasFactory, SoftDeletes;
+    use BelongsToAgency, HasFactory, SoftDeletes;
 
     /**
      * @return array<string, string>

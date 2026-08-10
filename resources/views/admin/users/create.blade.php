@@ -39,6 +39,10 @@
             </div>
 
             <div>
+                @include('admin.users._agency', ['selectedAgencyId' => old('agency_id')])
+            </div>
+
+            <div>
                 <x-input-label value="Roles" />
                 <p class="mb-2 text-xs text-gray-500">Assign one or more roles. A user's access is the union of their roles' permissions.</p>
                 @include('admin.users._roles', ['selectedRoleIds' => old('roles', [])])

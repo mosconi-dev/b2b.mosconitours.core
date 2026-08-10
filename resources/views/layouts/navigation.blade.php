@@ -71,7 +71,7 @@
                     <div class="space-y-1">
                         @foreach ($items as $item)
                             @php $active = $isActive($item['route']); @endphp
-                            <a href="{{ route($item['route']) }}"
+                            <a href="{{ route($item['route'], $item['params'] ?? []) }}"
                                class="{{ $linkBase }} {{ $active ? $linkActive : $linkIdle }}">
                                 <x-admin.nav-icon :name="$item['icon']" :active="$active" />
                                 {{ $item['label'] }}

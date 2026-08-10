@@ -31,6 +31,10 @@
             </div>
 
             <div>
+                @include('admin.users._agency', ['selectedAgencyId' => old('agency_id', $user->agency_id)])
+            </div>
+
+            <div>
                 <x-input-label value="Roles" />
                 @include('admin.users._roles', ['selectedRoleIds' => old('roles', $user->roles->pluck('id')->all())])
                 <x-input-error :messages="$errors->get('roles')" class="mt-2" />

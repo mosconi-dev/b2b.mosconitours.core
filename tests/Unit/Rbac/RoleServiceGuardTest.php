@@ -55,7 +55,7 @@ class RoleServiceGuardTest extends TestCase
         $without = Permission::where('name', '!=', 'role.update')->pluck('id')->all();
 
         $this->expectException(RbacException::class);
-        $this->service()->syncPermissions($admin, $without);
+        $this->service()->syncPermissions($admin, $without, $this->admin());
     }
 
     public function test_cannot_delete_the_only_role_granting_admin(): void
@@ -80,7 +80,7 @@ class RoleServiceGuardTest extends TestCase
         User::factory()->create()->roles()->attach($second->id);
 
         $without = Permission::where('name', '!=', 'role.update')->pluck('id')->all();
-        $this->service()->syncPermissions($admin, $without);
+        $this->service()->syncPermissions($admin, $without, $this->admin());
 
         $this->assertFalse($admin->fresh()->permissions->contains('name', 'role.update'));
     }
