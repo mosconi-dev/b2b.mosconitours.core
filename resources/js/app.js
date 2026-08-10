@@ -830,7 +830,11 @@ Alpine.data('logoDropzone', (config = {}) => ({
 // /bookings on completion.
 Alpine.data('bookingWizard', (config = {}) => ({
     traceId: config.traceId ?? '',
+    // Both are search-only facts the Book payload needs and FareQuote does not
+    // return. They ride the query string into this page and must be declared here,
+    // or the submit below posts undefined.
     resultType: config.resultType ?? null,
+    seats: config.seats ?? [],
     resultIndex: config.resultIndex ?? '',
     quote: config.quote ?? {},
     ssr: config.ssr ?? { baggage: [], meals: [] },

@@ -166,6 +166,32 @@ class SeatAvailabilityTest extends TestCase
     }
 
     /**
+     * The wizard must receive the seats in its Alpine config, not merely in the view
+     * data. It once did not: the blade passed them and the component never declared
+     * the property, so every booking posted an empty list.
+     */
+    public function test_the_wizard_config_carries_the_seats_to_the_browser(): void
+    {
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*FareQuote*' => Http::response($this->fixture('farequote.json'), 200),
+            '*SSR*' => Http::response($this->fixture('ssr.json'), 200),
+        ]);
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', [
+                'traceId' => 'trace-abc-123',
+                'resultIndex' => str_repeat('R', 400),
+                'seats' => '9,8,7',
+                'resultType' => 1,
+            ]))
+            ->assertOk()
+            // @js() escapes quotes as \u0022 inside the x-data attribute.
+            ->assertSee('seats\\u0022:[9,8,7]', false)
+            ->assertSee('resultType\\u0022:1', false);
+    }
+
+    /**
      * A blank entry means that segment's availability was never captured. It must stay
      * null, not become 0 — only one of those should ever be able to stop a booking.
      */
