@@ -40,6 +40,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/create', [BookingController::class, 'create'])->name('create')->middleware('can:booking.create');
         Route::post('/', [BookingController::class, 'store'])->name('store')->middleware('can:booking.create');
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show')->whereNumber('booking')->middleware('can:booking.view');
+        // The money step. Separate abilities: holding a PNR costs nothing, issuing
+        // spends the agency wallet and our supplier balance.
+        Route::post('/{booking}/book', [BookingController::class, 'book'])->name('book')
+            ->whereNumber('booking')->middleware('can:flight.book');
+        Route::post('/{booking}/issue', [BookingController::class, 'issue'])->name('issue')
+            ->whereNumber('booking')->middleware('can:flight.issue');
     });
     /*
     | Wallet — the agency e-wallet and its load-request cycle. Every step is

@@ -166,6 +166,70 @@ class BookingController extends Controller
     }
 
     /**
+     * Hold the PNR for a non-LCC booking. Creates a reservation; spends nothing.
+     */
+    public function book(Request $request, Booking $booking, BookingService $bookings): RedirectResponse
+    {
+        return $this->runSupplierWrite(
+            $request,
+            $booking,
+            fn (): Booking => $bookings->book($booking, $request->userAgent()),
+            fn (Booking $b): string => "Booking {$b->reference} is held with the airline — PNR {$b->pnr}.",
+        );
+    }
+
+    /**
+     * Issue the ticket. **Spends the agency wallet and our supplier balance.**
+     */
+    public function issue(Request $request, Booking $booking, BookingService $bookings): RedirectResponse
+    {
+        return $this->runSupplierWrite(
+            $request,
+            $booking,
+            fn (): Booking => $bookings->issue($booking, $request->userAgent()),
+            fn (Booking $b): string => "Booking {$b->reference} is ticketed — PNR {$b->pnr}.",
+        );
+    }
+
+    /**
+     * Run a Book/Ticket call and turn its outcome into a message.
+     *
+     * An **unresolved** outcome is deliberately not styled as a plain error: the
+     * booking may hold a live PNR, so the agent must be told to stop rather than
+     * invited to try again. Everything else is reported as it happened.
+     *
+     * @param  callable(): Booking  $write
+     * @param  callable(Booking): string  $success
+     */
+    private function runSupplierWrite(Request $request, Booking $booking, callable $write, callable $success): RedirectResponse
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        try {
+            $booking = $write();
+        } catch (BookingException $e) {
+            if ($e->unresolved) {
+                report($e);
+            }
+
+            return back()->with('error', $e->getMessage());
+        } catch (TboAirException $e) {
+            report($e);
+
+            // A timeout is the dangerous one: the request may have landed. Never
+            // suggest retrying — GetBookingDetails has to settle it first.
+            return back()->with('error', $e->isTimeout()
+                ? "The airline did not respond in time. Booking {$booking->reference} may still have been created — please check it before trying again."
+                : 'The airline rejected this request. Please try again, or contact support if it persists.');
+        }
+
+        return back()->with('status', $success($booking));
+    }
+
+    /**
      * Parse the comma-separated seat list carried over from search.
      *
      * A blank entry means that segment's availability is genuinely unknown, so it
