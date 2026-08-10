@@ -197,7 +197,10 @@ FormRequests: `SearchFlightsRequest`, `FareDetailRequest`, `StoreBookingRequest`
 ## Console commands (`app/Console/Commands/`)
 
 `tboair:auth {--fresh}`, `tboair:balance {--fresh}` (our TBO balance, with the e-wallet distinction
-spelled out in the output), `tboair:logs {id?} {--limit=} {--type=} {--failed}`,
+spelled out in the output), **`tboair:payload {booking} {--ticket} {--pnr=} {--json}`** — dry-runs the
+Book/Ticket request for a booking and pre-flight-checks it (**sends nothing**; built so each
+certification case can be inspected before it costs anything),
+`tboair:logs {id?} {--limit=} {--type=} {--failed}`,
 `tboair:search {origin} {destination} {departure} …` (live smoke tests need a whitelisted server).
 
 ## Tests & fixtures
