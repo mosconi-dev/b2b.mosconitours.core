@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -58,6 +59,17 @@ class Agency extends Model
     public function roles(): HasMany
     {
         return $this->hasMany(Role::class);
+    }
+
+    /**
+     * The agency's e-wallet. Bound to the agency, never to a user — every member
+     * draws on this one balance.
+     *
+     * @return HasOne<Wallet, $this>
+     */
+    public function wallet(): HasOne
+    {
+        return $this->hasOne(Wallet::class);
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Enums\AgencyType;
 use App\Models\Agency;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
@@ -382,6 +383,30 @@ class AgencyManagementTest extends TestCase
             ->assertSessionHasErrors('rbac');
 
         $this->assertNotSoftDeleted($agency);
+    }
+
+    public function test_an_agency_holding_wallet_funds_cannot_be_deleted(): void
+    {
+        $agency = Agency::factory()->create();
+        Wallet::factory()->withBalance('250.00')->create(['agency_id' => $agency->id]);
+
+        $this->actingAs($this->admin())
+            ->delete(route('admin.agencies.destroy', $agency))
+            ->assertSessionHasErrors('rbac');
+
+        $this->assertNotSoftDeleted($agency);
+    }
+
+    public function test_an_agency_with_an_empty_wallet_can_still_be_deleted(): void
+    {
+        $agency = Agency::factory()->create();
+        Wallet::factory()->create(['agency_id' => $agency->id]); // 0.00
+
+        $this->actingAs($this->admin())
+            ->delete(route('admin.agencies.destroy', $agency))
+            ->assertRedirect(route('admin.agencies.index'));
+
+        $this->assertSoftDeleted($agency);
     }
 
     public function test_an_agency_with_children_cannot_be_deleted(): void

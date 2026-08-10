@@ -128,6 +128,14 @@ class AgencyService
             throw new RbacException('This agency still has agencies reporting to it. Reassign them first.');
         }
 
+        // Deleting an agency that still holds funds would strand them: the wallet is
+        // the agency's money, and nothing here can decide where it should go.
+        if ($agency->wallet && bccomp((string) $agency->wallet->balance, '0', 2) !== 0) {
+            throw new RbacException(
+                'This agency still holds a wallet balance of '.$agency->wallet->formattedBalance().'. Settle it first.'
+            );
+        }
+
         $agency->delete(); // soft delete — preserves history
         $this->audit->log('agency.deleted', $agency);
     }
