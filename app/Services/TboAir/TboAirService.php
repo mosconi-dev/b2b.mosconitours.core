@@ -3,6 +3,7 @@
 namespace App\Services\TboAir;
 
 use App\Enums\TripType;
+use App\Models\Booking;
 use App\Services\Settings\Settings;
 use App\Services\TboAir\DTO\AgencyBalance;
 use App\Services\TboAir\DTO\BookingResult;
@@ -54,6 +55,43 @@ class TboAirService
     public function ssr(SelectionInput $selection): Ssr
     {
         return $this->withReauth(fn (string $token): Ssr => $this->doSsr($selection, $token));
+    }
+
+    /**
+     * Create the PNR for a non-LCC booking. **Spends nothing** — Ticket does that.
+     *
+     * Wrapped in withReauth like every other call: an `ErrorCode 6` means TBO rejected
+     * the token and never looked at the payload, so nothing was created and a retry
+     * cannot double-book. Any other failure is left for the caller to reconcile.
+     */
+    public function book(Booking $booking, ?string $userAgent = null): BookingResult
+    {
+        return $this->withReauth(function (string $token) use ($booking, $userAgent): BookingResult {
+            $data = $this->client->book(
+                TboBookPayload::for($booking, $token, $this->client->ipAddress(), $userAgent)
+            );
+            $this->guardSession($data);
+
+            return BookingResult::fromResponse($data);
+        });
+    }
+
+    /**
+     * Issue the ticket. **This spends money.**
+     *
+     * Same payload as book(), plus a PNR: null for an LCC, where Ticket books and
+     * issues in one, and the held PNR for a non-LCC.
+     */
+    public function ticket(Booking $booking, ?string $pnr = null, ?string $userAgent = null): BookingResult
+    {
+        return $this->withReauth(function (string $token) use ($booking, $pnr, $userAgent): BookingResult {
+            $data = $this->client->ticket(
+                TboBookPayload::for($booking, $token, $this->client->ipAddress(), $userAgent, $pnr)
+            );
+            $this->guardSession($data);
+
+            return BookingResult::fromResponse($data);
+        });
     }
 
     /**

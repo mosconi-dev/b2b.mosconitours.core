@@ -3,15 +3,19 @@
 namespace App\Services\Booking;
 
 use App\Enums\BookingStatus;
+use App\Enums\TboBookingStatus;
 use App\Exceptions\WalletException;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\DTO\Passenger;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\TboAir\DTO\BookingResult;
 use App\Services\TboAir\DTO\SelectionInput;
+use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\TboAirService;
 use App\Services\Wallet\WalletService;
 use App\Support\Countries;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -94,6 +98,208 @@ class BookingService
 
             return $booking;
         });
+    }
+
+    /**
+     * Hold the PNR for a non-LCC booking. Creates a reservation; spends nothing.
+     *
+     * LCC fares have no Book step at all — Ticket books and issues in one — so calling
+     * this on one is a programming error, not a supplier failure.
+     */
+    public function book(Booking $booking, ?string $userAgent = null): Booking
+    {
+        if ($booking->is_lcc) {
+            throw new BookingException('Low-cost fares are booked and ticketed in one step — use issue().');
+        }
+
+        return $this->withBookingLock($booking, function (Booking $booking) use ($userAgent): Booking {
+            $this->guardEnvironment($booking);
+            $this->guardStatus($booking, [BookingStatus::Quoted], 'booked');
+
+            $result = $this->tbo->book($booking, $userAgent);
+
+            // Before anything else can fail: if TBO made a PNR, we must own that fact.
+            $this->rememberSupplierIds($booking, $result);
+
+            $status = $this->resolve($booking, $result);
+
+            if ($status === null) {
+                throw BookingException::unresolved($booking, $result->pnr);
+            }
+
+            // Book maps its own outcome: TBO's `Successful` here means a PNR was held,
+            // not that anything was issued. Reusing the ticketing mapping would mark
+            // this booking Ticketed and skip the step that actually spends money.
+            return $this->transitionTo($booking, $status->isFailure()
+                ? BookingStatus::Failed
+                : BookingStatus::Booked);
+        });
+    }
+
+    /**
+     * Issue the ticket. **This is the step that spends money.**
+     *
+     * LCC goes straight from `quoted` (Ticket books and issues together); non-LCC must
+     * already hold a PNR from book().
+     */
+    public function issue(Booking $booking, ?string $userAgent = null): Booking
+    {
+        return $this->withBookingLock($booking, function (Booking $booking) use ($userAgent): Booking {
+            $this->guardEnvironment($booking);
+
+            $from = $booking->is_lcc ? [BookingStatus::Quoted] : [BookingStatus::Booked];
+            $this->guardStatus($booking, $from, 'ticketed');
+
+            if (! $booking->is_lcc && ! filled($booking->pnr)) {
+                throw new BookingException("Booking {$booking->reference} has no PNR to ticket.");
+            }
+
+            $this->guardSupplierFunds($booking);
+
+            $result = $this->tbo->ticket($booking, $booking->pnr, $userAgent);
+            $this->rememberSupplierIds($booking, $result);
+
+            $status = $this->resolve($booking, $result);
+            $mapped = $status?->toBookingStatus();
+
+            if ($mapped === null) {
+                throw BookingException::unresolved($booking, $result->pnr);
+            }
+
+            return $this->transitionTo($booking, $mapped);
+        });
+    }
+
+    /**
+     * Establish TBO's authoritative status for a response, reading GetBookingDetails
+     * when the write call will not say.
+     *
+     * Returns TBO's own code rather than one of ours, because the same code means
+     * different things per call — `Successful` is "held" from Book and "issued" from
+     * Ticket. Each caller maps it.
+     *
+     * Returns null when even that is unresolved — the caller must **not** guess. This
+     * is the case the live system gets wrong: marking an unknown outcome as failed
+     * refunds the agency while a live PNR may exist, and retrying it risks selling the
+     * seat twice.
+     */
+    private function resolve(Booking $booking, BookingResult $result): ?TboBookingStatus
+    {
+        if (! $result->needsReconciliation()) {
+            return $result->status;
+        }
+
+        // Nothing to reconcile against: no PNR means TBO created nothing.
+        if (! $result->hasPnr()) {
+            return TboBookingStatus::Failed;
+        }
+
+        try {
+            $authoritative = $this->tbo->bookingDetails($result->pnr);
+        } catch (TboAirException) {
+            return null; // could not read it — unresolved, never assumed
+        }
+
+        $this->rememberSupplierIds($booking, $authoritative);
+
+        return $authoritative->needsReconciliation() ? null : $authoritative->status;
+    }
+
+    /**
+     * Persist the PNR and TBO booking id the moment we learn them.
+     *
+     * Written outside the status transition and before any further call: a PNR we
+     * failed to record is a live reservation nobody can find, which is worse than a
+     * booking in the wrong state. ReleasePNR later needs it too.
+     */
+    private function rememberSupplierIds(Booking $booking, BookingResult $result): void
+    {
+        $attributes = array_filter([
+            'pnr' => $result->pnr,
+            'booking_id' => $result->bookingId,
+        ], fn (?string $value): bool => filled($value));
+
+        if ($attributes !== []) {
+            $booking->forceFill($attributes)->save();
+        }
+    }
+
+    /**
+     * Refuse to ticket when our own TBO balance cannot cover it.
+     *
+     * This is the supplier's pot, not the agency e-wallet — the agency was already
+     * debited at quote time. Catching it here turns an opaque supplier rejection into
+     * a message naming the real problem, and leaves the booking untouched.
+     */
+    private function guardSupplierFunds(Booking $booking): void
+    {
+        $amount = (string) $booking->total_amount;
+
+        try {
+            $covered = $this->tbo->hasFundsFor($amount);
+        } catch (TboAirException) {
+            return; // balance unreadable — do not block a ticket on a broken read
+        }
+
+        if (! $covered) {
+            throw new BookingException(
+                'Ticketing is unavailable: the agency account with the airline supplier has insufficient funds. Please contact support.'
+            );
+        }
+    }
+
+    /**
+     * One environment end to end. A booking quoted on test must never be ticketed
+     * against live, whatever the current user's environment happens to be.
+     */
+    private function guardEnvironment(Booking $booking): void
+    {
+        if ($booking->environment !== $this->tbo->environment()) {
+            throw new BookingException(
+                "Booking {$booking->reference} was quoted on {$booking->environment} and cannot be processed on {$this->tbo->environment()}."
+            );
+        }
+    }
+
+    /**
+     * @param  array<int, BookingStatus>  $allowed
+     */
+    private function guardStatus(Booking $booking, array $allowed, string $action): void
+    {
+        if (! in_array($booking->status, $allowed, true)) {
+            throw new BookingException(
+                "Booking {$booking->reference} is {$booking->status->value} and cannot be {$action}."
+            );
+        }
+    }
+
+    /**
+     * Serialise every write against one booking, and re-read it under the lock.
+     *
+     * Two guards, because this is money and they fail differently: the cache lock stops
+     * concurrent workers racing (a double-clicked button, a retried job), and the
+     * status re-read inside it means the second caller sees what the first actually
+     * did rather than the row it loaded beforehand.
+     *
+     * The supplier call is deliberately **not** inside a database transaction — it can
+     * take a minute, and a row lock held across it would block the whole booking. The
+     * writes it triggers are individually atomic instead.
+     *
+     * @param  callable(Booking): Booking  $work
+     */
+    private function withBookingLock(Booking $booking, callable $work): Booking
+    {
+        $lock = Cache::lock("booking:{$booking->getKey()}:write", 120);
+
+        if (! $lock->get()) {
+            throw new BookingException("Booking {$booking->reference} is already being processed.");
+        }
+
+        try {
+            return $work($booking->fresh());
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

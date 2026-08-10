@@ -69,7 +69,13 @@ enum TboBookingStatus: int
     }
 
     /**
-     * The booking status this maps to, where one can be decided from the code alone.
+     * The booking status this maps to **after a ticketing call**.
+     *
+     * The same code means different things depending on which method returned it:
+     * `Successful` from Ticket means issued, but `Successful` from Book only means a
+     * PNR was held. So this mapping is written from the Ticket/GetBookingDetails
+     * perspective, and `BookingService::book()` maps its own outcome rather than
+     * calling this.
      *
      * Returns **null** for every ambiguous case — the caller must reconcile via
      * GetBookingDetails instead. A null here is a deliberate refusal to guess, not a
