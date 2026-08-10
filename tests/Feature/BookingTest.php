@@ -264,6 +264,23 @@ class BookingTest extends TestCase
             ->assertSessionHasErrors(['contact.addressLine1', 'contact.city', 'contact.countryCode', 'contact.mobileCountryCode']);
     }
 
+    /**
+     * The combination that got past us on a real PR fare: not required at Book, but
+     * required at Ticket. These are independent flags, not fallbacks — chaining them
+     * with `??` stopped at the first `false` and collected no passport, and TBO then
+     * refused the Book outright.
+     */
+    public function test_store_enforces_passport_when_only_the_ticket_flag_is_set(): void
+    {
+        $this->fakeQuote('farequote-passport-at-ticket.json');
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload()) // no passport details
+            ->assertSessionHasErrors('booking');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
     public function test_store_enforces_passport_when_the_fare_requires_it(): void
     {
         $this->fakeQuote('farequote-passport.json'); // IsPassportRequiredAtBook = true

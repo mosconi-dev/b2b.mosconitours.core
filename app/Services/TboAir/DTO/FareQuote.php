@@ -76,11 +76,16 @@ class FareQuote implements Arrayable, JsonSerializable
             isLcc: (bool) data_get($result, 'IsLCC', false),
             isRefundable: (bool) data_get($result, 'IsRefundable', false),
             isPriceChanged: (bool) data_get($result, 'IsPriceChanged', false),
-            isPassportMandatory: (bool) (
-                data_get($result, 'IsPassportRequiredAtBook')
-                ?? data_get($result, 'IsPassportRequiredAtTicket')
-                ?? data_get($result, 'IsPassportFullDetailRequiredAtBook', false)
-            ),
+            // ANY of these means we must collect a passport — they are independent
+            // flags, not fallbacks. `??` was wrong here: it only skips a *null*, so a
+            // fare with RequiredAtBook=false and RequiredAtTicket=true short-circuited
+            // to false and we collected nothing. TBO then refused the Book with
+            // "Passport Number and Passport Expiry should not be Empty" — and note it
+            // enforced at Book despite only flagging AtTicket, so the distinction
+            // cannot be relied on either.
+            isPassportMandatory: (bool) data_get($result, 'IsPassportRequiredAtBook', false)
+                || (bool) data_get($result, 'IsPassportRequiredAtTicket', false)
+                || (bool) data_get($result, 'IsPassportFullDetailRequiredAtBook', false),
             price: [
                 'currency' => (string) data_get($fare, 'Currency', 'PHP'),
                 'baseFare' => (float) data_get($fare, 'BaseFare', 0),
