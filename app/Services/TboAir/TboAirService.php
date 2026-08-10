@@ -307,10 +307,27 @@ class TboAirService
      */
     private function guardSession(array $data): void
     {
+        // Book/Ticket wrap their answer in a one-element array; everything else does not.
+        if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
+            $data = $data[0];
+        }
+
         $errorCode = data_get($data, 'Response.Error.ErrorCode', data_get($data, 'Error.ErrorCode'));
 
         if ((int) $errorCode === 6) {
             throw TboAirException::auth($this->firstError($data, 'TBO Air session expired.'));
+        }
+
+        // The booking host says the same thing in a different shape: Errors[0].Code 2,
+        // "Authentication Failed". It also has a **shorter tolerance than the search
+        // host** — a token search still accepts can already be dead here (observed at
+        // six hours). Without this branch a stale token fails a booking outright
+        // instead of self-healing, which is exactly what happened on the first real
+        // Book attempt.
+        $message = (string) data_get($data, 'Errors.0.UserMessage', '');
+
+        if ((int) data_get($data, 'Errors.0.Code') === 2 && stripos($message, 'authentication') !== false) {
+            throw TboAirException::auth($message);
         }
     }
 

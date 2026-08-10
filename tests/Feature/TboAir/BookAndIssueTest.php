@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\TboAir\Exceptions\TboAirException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -273,9 +274,13 @@ class BookAndIssueTest extends TestCase
      */
     public function test_it_reads_the_array_wrapped_refusal_tbo_actually_sends(): void
     {
-        $this->fake([
-            '*Booking/Book*' => Http::response($this->fixture('book-auth-failed.json'), 200),
-        ]);
+        // The envelope from the real refused Book, with a business error rather than
+        // the auth one (which re-authenticates instead — see the retry test).
+        $body = $this->fixture('book-auth-failed.json');
+        $body[0]['Status'] = 2;
+        $body[0]['Errors'][0] = ['Code' => 50, 'UserMessage' => 'Seats no longer available'];
+
+        $this->fake(['*Booking/Book*' => Http::response($body, 200)]);
 
         $booking = $this->booking(['is_lcc' => false]);
 
@@ -283,12 +288,56 @@ class BookAndIssueTest extends TestCase
             $this->service()->book($booking);
             $this->fail('a refused Book must not return as though it succeeded');
         } catch (BookingException $e) {
-            $this->assertStringContainsString('Authentication Failed', $e->getMessage());
+            // Read as an object this body yields nothing at all, and the agent would
+            // see a blank fallback instead of the supplier's reason.
+            $this->assertStringContainsString('Seats no longer available', $e->getMessage());
         }
 
         $booking->refresh();
         $this->assertSame(BookingStatus::Failed, $booking->status);
         $this->assertNull($booking->pnr, '"-" is not a PNR');
+    }
+
+    /**
+     * When re-authenticating does not help, the auth failure must surface rather than
+     * be silently recorded as a booking failure.
+     */
+    public function test_a_persistent_auth_failure_is_raised_after_one_retry(): void
+    {
+        $this->fake(['*Booking/Book*' => Http::response($this->fixture('book-auth-failed.json'), 200)]);
+
+        $this->expectException(TboAirException::class);
+        $this->expectExceptionMessage('Authentication Failed');
+
+        $this->service()->book($this->booking(['is_lcc' => false]));
+    }
+
+    /**
+     * The booking host reports an expired session as Errors[0].Code 2, "Authentication
+     * Failed" — not the ErrorCode 6 the search host uses — and it goes stale sooner
+     * than search does. Recognising it is what turns a dead token into one retry
+     * instead of a failed booking.
+     */
+    public function test_a_stale_token_on_the_booking_host_re_authenticates_and_retries(): void
+    {
+        $attempt = 0;
+
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*GetBookingDetails*' => Http::response($this->fixture('bookingdetails.json'), 200),
+            '*Booking/Book*' => function () use (&$attempt) {
+                // First call: the stale-token refusal. Second: it works.
+                return $attempt++ === 0
+                    ? Http::response($this->fixture('book-auth-failed.json'), 200)
+                    : Http::response(['PNR' => 'QWER12', 'BookingId' => 884213, 'Status' => 1], 200);
+            },
+        ]);
+
+        $booking = $this->service()->book($this->booking(['is_lcc' => false]));
+
+        $this->assertSame(BookingStatus::Booked, $booking->status);
+        $this->assertSame('QWER12', $booking->pnr);
+        $this->assertSame(2, $attempt, 'Book should have been retried exactly once');
     }
 
     // ---- Guards -----------------------------------------------------------
