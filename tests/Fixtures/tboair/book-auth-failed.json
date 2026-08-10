@@ -1,0 +1,29 @@
+[
+    {
+        "PNR": "-",
+        "Alerts": [],
+        "Errors": [
+            {
+                "Code": 2,
+                "Origin": "",
+                "TimeStamp": "2026-08-10T07:45:24.5230084Z",
+                "Resolution": "",
+                "UserMessage": "Authentication Failed"
+            }
+        ],
+        "Status": 0,
+        "TokenId": "2c74a3c0-1915-4f67-a25f-ab4ffdf3aca6",
+        "BookingId": null,
+        "IsSuccess": false,
+        "Itinerary": null,
+        "SSRDenied": false,
+        "SSRMessage": null,
+        "TrackingId": "f8366e3a-4656-4868-8627-569c35efd218",
+        "WalletAction": 0,
+        "FailureHandle": null,
+        "PaymentStatus": null,
+        "WalletRequest": null,
+        "ChangeInItinerary": null,
+        "walletRedirectionUrl": null
+    }
+]

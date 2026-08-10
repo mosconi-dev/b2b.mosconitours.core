@@ -265,6 +265,32 @@ class BookAndIssueTest extends TestCase
         Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Ticket'));
     }
 
+    /**
+     * A real refused Book from the test host. Two things about it caught us out:
+     * the whole body arrives wrapped in a one-element array, and an absent PNR is
+     * the string "-". Read as an object it yields nothing — no status, no error —
+     * so a genuine refusal surfaced as a blank fallback message.
+     */
+    public function test_it_reads_the_array_wrapped_refusal_tbo_actually_sends(): void
+    {
+        $this->fake([
+            '*Booking/Book*' => Http::response($this->fixture('book-auth-failed.json'), 200),
+        ]);
+
+        $booking = $this->booking(['is_lcc' => false]);
+
+        try {
+            $this->service()->book($booking);
+            $this->fail('a refused Book must not return as though it succeeded');
+        } catch (BookingException $e) {
+            $this->assertStringContainsString('Authentication Failed', $e->getMessage());
+        }
+
+        $booking->refresh();
+        $this->assertSame(BookingStatus::Failed, $booking->status);
+        $this->assertNull($booking->pnr, '"-" is not a PNR');
+    }
+
     // ---- Guards -----------------------------------------------------------
 
     public function test_it_refuses_to_ticket_a_booking_from_another_environment(): void

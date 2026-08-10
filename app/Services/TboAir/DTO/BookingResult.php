@@ -31,6 +31,8 @@ class BookingResult implements Arrayable
      */
     public static function fromResponse(array $data): self
     {
+        $data = self::unwrap($data);
+
         // Book/Ticket answer flat; GetBookingDetails nests under FlightItinerary.
         $itinerary = data_get($data, 'Response.FlightItinerary', data_get($data, 'FlightItinerary'));
 
@@ -71,6 +73,26 @@ class BookingResult implements Arrayable
     }
 
     /**
+     * Book and Ticket wrap their answer in a **one-element JSON array**.
+     *
+     * Observed on a real Book against the test host: the whole body arrives as
+     * `[{"PNR":"-","Errors":[…],"IsSuccess":false,…}]`. Reading it as an object finds
+     * nothing at all — no status, no PNR, and worst of all no error message, so a
+     * genuine supplier refusal surfaces as a blank fallback. Unwrap first.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private static function unwrap(array $data): array
+    {
+        if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
+            return $data[0];
+        }
+
+        return $data;
+    }
+
+    /**
      * TBO's own words for why this failed, if it gave any.
      *
      * This is how a supplier-side problem — insufficient agency funds, a fare that
@@ -100,8 +122,10 @@ class BookingResult implements Arrayable
     {
         $value = is_scalar($value) ? trim((string) $value) : '';
 
-        // TBO uses "" and "0" interchangeably with null for an absent PNR/BookingId.
-        return $value === '' || $value === '0' ? null : $value;
+        // TBO uses "", "0" and "-" interchangeably with null for an absent
+        // PNR/BookingId — the dash was observed on a real refused Book. Treating it as
+        // a PNR would leave a booking claiming a reservation called "-".
+        return in_array($value, ['', '0', '-'], true) ? null : $value;
     }
 
     /**
