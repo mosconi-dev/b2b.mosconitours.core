@@ -1088,13 +1088,34 @@ Alpine.data('bookingWizard', (config = {}) => ({
         return this.quote?.baggage || null;
     },
 
-    // ----- date of birth -----------------------------------------------------
-    // Three selects rather than a calendar: a birth date is decades back, and a date
-    // picker makes an agent page through hundreds of months to reach 1990. The parts
-    // are held here while they are half-filled, because a partial date cannot be
-    // represented in the ISO string the passenger actually carries.
+    // ----- passenger dates ---------------------------------------------------
+    // Three selects rather than a calendar, for every date on a passenger. All of them
+    // are years away from today — a birth date decades back, a passport a decade
+    // either side — and a picker makes an agent page through hundreds of months to
+    // reach one. The parts are held here while they are half-filled, because a partial
+    // date cannot be represented in the ISO string the passenger actually carries.
 
-    dobParts: {}, // passenger index -> { d, m, y }
+    dateParts: {}, // "index:field" -> { d, m, y }
+
+    /**
+     * Per field: how far the year list runs from today, and which side of today the
+     * finished date has to fall on. A passport that expired is not a date-entry
+     * mistake to be tolerated — it cannot be travelled on.
+     */
+    dateFields: {
+        dateOfBirth: {
+            from: -120, to: 0, direction: 'past',
+            invalid: 'A date of birth cannot be in the future.',
+        },
+        documentExpiry: {
+            from: 0, to: 15, direction: 'future',
+            invalid: 'This document has already expired — it cannot be used to travel.',
+        },
+        documentIssueDate: {
+            from: -20, to: 0, direction: 'past',
+            invalid: 'An issue date cannot be in the future.',
+        },
+    },
 
     dobMonths: [
         { value: '01', name: 'January' }, { value: '02', name: 'February' },
@@ -1105,15 +1126,22 @@ Alpine.data('bookingWizard', (config = {}) => ({
         { value: '11', name: 'November' }, { value: '12', name: 'December' },
     ],
 
-    get dobYears() {
+    dateYears(field) {
+        const spec = this.dateFields[field];
         const now = new Date().getFullYear();
-        return Array.from({ length: 121 }, (_, k) => String(now - k));
+        const years = [];
+
+        for (let y = now + spec.from; y <= now + spec.to; y++) years.push(String(y));
+
+        // Nearest first: an expiry is a year or two out, a birth date a year or two
+        // back. Either way the useful end should not need scrolling to.
+        return spec.direction === 'future' ? years : years.reverse();
     },
 
     /** Days that exist in the chosen month, so 31 February is never offered. */
-    dobDays(index) {
-        const year = Number(this.dobPart(index, 'y'));
-        const month = Number(this.dobPart(index, 'm'));
+    dateDays(index, field) {
+        const year = Number(this.datePart(index, field, 'y'));
+        const month = Number(this.datePart(index, field, 'm'));
 
         // No month yet: 31 keeps every day reachable. A missing year is treated as a
         // leap year so 29 February stays selectable until the year says otherwise.
@@ -1122,23 +1150,25 @@ Alpine.data('bookingWizard', (config = {}) => ({
         return Array.from({ length: count }, (_, k) => String(k + 1).padStart(2, '0'));
     },
 
-    dobPart(index, part) {
-        const cached = this.dobParts[index];
+    datePart(index, field, part) {
+        const cached = this.dateParts[`${index}:${field}`];
         if (cached && cached[part] !== undefined) return cached[part];
 
-        const iso = this.passengers[index]?.dateOfBirth;
+        const iso = this.passengers[index]?.[field];
         if (! iso) return '';
 
         const [y, m, d] = String(iso).split('-');
         return { y, m, d }[part] ?? '';
     },
 
-    setDobPart(index, part, value) {
+    setDatePart(index, field, part, value) {
+        const key = `${index}:${field}`;
+
         const parts = {
-            y: this.dobPart(index, 'y'),
-            m: this.dobPart(index, 'm'),
-            d: this.dobPart(index, 'd'),
-            ...(this.dobParts[index] ?? {}),
+            y: this.datePart(index, field, 'y'),
+            m: this.datePart(index, field, 'm'),
+            d: this.datePart(index, field, 'd'),
+            ...(this.dateParts[key] ?? {}),
             [part]: value,
         };
 
@@ -1149,33 +1179,38 @@ Alpine.data('bookingWizard', (config = {}) => ({
 
         if (Number(parts.d) > available) parts.d = '';
 
-        this.dobParts[index] = parts;
-        this.passengers[index].dateOfBirth = this.composeDob(parts);
+        this.dateParts[key] = parts;
+        this.passengers[index][field] = this.composeDate(parts, field);
     },
 
-    /** Only a complete date that is genuinely in the past reaches the passenger. */
-    composeDob(parts) {
+    /** Only a complete date on the right side of today reaches the passenger. */
+    composeDate(parts, field) {
         if (! parts.y || ! parts.m || ! parts.d) return '';
 
         const iso = `${parts.y}-${parts.m}-${parts.d}`;
+        const when = new Date(`${iso}T00:00:00`);
+        const today = new Date(new Date().toDateString());
 
-        return new Date(`${iso}T00:00:00`) > new Date() ? '' : iso;
+        if (this.dateFields[field].direction === 'past' && when > today) return '';
+        if (this.dateFields[field].direction === 'future' && when < today) return '';
+
+        return iso;
     },
 
     /**
      * Why the field is still empty, when the agent has clearly filled something in.
      * Silence here reads as the form ignoring them.
      */
-    dobError(index) {
-        const parts = this.dobParts[index];
+    dateError(index, field) {
+        const parts = this.dateParts[`${index}:${field}`];
         if (! parts) return '';
 
         const filled = ['y', 'm', 'd'].filter((k) => parts[k]);
-        if (! filled.length || this.passengers[index]?.dateOfBirth) return '';
+        if (! filled.length || this.passengers[index]?.[field]) return '';
 
         return filled.length < 3
             ? 'Choose a month, day and year.'
-            : 'A date of birth cannot be in the future.';
+            : this.dateFields[field].invalid;
     },
 
     /** The resolved options a passenger holds for this kind, in leg order. */

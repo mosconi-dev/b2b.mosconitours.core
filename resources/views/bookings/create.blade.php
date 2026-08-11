@@ -277,48 +277,13 @@
                                         <option value="" class="text-gray-400">Select</option><option value="M" class="text-gray-900">Male</option><option value="F" class="text-gray-900">Female</option>
                                     </select>
                                 </div>
-                                <div>
-                                    {{-- Required for every passenger: TBO rejects a blank one at
-                                         Ticket, after the booking has been paid for. --}}
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">
-                                        Date of birth <span class="text-red-500">*</span>
-                                    </label>
-                                    {{-- Three selects, not a calendar. A birth date is
-                                         decades back, and a date picker makes the agent
-                                         page through hundreds of months to reach 1990. --}}
-                                    <div class="grid grid-cols-3 gap-2">
-                                        <select :value="dobPart(i, 'm')" @change="setDobPart(i, 'm', $event.target.value)"
-                                                aria-label="Birth month"
-                                                class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
-                                                :class="dobPart(i, 'm') ? 'text-gray-900' : 'text-gray-400'">
-                                            <option value="" class="text-gray-400">Month</option>
-                                            <template x-for="mo in dobMonths" :key="mo.value">
-                                                <option :value="mo.value" x-text="mo.name" class="text-gray-900"></option>
-                                            </template>
-                                        </select>
-
-                                        <select :value="dobPart(i, 'd')" @change="setDobPart(i, 'd', $event.target.value)"
-                                                aria-label="Birth day"
-                                                class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
-                                                :class="dobPart(i, 'd') ? 'text-gray-900' : 'text-gray-400'">
-                                            <option value="" class="text-gray-400">Day</option>
-                                            <template x-for="day in dobDays(i)" :key="day">
-                                                <option :value="day" x-text="Number(day)" class="text-gray-900"></option>
-                                            </template>
-                                        </select>
-
-                                        <select :value="dobPart(i, 'y')" @change="setDobPart(i, 'y', $event.target.value)"
-                                                aria-label="Birth year"
-                                                class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
-                                                :class="dobPart(i, 'y') ? 'text-gray-900' : 'text-gray-400'">
-                                            <option value="" class="text-gray-400">Year</option>
-                                            <template x-for="yr in dobYears" :key="yr">
-                                                <option :value="yr" x-text="yr" class="text-gray-900"></option>
-                                            </template>
-                                        </select>
-                                    </div>
-                                    <p x-show="dobError(i)" x-cloak class="mt-1 text-xs text-red-600" x-text="dobError(i)"></p>
-                                </div>
+                                {{-- Required for every passenger: TBO rejects a blank one at
+                                     Ticket, after the booking has been paid for. --}}
+                                @include('bookings._date-select', [
+                                    'field' => 'dateOfBirth',
+                                    'label' => 'Date of birth',
+                                    'required' => true,
+                                ])
                             </div>
 
                             {{-- The identity document. Which one depends on the route, not on
@@ -329,11 +294,10 @@
                                     <input type="text" x-model="p.documentNumber" :placeholder="quote.isDomestic ? 'e.g. UMID / driver&apos;s licence' : 'e.g. P1234567A'"
                                            class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600" x-text="quote.isDomestic ? 'ID expiry' : 'Passport expiry'"></label>
-                                    <input type="text" readonly x-flatpickr="{ model: 'p.documentExpiry' }" placeholder="Select date" autocomplete="off"
-                                           class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
+                                @include('bookings._date-select', [
+                                    'field' => 'documentExpiry',
+                                    'labelExpr' => "quote.isDomestic ? 'ID expiry' : 'Passport expiry'",
+                                ])
                                 <div>
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>
                                     <input type="text" x-model="p.nationality" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
@@ -346,11 +310,10 @@
                                     <label class="mb-1 block text-xs font-medium text-gray-600">Passport issuing country</label>
                                     <input type="text" x-model="p.documentIssueCountry" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport issue date</label>
-                                    <input type="text" readonly x-flatpickr="{ model: 'p.documentIssueDate', minDate: null, maxDate: 'today' }" placeholder="Select date" autocomplete="off"
-                                           class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
+                                @include('bookings._date-select', [
+                                    'field' => 'documentIssueDate',
+                                    'label' => 'Passport issue date',
+                                ])
                             </div>
                         </div>
                     </template>
