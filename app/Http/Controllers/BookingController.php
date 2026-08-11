@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletLoadRequest;
 use App\Services\Booking\BookingService;
+use App\Services\Booking\ETicket;
 use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
@@ -42,6 +43,28 @@ class BookingController extends Controller
         );
 
         return view('bookings.show', compact('booking'));
+    }
+
+    /**
+     * The printable e-ticket.
+     *
+     * `?prices=0` renders the passenger copy — same document without the fare, which is
+     * what an agency hands the traveller. There is nothing to print until the airline
+     * has given us a PNR: before that the booking is only a priced quote on our side.
+     */
+    public function eticket(Request $request, Booking $booking): View
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        abort_if(blank($booking->pnr), 404);
+
+        return view('bookings.eticket', [
+            'booking' => $booking,
+            'ticket' => ETicket::for($booking, withPrices: $request->query('prices') !== '0'),
+        ]);
     }
 
     /**
