@@ -18,6 +18,34 @@ class StoreBookingRequest extends FormRequest
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Widen a single SSR code into a one-element list.
+     *
+     * Add-ons became per-leg because TBO prices them per segment, but an older client
+     * — or a saved payload — still sends one code. Normalising here keeps the rules
+     * to a single shape instead of every downstream reader guessing.
+     */
+    protected function prepareForValidation(): void
+    {
+        $passengers = $this->input('passengers');
+
+        if (! is_array($passengers)) {
+            return;
+        }
+
+        foreach ($passengers as $i => $passenger) {
+            foreach (['baggage', 'meal'] as $kind) {
+                $value = $passenger[$kind] ?? null;
+
+                if (is_string($value)) {
+                    $passengers[$i][$kind] = $value === '' ? [] : [$value];
+                }
+            }
+        }
+
+        $this->merge(['passengers' => $passengers]);
+    }
+
     public function rules(): array
     {
         return [
@@ -63,8 +91,12 @@ class StoreBookingRequest extends FormRequest
             'passengers.*.documentIssueDate' => ['nullable', 'date'],
             'passengers.*.nationality' => ['nullable', 'string', 'max:2'],
             // Selected SSR option codes (LCC ancillaries); priced authoritatively server-side.
-            'passengers.*.baggage' => ['nullable', 'string', 'max:32'],
-            'passengers.*.meal' => ['nullable', 'string', 'max:32'],
+            // One selection per leg: TBO prices add-ons per segment. A bare string
+            // (the pre-per-leg shape) is widened to a list in prepareForValidation.
+            'passengers.*.baggage' => ['nullable', 'array'],
+            'passengers.*.baggage.*' => ['string', 'max:64'],
+            'passengers.*.meal' => ['nullable', 'array'],
+            'passengers.*.meal.*' => ['string', 'max:64'],
         ];
     }
 

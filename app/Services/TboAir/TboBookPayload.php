@@ -410,21 +410,62 @@ class TboBookPayload
     }
 
     /**
-     * A selected SSR option as TBO's one-element list, or an empty list.
+     * The passenger's selected SSR options, one entry per leg they bought it on.
      *
-     * The stored row keeps the priced option we resolved against GetSSR, so the code
-     * and description go back exactly as they came.
+     * Sent as the **whole option** rather than a bare code, matching what the live
+     * system sends: airline, flight number, WayType, price and route all go back as
+     * TBO quoted them. A code alone is also ambiguous — TBO repeats the same one per
+     * segment — so an entry without its route cannot say which leg it is for.
+     *
+     * Tolerates the pre-per-leg shape, where `ssr.baggage` was a single option object
+     * rather than a list, so a booking stored before this still builds a payload.
      *
      * @param  array<string, mixed>  $row
      * @return array<int, array<string, mixed>>
      */
     private static function ssrCodes(array $row, string $kind): array
     {
-        $option = data_get($row, "ssr.{$kind}");
+        $selected = data_get($row, "ssr.{$kind}");
 
-        return is_array($option) && filled($option['code'] ?? null)
-            ? [['Code' => $option['code'], 'Description' => $option['description'] ?? '']]
-            : [];
+        if (! is_array($selected)) {
+            return [];
+        }
+
+        // One option object, from before add-ons became per-leg.
+        if (filled($selected['code'] ?? null)) {
+            $selected = [$selected];
+        }
+
+        $entries = [];
+
+        foreach ($selected as $option) {
+            if (! is_array($option) || blank($option['code'] ?? null)) {
+                continue;
+            }
+
+            $entry = [
+                'Code' => $option['code'],
+                'Description' => $option['description'] ?? '',
+                'WayType' => $option['wayType'] ?? 0,
+                'AirlineCode' => $option['airlineCode'] ?? '',
+                'FlightNumber' => $option['flightNumber'] ?? '',
+                'Currency' => $option['currency'] ?? 'PHP',
+                'Price' => $option['price'] ?? 0,
+                'Origin' => $option['origin'] ?? '',
+                'Destination' => $option['destination'] ?? '',
+            ];
+
+            if ($kind === 'baggage') {
+                $entry['Weight'] = $option['weight'] ?? 0;
+            } else {
+                $entry['AirlineDescription'] = $option['airlineDescription'] ?? '';
+                $entry['Quantity'] = $option['quantity'] ?? 1;
+            }
+
+            $entries[] = $entry;
+        }
+
+        return $entries;
     }
 
     /**

@@ -164,7 +164,43 @@ class BookPayloadTest extends TestCase
         $this->assertSame([], $pax['SeatDynamic']);
     }
 
-    public function test_it_sends_a_selected_ancillary(): void
+    /**
+     * Add-ons go back as the whole option TBO quoted, one entry per leg.
+     *
+     * A bare code cannot say which segment it is for — TBO repeats the same code
+     * across legs at different prices — and the live system sends the full object
+     * (airline, flight number, WayType, price, route) for exactly that reason.
+     */
+    public function test_it_sends_every_leg_of_a_selected_ancillary(): void
+    {
+        $booking = $this->booking();
+        $pax = $booking->pax;
+        $pax[0]['ssr'] = [
+            'baggage' => [
+                ['code' => 'PBAG20', 'label' => '20 kg', 'description' => 2, 'weight' => 20, 'price' => 1200,
+                    'currency' => 'PHP', 'origin' => 'DEL', 'destination' => 'DXB', 'wayType' => 2,
+                    'airlineCode' => 'SG', 'flightNumber' => '11'],
+                ['code' => 'PBAG20', 'label' => '20 kg', 'description' => 2, 'weight' => 20, 'price' => 1100,
+                    'currency' => 'PHP', 'origin' => 'BOM', 'destination' => 'DEL', 'wayType' => 2,
+                    'airlineCode' => 'SG', 'flightNumber' => '287'],
+            ],
+            'meal' => [],
+        ];
+        $booking->update(['pax' => $pax]);
+
+        $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
+
+        $this->assertCount(2, $sent['Baggage'], 'both legs must be sent, not just the first');
+        $this->assertSame('DEL', $sent['Baggage'][0]['Origin']);
+        $this->assertSame('BOM', $sent['Baggage'][1]['Origin']);
+        $this->assertSame(1200, $sent['Baggage'][0]['Price']);
+        $this->assertSame(20, $sent['Baggage'][0]['Weight']);
+        $this->assertSame('SG', $sent['Baggage'][0]['AirlineCode']);
+        $this->assertSame(2, $sent['Baggage'][0]['WayType']);
+    }
+
+    /** A booking saved before add-ons became per-leg still builds a payload. */
+    public function test_it_still_sends_a_single_pre_per_leg_ancillary(): void
     {
         $booking = $this->booking();
         $pax = $booking->pax;
@@ -173,7 +209,8 @@ class BookPayloadTest extends TestCase
 
         $sent = $this->build($booking->fresh())['Itinerary']['Passenger'][0];
 
-        $this->assertSame([['Code' => 'PBAG20', 'Description' => '20 KG']], $sent['Baggage']);
+        $this->assertCount(1, $sent['Baggage']);
+        $this->assertSame('PBAG20', $sent['Baggage'][0]['Code']);
     }
 
     public function test_an_infant_never_carries_baggage_or_a_seat(): void

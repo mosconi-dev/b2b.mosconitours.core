@@ -254,8 +254,18 @@
                                 if (! empty($p['documentNumber'])) {
                                     $meta[] = (data_get($booking->quote, 'isDomestic') ? 'ID ' : 'Passport ').$p['documentNumber'];
                                 }
-                                if (! empty($p['ssr']['baggage'])) { $meta[] = 'Baggage '.$p['ssr']['baggage']['label']; }
-                                if (! empty($p['ssr']['meal'])) { $meta[] = $p['ssr']['meal']['label']; }
+                                // Per leg, so a list — with the single-option shape from
+                                // before that change still readable.
+                                foreach (['baggage' => 'Baggage ', 'meal' => ''] as $kind => $prefix) {
+                                    $items = $p['ssr'][$kind] ?? [];
+                                    if (filled($items['code'] ?? null)) { $items = [$items]; }
+                                    foreach ((array) $items as $item) {
+                                        if (filled($item['label'] ?? null)) {
+                                            $meta[] = $prefix.$item['label']
+                                                .(filled($item['origin'] ?? null) ? " ({$item['origin']}→{$item['destination']})" : '');
+                                        }
+                                    }
+                                }
                             @endphp
                             <p class="text-xs text-gray-500">{{ implode(' · ', $meta) }}</p>
                         </div>

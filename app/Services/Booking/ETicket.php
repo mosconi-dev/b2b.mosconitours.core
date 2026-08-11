@@ -240,20 +240,31 @@ class ETicket
             $name = trim(sprintf('%s %s', $p['firstName'] ?? '', $p['lastName'] ?? ''));
 
             foreach (['baggage' => 'Baggage', 'meal' => 'Meal'] as $key => $label) {
-                $item = $p['ssr'][$key] ?? null;
+                $items = $p['ssr'][$key] ?? null;
 
-                if (! is_array($item)) {
+                if (! is_array($items)) {
                     continue;
                 }
 
-                $rows[] = [
-                    'passenger' => $name,
-                    'type' => $label,
-                    'description' => $item['label'] ?? '',
-                    'route' => trim(($item['origin'] ?? '').' – '.($item['destination'] ?? ''), ' –'),
-                    'price' => (float) ($item['price'] ?? 0),
-                    'currency' => $item['currency'] ?? $this->booking->currency,
-                ];
+                // A single option object, from before add-ons became per-leg.
+                if (filled($items['code'] ?? null)) {
+                    $items = [$items];
+                }
+
+                foreach ($items as $item) {
+                    if (! is_array($item) || blank($item['code'] ?? null)) {
+                        continue;
+                    }
+
+                    $rows[] = [
+                        'passenger' => $name,
+                        'type' => $label,
+                        'description' => $item['label'] ?? '',
+                        'route' => trim(($item['origin'] ?? '').' – '.($item['destination'] ?? ''), ' –'),
+                        'price' => (float) ($item['price'] ?? 0),
+                        'currency' => $item['currency'] ?? $this->booking->currency,
+                    ];
+                }
             }
         }
 

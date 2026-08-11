@@ -433,28 +433,27 @@
                         <p class="mt-0.5 text-xs text-gray-500" x-text="addOnPickerSubtitle"></p>
                     </header>
 
-                    <div class="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3" role="radiogroup" :aria-label="addOnPickerTitle">
-                        <button type="button" role="radio" :aria-checked="addOnPicker && ! addOnPicker.draft"
-                                @click="addOnPicker.draft = ''" :class="addOnRowClass(addOnPicker && ! addOnPicker.draft)">
-                            <span :class="addOnDotClass(addOnPicker && ! addOnPicker.draft)"></span>
-                            <span class="min-w-0 flex-1">
-                                <span class="block text-sm font-medium text-brand-900" x-text="addOnPickerNoneTitle"></span>
-                                <span class="block text-[11px] text-gray-500" x-text="addOnPickerNoneNote"></span>
-                            </span>
-                            <span class="shrink-0 text-sm text-gray-400">&mdash;</span>
-                        </button>
-
-                        {{-- Grouped by leg: TBO repeats the same dish per segment at
-                             different prices, so an ungrouped list shows "Veg Sandwich"
-                             three times with nothing to tell them apart. --}}
+                    {{-- One radio group per leg. TBO prices these per segment and
+                         repeats the same option across legs, so a single list forced a
+                         choice for one leg and silently left the rest empty. --}}
+                    <div class="min-h-0 flex-1 overflow-y-auto p-3">
                         <template x-for="g in addOnPickerGroups" :key="g.route">
-                            <div class="pt-1">
-                                <p class="px-1 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400" x-text="g.route"></p>
-                                <div class="space-y-1.5">
-                                    <template x-for="o in g.options" :key="o.code">
-                                        <button type="button" role="radio" :aria-checked="addOnPicker.draft === o.code"
-                                                @click="addOnPicker.draft = o.code" :class="addOnRowClass(addOnPicker.draft === o.code)">
-                                            <span :class="addOnDotClass(addOnPicker.draft === o.code)"></span>
+                            <div class="pb-2">
+                                <p class="px-1 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400" x-text="g.route"></p>
+                                <div class="space-y-1.5" role="radiogroup" :aria-label="g.route">
+                                    <button type="button" role="radio" :aria-checked="! addOnPicker.draft[g.key]"
+                                            @click="addOnPicker.draft[g.key] = ''"
+                                            :class="addOnRowClass(! addOnPicker.draft[g.key])">
+                                        <span :class="addOnDotClass(! addOnPicker.draft[g.key])"></span>
+                                        <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="addOnPickerNoneTitle"></span>
+                                        <span class="shrink-0 text-sm text-gray-400">&mdash;</span>
+                                    </button>
+
+                                    <template x-for="o in g.options" :key="o.key">
+                                        <button type="button" role="radio" :aria-checked="addOnPicker.draft[g.key] === o.key"
+                                                @click="addOnPicker.draft[g.key] = o.key"
+                                                :class="addOnRowClass(addOnPicker.draft[g.key] === o.key)">
+                                            <span :class="addOnDotClass(addOnPicker.draft[g.key] === o.key)"></span>
                                             <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="o.label"></span>
                                             <span class="shrink-0 text-sm font-semibold"
                                                   :class="Number(o.price) > 0 ? 'text-brand-900' : 'text-emerald-600'"

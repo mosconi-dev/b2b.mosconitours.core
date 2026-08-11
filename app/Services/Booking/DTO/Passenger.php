@@ -31,8 +31,13 @@ class Passenger implements Arrayable
         public readonly ?string $documentIssueCountry = null,
         public readonly ?string $documentIssueDate = null,
         public readonly ?string $nationality = null,
-        public readonly ?string $baggage = null,  // selected SSR baggage code
-        public readonly ?string $meal = null,     // selected SSR meal code
+        // Selected SSR option keys (`code|origin|destination`), **one per leg**. TBO
+        // prices these per segment, so a single code cannot describe a return trip:
+        // it would buy the meal on one leg and silently leave the other empty.
+        /** @var array<int, string> */
+        public readonly array $baggage = [],
+        /** @var array<int, string> */
+        public readonly array $meal = [],
         // TBO requires exactly one lead passenger per booking; BookingService
         // guarantees one even when the caller flags none.
         public readonly bool $isLeadPax = false,
@@ -66,6 +71,26 @@ class Passenger implements Arrayable
     }
 
     /**
+     * Normalise an SSR selection into a list of keys.
+     *
+     * Accepts the pre-per-leg shape — a single code, or null — so an older client
+     * payload and any booking stored before this still load.
+     *
+     * @return array<int, string>
+     */
+    private static function selections(mixed $value): array
+    {
+        if (blank($value)) {
+            return [];
+        }
+
+        return collect(is_array($value) ? $value : [$value])
+            ->filter(fn ($v): bool => is_scalar($v) && trim((string) $v) !== '')
+            ->map(fn ($v): string => trim((string) $v))
+            ->unique()->values()->all();
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
@@ -84,8 +109,8 @@ class Passenger implements Arrayable
             documentIssueCountry: $data['documentIssueCountry'] ?? null,
             documentIssueDate: $data['documentIssueDate'] ?? null,
             nationality: $data['nationality'] ?? null,
-            baggage: $data['baggage'] ?? null,
-            meal: $data['meal'] ?? null,
+            baggage: self::selections($data['baggage'] ?? null),
+            meal: self::selections($data['meal'] ?? null),
             isLeadPax: (bool) ($data['isLeadPax'] ?? false),
         );
     }

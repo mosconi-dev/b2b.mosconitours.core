@@ -440,8 +440,35 @@ class BookingTest extends TestCase
         $booking = Booking::firstOrFail();
         $this->assertEqualsWithDelta(1550, (float) $booking->ancillary_total, 0.001); // 1200 + 350
         $this->assertEqualsWithDelta(7950, (float) $booking->total_amount, 0.001);     // 6400 + 1550
-        $this->assertSame('PBAG20', data_get($booking->pax, '0.ssr.baggage.code'));
-        $this->assertSame('HFML', data_get($booking->pax, '0.ssr.meal.code'));
+        // Stored as a list now — add-ons are per leg — but a single code still works.
+        $this->assertSame('PBAG20', data_get($booking->pax, '0.ssr.baggage.0.code'));
+        $this->assertSame('HFML', data_get($booking->pax, '0.ssr.meal.0.code'));
+    }
+
+    /**
+     * The whole point of per-leg add-ons: a return trip can buy a meal each way, and
+     * both are priced and stored. A single code bought one leg and silently left the
+     * other empty.
+     */
+    public function test_store_prices_an_add_on_on_every_leg_it_was_bought_for(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [[
+                    'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
+                    'dateOfBirth' => '1990-08-15',
+                    // Both legs the SSR fixture offers, keyed by code|origin|destination.
+                    'baggage' => ['PBAG20|MNL|CEB', 'PBAG32|MNL|CEB'],
+                    'meal' => [],
+                ]],
+            ]))
+            ->assertRedirect();
+
+        $booking = Booking::firstOrFail();
+        $this->assertCount(2, data_get($booking->pax, '0.ssr.baggage'));
+        $this->assertEqualsWithDelta(3200, (float) $booking->ancillary_total, 0.001); // 1200 + 2000
     }
 
     public function test_store_rejects_extra_baggage_for_an_infant(): void

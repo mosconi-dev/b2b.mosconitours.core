@@ -921,7 +921,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     buildPassengers() {
-        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', documentNumber: '', documentExpiry: '', documentIssueCountry: '', documentIssueDate: '', nationality: '', baggage: '', meal: '', isLeadPax: false });
+        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', documentNumber: '', documentExpiry: '', documentIssueCountry: '', documentIssueDate: '', nationality: '', baggage: [], meal: [], isLeadPax: false });
         const list = [];
         (this.quote?.fareBreakdown ?? []).forEach((b) => {
             const n = Number(b.count) || 0;
@@ -1025,10 +1025,12 @@ Alpine.data('bookingWizard', (config = {}) => ({
         this.syncUrl();
     },
 
-    ssrPrice(list, code) {
-        if (! code || ! list) return 0;
-        const opt = list.find((o) => o.code === code);
-        return opt ? Number(opt.price) || 0 : 0;
+    /** Total price of the keys a passenger holds for one kind of add-on. */
+    ssrPrice(kind, keys) {
+        return (keys ?? []).reduce((sum, key) => {
+            const option = this.addOnOption(kind, key);
+            return sum + (option ? Number(option.price) || 0 : 0);
+        }, 0);
     },
 
     get ancillaryTotal() {
@@ -1036,27 +1038,38 @@ Alpine.data('bookingWizard', (config = {}) => ({
         return this.passengers.reduce((sum, p) => sum + this.passengerAddOnTotal(p), 0);
     },
 
-    /** What one passenger's chosen add-ons come to, shown on their card. */
+    /** What one passenger's chosen add-ons come to, across every leg. */
     passengerAddOnTotal(p) {
         if (! this.ssr) return 0;
-        return this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal);
+        return this.ssrPrice('baggage', this.addOnKeys(p, 'baggage'))
+            + this.ssrPrice('meal', this.addOnKeys(p, 'meal'));
     },
 
     /**
-     * What one passenger's baggage or meal card reads, chosen or not.
+     * What one passenger's baggage or meal card reads.
      *
-     * The empty case says what the fare already includes rather than just "none" —
-     * with a client on the phone the question is how much baggage they *have*, not
-     * how much more is for sale.
+     * Add-ons are per leg, so this summarises across them: one leg names the option,
+     * several name the count. The empty case says what the fare already includes
+     * rather than just "none" — with a client on the phone the question is how much
+     * baggage they *have*, not how much more is for sale.
      */
     addOnSummary(p, kind) {
-        const chosen = this.addOnOption(kind, p[kind]);
+        const chosen = this.addOnChoices(p, kind);
+        const price = chosen.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
 
-        if (chosen) {
+        if (chosen.length === 1) {
             return {
-                title: chosen.label,
-                note: `${chosen.origin} → ${chosen.destination}`,
-                price: Number(chosen.price) || 0,
+                title: chosen[0].label,
+                note: `${chosen[0].origin} → ${chosen[0].destination}`,
+                price,
+            };
+        }
+
+        if (chosen.length > 1) {
+            return {
+                title: `${chosen.length} legs selected`,
+                note: chosen.map((o) => `${o.origin}→${o.destination}`).join(', '),
+                price,
             };
         }
 
@@ -1069,19 +1082,43 @@ Alpine.data('bookingWizard', (config = {}) => ({
             : { title: 'No meal', note: 'Nothing ordered', price: 0 };
     },
 
-    addOnOption(kind, code) {
-        if (! code || ! this.ssr) return null;
-        const list = kind === 'baggage' ? this.ssr.baggage : this.ssr.meals;
-        return (list ?? []).find((o) => o.code === code) ?? null;
+    /** The resolved options a passenger holds for this kind, in leg order. */
+    addOnChoices(p, kind) {
+        return this.addOnKeys(p, kind)
+            .map((key) => this.addOnOption(kind, key))
+            .filter(Boolean);
+    },
+
+    /** Selections are a list now; tolerate the single-code shape from before. */
+    addOnKeys(p, kind) {
+        const value = p?.[kind];
+        if (! value) return [];
+        return Array.isArray(value) ? value : [value];
+    },
+
+    addOnOption(kind, key) {
+        if (! key || ! this.ssr) return null;
+        const list = (kind === 'baggage' ? this.ssr.baggage : this.ssr.meals) ?? [];
+        return list.find((o) => o.key === key) ?? list.find((o) => o.code === key) ?? null;
     },
 
     // ----- the picker dialog -------------------------------------------------
     // Holds a draft so browsing options cannot change the price; only Select commits.
 
+    // draft is a map of legKey -> option key (or '' for none on that leg), so a
+    // passenger can take a meal outbound and nothing back.
     addOnPicker: null, // { index, kind, draft }
 
     openAddOnPicker(index, kind) {
-        this.addOnPicker = { index, kind, draft: this.passengers[index]?.[kind] ?? '' };
+        const draft = {};
+
+        this.addOnLegs(kind).forEach((leg) => { draft[leg.key] = ''; });
+
+        this.addOnChoices(this.passengers[index], kind).forEach((o) => {
+            draft[`${o.origin}|${o.destination}`] = o.key;
+        });
+
+        this.addOnPicker = { index, kind, draft };
     },
 
     cancelAddOnPicker() {
@@ -1091,8 +1128,27 @@ Alpine.data('bookingWizard', (config = {}) => ({
     confirmAddOnPicker() {
         if (! this.addOnPicker) return;
         const { index, kind, draft } = this.addOnPicker;
-        if (this.passengers[index]) this.passengers[index][kind] = draft;
+
+        if (this.passengers[index]) {
+            this.passengers[index][kind] = Object.values(draft).filter(Boolean);
+        }
+
         this.addOnPicker = null;
+    },
+
+    /** The legs this kind of add-on is offered on, in the order TBO listed them. */
+    addOnLegs(kind) {
+        const list = (kind === 'baggage' ? this.ssr?.baggage : this.ssr?.meals) ?? [];
+        const legs = [];
+
+        list.forEach((o) => {
+            const key = `${o.origin}|${o.destination}`;
+            if (! legs.some((l) => l.key === key)) {
+                legs.push({ key, origin: o.origin, destination: o.destination });
+            }
+        });
+
+        return legs;
     },
 
     get addOnPickerOptions() {
@@ -1111,9 +1167,11 @@ Alpine.data('bookingWizard', (config = {}) => ({
         const groups = [];
 
         this.addOnPickerOptions.forEach((o) => {
-            const route = `${o.origin} → ${o.destination}`;
-            const found = groups.find((g) => g.route === route);
-            found ? found.options.push(o) : groups.push({ route, options: [o] });
+            const key = `${o.origin}|${o.destination}`;
+            const found = groups.find((g) => g.key === key);
+            found
+                ? found.options.push(o)
+                : groups.push({ key, route: `${o.origin} → ${o.destination}`, options: [o] });
         });
 
         return groups;
@@ -1154,8 +1212,19 @@ Alpine.data('bookingWizard', (config = {}) => ({
     /** The footer's running answer, so Select is never a leap of faith. */
     get addOnPickerDraftLabel() {
         if (! this.addOnPicker) return '';
-        const o = this.addOnOption(this.addOnPicker.kind, this.addOnPicker.draft);
-        return o ? `${o.label} · ${this.addOnPriceLabel(o.price)}` : this.addOnPickerNoneTitle;
+
+        const chosen = Object.values(this.addOnPicker.draft)
+            .filter(Boolean)
+            .map((key) => this.addOnOption(this.addOnPicker.kind, key))
+            .filter(Boolean);
+
+        if (! chosen.length) return this.addOnPickerNoneTitle;
+
+        const total = chosen.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+
+        return chosen.length === 1
+            ? `${chosen[0].label} · ${this.addOnPriceLabel(total)}`
+            : `${chosen.length} legs · ${this.addOnPriceLabel(total)}`;
     },
 
     // ----- add-on styling ----------------------------------------------------

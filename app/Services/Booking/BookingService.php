@@ -568,10 +568,10 @@ class BookingService
      */
     private function applyAncillaries(SelectionInput $selection, array $passengers): array
     {
-        $wantsSsr = array_filter($passengers, fn (Passenger $p): bool => filled($p->baggage) || filled($p->meal));
+        $wantsSsr = array_filter($passengers, fn (Passenger $p): bool => $p->baggage !== [] || $p->meal !== []);
 
         foreach ($wantsSsr as $passenger) {
-            if ($passenger->isInfant() && filled($passenger->baggage)) {
+            if ($passenger->isInfant() && $passenger->baggage !== []) {
                 throw new BookingException('Extra baggage is not available for infant passengers.');
             }
         }
@@ -579,22 +579,29 @@ class BookingService
         $ssr = $wantsSsr === [] ? null : $this->tbo->ssr($selection); // fetched once, authoritative
         $total = 0.0;
 
+        // Lists, not single options: TBO prices add-ons per segment, so a return trip
+        // needs one entry per leg. Each resolved option is stored whole — the price we
+        // charge is the one TBO quoted, and Book wants the same object echoed back.
         $pax = array_map(function (Passenger $p) use ($ssr, &$total): array {
             $entry = $p->toArray();
-            $entry['ssr'] = ['baggage' => null, 'meal' => null];
+            $entry['ssr'] = ['baggage' => [], 'meal' => []];
 
             if ($ssr === null) {
                 return $entry;
             }
 
-            if (filled($p->baggage) && $bag = $ssr->baggage($p->baggage)) {
-                $entry['ssr']['baggage'] = $bag;
-                $total += (float) $bag['price'];
+            foreach ($p->baggage as $key) {
+                if ($bag = $ssr->baggage($key)) {
+                    $entry['ssr']['baggage'][] = $bag;
+                    $total += (float) $bag['price'];
+                }
             }
 
-            if (filled($p->meal) && $meal = $ssr->meal($p->meal)) {
-                $entry['ssr']['meal'] = $meal;
-                $total += (float) $meal['price'];
+            foreach ($p->meal as $key) {
+                if ($meal = $ssr->meal($key)) {
+                    $entry['ssr']['meal'][] = $meal;
+                    $total += (float) $meal['price'];
+                }
             }
 
             return $entry;
