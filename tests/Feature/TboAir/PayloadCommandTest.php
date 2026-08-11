@@ -37,8 +37,7 @@ class PayloadCommandTest extends TestCase
                 'gender' => 'M', 'isLeadPax' => true,
                 'email' => 'agent@example.com', 'mobile' => '09170000000', 'mobileCountryCode' => '63',
                 'addressLine1' => '123 Rizal Street', 'city' => 'Makati',
-                'countryCode' => 'PH', 'countryName' => 'Philippines',
-            ]],
+                'countryCode' => 'PH', 'countryName' => 'Philippines', 'dateOfBirth' => '1990-08-15']],
         ], $overrides));
     }
 

@@ -984,6 +984,10 @@ Alpine.data('bookingWizard', (config = {}) => ({
     passengerComplete(p) {
         if (! p || ! p.firstName.trim() || ! p.lastName.trim()) return false;
 
+        // Always: TBO rejects a blank one at Ticket, by which point the booking has
+        // been paid for and may already hold a PNR.
+        if (! p.dateOfBirth?.trim()) return false;
+
         return this.documentRequired
             ? !! (p.documentNumber?.trim() && p.documentExpiry?.trim())
             : true;

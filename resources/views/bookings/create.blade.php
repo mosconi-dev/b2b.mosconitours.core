@@ -278,7 +278,11 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Date of birth</label>
+                                    {{-- Required for every passenger: TBO rejects a blank one at
+                                         Ticket, after the booking has been paid for. --}}
+                                    <label class="mb-1 block text-xs font-medium text-gray-600">
+                                        Date of birth <span class="text-red-500">*</span>
+                                    </label>
                                     <input type="text" readonly x-flatpickr="{ model: 'p.dateOfBirth', minDate: null, maxDate: 'today' }" placeholder="Select date" autocomplete="off"
                                            class="w-full cursor-pointer rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
                                 </div>

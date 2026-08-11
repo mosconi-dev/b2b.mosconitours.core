@@ -112,8 +112,7 @@ class BookingETicketTest extends TestCase
             'status' => BookingStatus::Booked,
             'pax' => [[
                 'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Dela Cruz',
-                'isLeadPax' => true, 'documentNumber' => 'UMID-1234-5678901',
-            ]],
+                'isLeadPax' => true, 'documentNumber' => 'UMID-1234-5678901', 'dateOfBirth' => '1990-08-15']],
         ]);
 
         $this->actingAs($user)

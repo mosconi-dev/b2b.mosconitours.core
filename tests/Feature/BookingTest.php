@@ -64,7 +64,7 @@ class BookingTest extends TestCase
                 'countryCode' => 'PH',
             ],
             'passengers' => [
-                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
             ],
         ], $overrides);
     }
@@ -214,8 +214,8 @@ class BookingTest extends TestCase
         $this->actingAs($this->bookingUser())
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [
-                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
-                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F'],
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
                 ],
             ]))
             ->assertRedirect();
@@ -241,9 +241,9 @@ class BookingTest extends TestCase
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [
                     // A child flagged as lead, which TBO will not accept...
-                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => true],
-                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
-                    ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => true, 'dateOfBirth' => '2018-03-04'],
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '1990-08-15'],
                 ],
             ]))
             ->assertRedirect();
@@ -261,7 +261,7 @@ class BookingTest extends TestCase
         $this->actingAs($this->bookingUser())
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [
-                    ['type' => 'Adult', 'title' => 'Dr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                    ['type' => 'Adult', 'title' => 'Dr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
                 ],
             ]))
             ->assertSessionHasErrors('passengers.0.title');
@@ -314,12 +314,71 @@ class BookingTest extends TestCase
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                    'documentNumber' => 'P1234567', 'documentExpiry' => '2030-01-01', 'nationality' => 'PH',
-                ]],
+                    'documentNumber' => 'P1234567', 'documentExpiry' => '2030-01-01', 'nationality' => 'PH', 'dateOfBirth' => '1990-08-15']],
             ]))
             ->assertRedirect();
 
         $this->assertDatabaseCount('bookings', 1);
+    }
+
+    /**
+     * A blank date of birth used to reach TBO as `DateOfBirth: null` and come back as
+     * "Invalid Date of Birth of Adult" (Code 3) — at Ticket, after the wallet was
+     * charged. Booking MT-7YIS7LRE died that way on DEL→DXB.
+     */
+    public function test_store_refuses_a_passenger_without_a_date_of_birth(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->postJson(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Mike', 'lastName' => 'Alibo', 'gender' => 'M'],
+                ],
+            ]))
+            ->assertStatus(422);
+
+        $this->assertSame(0, Booking::count());
+    }
+
+    /**
+     * TBO returns that same opaque message when the date of birth does not match the
+     * passenger type, so the mismatch is caught here with words an agent can act on.
+     */
+    public function test_store_refuses_an_adult_who_is_too_young_for_the_fare(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->postJson(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Ana', 'lastName' => 'Cruz',
+                        'gender' => 'F', 'dateOfBirth' => '2020-01-01'],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'does not match the adult fare'));
+
+        $this->assertSame(0, Booking::count());
+    }
+
+    /** And the bands themselves: a child on a child fare is fine. */
+    public function test_store_accepts_a_child_whose_age_matches_the_fare(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
+                        'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz',
+                        'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
+                ],
+            ]))
+            ->assertRedirect();
+
+        $this->assertSame(1, Booking::count());
     }
 
     public function test_store_returns_a_json_redirect_for_xhr(): void
@@ -353,8 +412,7 @@ class BookingTest extends TestCase
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                    'baggage' => 'PBAG20', 'meal' => 'HFML',
-                ]],
+                    'baggage' => 'PBAG20', 'meal' => 'HFML', 'dateOfBirth' => '1990-08-15']],
             ]))
             ->assertRedirect();
 
@@ -375,8 +433,8 @@ class BookingTest extends TestCase
                 // rather than the "needs an adult" one. TBO's title enum has no
                 // Mstr — an infant boy is Mr, its only male value.
                 'passengers' => [
-                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
-                    ['type' => 'Infant', 'title' => 'Mr', 'firstName' => 'Baby', 'lastName' => 'Cruz', 'baggage' => 'PBAG20'],
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Infant', 'title' => 'Mr', 'firstName' => 'Baby', 'lastName' => 'Cruz', 'baggage' => 'PBAG20', 'dateOfBirth' => '2025-06-01'],
                 ],
             ]))
             ->assertSessionHasErrors('booking');
@@ -391,7 +449,7 @@ class BookingTest extends TestCase
         $this->actingAs($this->bookingUser())
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [
-                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
                 ],
             ]))
             ->assertSessionHasErrors('booking');

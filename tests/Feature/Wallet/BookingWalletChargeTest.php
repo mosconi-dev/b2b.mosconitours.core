@@ -87,7 +87,7 @@ class BookingWalletChargeTest extends TestCase
                 'addressLine1' => '123 Rizal Street', 'city' => 'Makati', 'countryCode' => 'PH',
             ],
             'passengers' => [
-                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
             ],
         ], $overrides);
     }

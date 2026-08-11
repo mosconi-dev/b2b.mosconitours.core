@@ -50,7 +50,10 @@ class StoreBookingRequest extends FormRequest
             'passengers.*.firstName' => ['required', 'string', 'max:64'],
             'passengers.*.lastName' => ['required', 'string', 'max:64'],
             'passengers.*.gender' => ['nullable', Rule::in(['M', 'F'])],
-            'passengers.*.dateOfBirth' => ['nullable', 'date'],
+            // TBO refuses a null date of birth at Ticket — "Invalid Date of Birth of
+            // Adult", Code 3 — which is after the money is committed. Required here.
+            // The age band is checked against the departure date in BookingService.
+            'passengers.*.dateOfBirth' => ['required', 'date', 'before:today'],
             // The identity document: a passport internationally, any government ID
             // domestically. Optional structurally; BookingService enforces it against
             // the fresh FareQuote, which knows both the route and TBO's flags.

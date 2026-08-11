@@ -48,6 +48,17 @@ class Passenger implements Arrayable
         return strcasecmp($this->type, 'Infant') === 0;
     }
 
+    public function isChild(): bool
+    {
+        return strcasecmp($this->type, 'Child') === 0;
+    }
+
+    /** For error messages: which passenger the agent has to go and fix. */
+    public function fullName(): string
+    {
+        return trim("{$this->firstName} {$this->lastName}");
+    }
+
     /** Enough of an identity document to satisfy TBO: a number and an expiry. */
     public function hasDocument(): bool
     {

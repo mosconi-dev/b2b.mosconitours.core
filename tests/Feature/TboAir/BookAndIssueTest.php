@@ -53,8 +53,7 @@ class BookAndIssueTest extends TestCase
             'seats_available' => [9],
             'pax' => [[
                 'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH', 'countryName' => 'Philippines',
-            ]],
+                'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH', 'countryName' => 'Philippines', 'dateOfBirth' => '1990-08-15']],
         ], $overrides));
     }
 
@@ -392,8 +391,8 @@ class BookAndIssueTest extends TestCase
         ]);
 
         $booking = $this->booking(['pax' => [
-            ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH'],
-            ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => false, 'countryCode' => 'PH'],
+            ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH', 'dateOfBirth' => '1990-08-15'],
+            ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => false, 'countryCode' => 'PH', 'dateOfBirth' => '1990-08-15'],
         ]]);
 
         $pax = $this->service()->issue($booking)->fresh()->pax;

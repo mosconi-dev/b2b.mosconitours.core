@@ -10,11 +10,13 @@ use App\Models\User;
 use App\Services\Booking\DTO\Passenger;
 use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\BookingResult;
+use App\Services\TboAir\DTO\FareQuote;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\TboAirService;
 use App\Services\Wallet\WalletService;
 use App\Support\Countries;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -61,6 +63,8 @@ class BookingService
             }
         }
 
+        $this->guardDatesOfBirth($passengers, $quote);
+
         $passengers = $this->withLeadPax($passengers);
 
         [$pax, $ancillaryTotal] = $this->applyAncillaries($selection, $passengers);
@@ -103,6 +107,53 @@ class BookingService
 
             return $booking;
         });
+    }
+
+    /**
+     * Every passenger needs a date of birth, and it has to match the fare they are on.
+     *
+     * TBO answers both mistakes with the same four words — *"Invalid Date of Birth of
+     * Adult"*, Code 3 — which it returns at Ticket, after the money is committed and a
+     * PNR may already exist. That is far too late to discover a blank field, so the
+     * check happens here, before anything is sent.
+     *
+     * Ages are measured at **departure**, not today: a child who turns 12 between
+     * booking and travel flies as an adult, and the airline will say so at check-in.
+     *
+     * @param  array<int, Passenger>  $passengers
+     */
+    private function guardDatesOfBirth(array $passengers, FareQuote $quote): void
+    {
+        $departure = data_get($quote->toArray(), 'trips.0.segments.0.origin.time');
+        $departsAt = filled($departure) ? Carbon::parse($departure) : Carbon::now();
+
+        foreach ($passengers as $passenger) {
+            if (blank($passenger->dateOfBirth)) {
+                throw new BookingException(
+                    "A date of birth is required for every passenger — {$passenger->fullName()} has none."
+                );
+            }
+
+            $age = Carbon::parse($passenger->dateOfBirth)->diffInYears($departsAt);
+
+            // TBO's bands: adult 12+, child 2–11, infant under 2, all at travel date.
+            [$min, $max] = match (true) {
+                $passenger->isInfant() => [0, 1],
+                $passenger->isChild() => [2, 11],
+                default => [12, 120],
+            };
+
+            if ($age < $min || $age > $max) {
+                throw new BookingException(sprintf(
+                    '%s is %d at departure, which does not match the %s fare booked for them (%s). '.
+                    'Correct the date of birth or the passenger type.',
+                    $passenger->fullName(),
+                    $age,
+                    strtolower($passenger->type),
+                    $max >= 120 ? "{$min} and over" : "{$min}–{$max}",
+                ));
+            }
+        }
     }
 
     /**

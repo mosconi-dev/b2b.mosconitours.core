@@ -183,7 +183,7 @@ class BookPayloadTest extends TestCase
         $pax[] = [
             'type' => 'Infant', 'title' => 'Mr', 'firstName' => 'Baby', 'lastName' => 'Cruz',
             'gender' => 'M', 'isLeadPax' => false,
-            'ssr' => ['baggage' => ['code' => 'PBAG20', 'description' => '20 KG'], 'meal' => null],
+            'ssr' => ['baggage' => ['code' => 'PBAG20', 'description' => '20 KG', 'dateOfBirth' => '2025-06-01'], 'meal' => null],
         ];
         $booking->update(['pax' => $pax]);
 

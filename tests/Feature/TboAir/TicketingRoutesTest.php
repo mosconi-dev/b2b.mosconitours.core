@@ -62,8 +62,7 @@ class TicketingRoutesTest extends TestCase
             'seats_available' => [9],
             'pax' => [[
                 'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH', 'countryName' => 'Philippines',
-            ]],
+                'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH', 'countryName' => 'Philippines', 'dateOfBirth' => '1990-08-15']],
         ], $overrides));
     }
 
