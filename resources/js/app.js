@@ -1046,40 +1046,46 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     /**
-     * What one passenger's baggage or meal card reads.
+     * The card's summary: one line per leg the add-on is offered on.
      *
-     * Add-ons are per leg, so this summarises across them: one leg names the option,
-     * several name the count. The empty case says what the fare already includes
-     * rather than just "none" — with a client on the phone the question is how much
-     * baggage they *have*, not how much more is for sale.
+     * Every leg appears, chosen or not. A leg showing "—" is the point — an agent has
+     * to be able to see at a glance that the return has no meal, which a list of only
+     * what was bought cannot show.
      */
-    addOnSummary(p, kind) {
-        const chosen = this.addOnChoices(p, kind);
-        const price = chosen.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+    addOnLines(p, kind) {
+        const chosen = {};
 
-        if (chosen.length === 1) {
+        this.addOnChoices(p, kind).forEach((o) => {
+            chosen[`${o.origin}|${o.destination}`] = o;
+        });
+
+        return this.addOnLegs(kind).map((leg) => {
+            const option = chosen[leg.key];
+
             return {
-                title: chosen[0].label,
-                note: `${chosen[0].origin} → ${chosen[0].destination}`,
-                price,
+                key: leg.key,
+                route: `${leg.origin} → ${leg.destination}`,
+                // Extra baggage is *added to* the fare's allowance, so it carries a
+                // plus. Bare "5 kg" beside "30 KG included" reads as a downgrade.
+                label: option ? (kind === 'baggage' ? `+${option.label}` : option.label) : null,
+                price: option ? Number(option.price) || 0 : 0,
             };
-        }
+        });
+    },
 
-        if (chosen.length > 1) {
-            return {
-                title: `${chosen.length} legs selected`,
-                note: chosen.map((o) => `${o.origin}→${o.destination}`).join(', '),
-                price,
-            };
-        }
+    /** True once the passenger has chosen anything at all for this kind. */
+    addOnChosen(p, kind) {
+        return this.addOnKeys(p, kind).length > 0;
+    },
 
-        return kind === 'baggage'
-            ? {
-                title: 'No extra baggage',
-                note: this.quote?.baggage ? `${this.quote.baggage} already included` : 'Cabin bag only',
-                price: 0,
-            }
-            : { title: 'No meal', note: 'Nothing ordered', price: 0 };
+    /**
+     * The allowance already in the fare.
+     *
+     * Shown on the baggage card whether or not extra was bought: the question an
+     * agent is asked is how much the passenger *has*, not how much was added.
+     */
+    get includedBaggage() {
+        return this.quote?.baggage || null;
     },
 
     /** The resolved options a passenger holds for this kind, in leg order. */

@@ -364,45 +364,72 @@
                         {{-- Baggage. Infants have no allowance to extend. --}}
                         <button type="button" x-show="ssr.baggage.length && p.type !== 'Infant'"
                                 @click="openAddOnPicker(i, 'baggage')"
-                                :class="addOnTileClass(!! p.baggage)">
-                            <span :class="addOnIconClass(!! p.baggage)">
+                                :class="addOnTileClass(addOnChosen(p, 'baggage'))">
+                            <span :class="addOnIconClass(addOnChosen(p, 'baggage'))">
                                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25M16.5 6.144V5.25A2.25 2.25 0 0014.25 3h-4.5A2.25 2.25 0 007.5 5.25v.894m9 0a48.667 48.667 0 00-9 0m9 0a48.11 48.11 0 013.413.387c1.07.16 1.837 1.094 1.837 2.175v2.183a2.18 2.18 0 01-.75 1.661m-15-6.406a48.114 48.114 0 00-3.413.387C2.767 8.13 2 9.064 2 10.145v2.183c0 .655.286 1.253.75 1.661" />
                                 </svg>
                             </span>
                             <span class="min-w-0 flex-1">
-                                <span class="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Checked baggage</span>
-                                <span class="block truncate text-sm font-semibold text-brand-900" x-text="addOnSummary(p, 'baggage').title"></span>
-                                <span class="block truncate text-[11px] text-gray-500" x-text="addOnSummary(p, 'baggage').note"></span>
-                            </span>
-                            <span class="shrink-0 text-right">
-                                <span x-show="addOnSummary(p, 'baggage').price > 0" x-cloak class="block text-sm font-semibold text-brand-900">
-                                    <span x-text="currency"></span> <span x-text="money(addOnSummary(p, 'baggage').price)"></span>
+                                <span class="flex items-baseline justify-between gap-2">
+                                    <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Checked baggage</span>
+                                    <span class="shrink-0 text-[11px] font-medium text-blue-600"
+                                          x-text="addOnChosen(p, 'baggage') ? 'Change' : 'Select'"></span>
                                 </span>
-                                <span class="block text-[11px] font-medium text-blue-600" x-text="p.baggage ? 'Change' : 'Select'"></span>
+
+                                {{-- Always: the allowance in the fare is what an agent
+                                     is actually asked about. --}}
+                                <span class="mt-0.5 block text-sm font-semibold text-brand-900"
+                                      x-text="includedBaggage ? includedBaggage + ' included in this fare' : 'No allowance in this fare'"></span>
+
+                                <template x-if="! addOnChosen(p, 'baggage')">
+                                    <span class="block text-[11px] text-gray-500">No extra baggage added</span>
+                                </template>
+
+                                <template x-for="line in addOnLines(p, 'baggage')" :key="line.key">
+                                    <span x-show="addOnChosen(p, 'baggage')" class="mt-1 flex items-baseline gap-2 text-[11px]">
+                                        <span class="w-20 shrink-0 text-gray-400" x-text="line.route"></span>
+                                        <span class="min-w-0 flex-1 truncate font-semibold"
+                                              :class="line.label ? 'text-brand-900' : 'text-gray-400'"
+                                              x-text="line.label ?? 'none added'"></span>
+                                        <span x-show="line.label" class="shrink-0 font-medium text-gray-600"
+                                              x-text="addOnPriceLabel(line.price)"></span>
+                                    </span>
+                                </template>
                             </span>
                         </button>
 
                         {{-- Meal --}}
                         <button type="button" x-show="ssr.meals.length"
                                 @click="openAddOnPicker(i, 'meal')"
-                                :class="addOnTileClass(!! p.meal)">
-                            <span :class="addOnIconClass(!! p.meal)">
+                                :class="addOnTileClass(addOnChosen(p, 'meal'))">
+                            <span :class="addOnIconClass(addOnChosen(p, 'meal'))">
                                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 12.5h16a8 8 0 01-16 0zM2.5 21h19" />
                                     <path stroke-linecap="round" d="M9.2 4c0 1.1-1 1.6-1 2.7s1 1.6 1 1.6M13.4 3.4c0 1.3-1.2 1.9-1.2 3.1s1.2 1.8 1.2 1.8" />
                                 </svg>
                             </span>
                             <span class="min-w-0 flex-1">
-                                <span class="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Meal</span>
-                                <span class="block truncate text-sm font-semibold text-brand-900" x-text="addOnSummary(p, 'meal').title"></span>
-                                <span class="block truncate text-[11px] text-gray-500" x-text="addOnSummary(p, 'meal').note"></span>
-                            </span>
-                            <span class="shrink-0 text-right">
-                                <span x-show="addOnSummary(p, 'meal').price > 0" x-cloak class="block text-sm font-semibold text-brand-900">
-                                    <span x-text="currency"></span> <span x-text="money(addOnSummary(p, 'meal').price)"></span>
+                                <span class="flex items-baseline justify-between gap-2">
+                                    <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Meal</span>
+                                    <span class="shrink-0 text-[11px] font-medium text-blue-600"
+                                          x-text="addOnChosen(p, 'meal') ? 'Change' : 'Select'"></span>
                                 </span>
-                                <span class="block text-[11px] font-medium text-blue-600" x-text="p.meal ? 'Change' : 'Select'"></span>
+
+                                <template x-if="! addOnChosen(p, 'meal')">
+                                    <span class="mt-0.5 block text-sm font-semibold text-brand-900">No meal ordered</span>
+                                </template>
+
+                                <template x-for="line in addOnLines(p, 'meal')" :key="line.key">
+                                    <span x-show="addOnChosen(p, 'meal')" class="mt-1 flex items-baseline gap-2 text-[11px]">
+                                        <span class="w-20 shrink-0 text-gray-400" x-text="line.route"></span>
+                                        <span class="min-w-0 flex-1 truncate font-semibold"
+                                              :class="line.label ? 'text-brand-900' : 'text-gray-400'"
+                                              x-text="line.label ?? 'none ordered'"></span>
+                                        <span x-show="line.label" class="shrink-0 font-medium text-gray-600"
+                                              x-text="addOnPriceLabel(line.price)"></span>
+                                    </span>
+                                </template>
                             </span>
                         </button>
                     </div>
