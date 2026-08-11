@@ -1033,10 +1033,25 @@ Alpine.data('bookingWizard', (config = {}) => ({
 
     get ancillaryTotal() {
         if (! this.ssr) return 0;
-        return this.passengers.reduce(
-            (sum, p) => sum + this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal),
-            0,
-        );
+        return this.passengers.reduce((sum, p) => sum + this.passengerAddOnTotal(p), 0);
+    },
+
+    /** What one passenger's chosen add-ons come to, shown on their card. */
+    passengerAddOnTotal(p) {
+        if (! this.ssr) return 0;
+        return this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal);
+    },
+
+    /**
+     * Styling for one add-on card. These are radios wearing a card: the whole tile is
+     * the hit area, so the selected one has to be obvious at a glance — border, tint
+     * and a tick, not colour alone.
+     */
+    addOnCardClass(selected) {
+        return 'relative flex flex-col items-start rounded-xl border p-3 text-left transition ' +
+            (selected
+                ? 'border-blue-600 bg-blue-50/60 ring-1 ring-blue-600'
+                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50');
     },
 
     get grandTotal() {

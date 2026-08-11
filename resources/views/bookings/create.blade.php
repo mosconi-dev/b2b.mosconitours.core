@@ -344,27 +344,91 @@
                 <p class="text-sm text-gray-500">No baggage or meal add-ons are available for this fare.</p>
             </template>
 
+            {{-- One card per option rather than a dropdown: an agent reading a price
+                 back to a client should not have to open a select to see it, and the
+                 selected add-on stays visible while they talk. --}}
             <template x-for="(p, i) in passengers" :key="i">
-                <div x-show="hasSsr" class="rounded-lg border border-gray-200 p-3">
-                    <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Guest <span x-text="i + 1"></span> · <span x-text="p.firstName || p.type"></span></p>
-                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <select x-show="ssr.baggage.length && p.type !== 'Infant'" x-model="p.baggage" class="rounded-lg border-gray-300 py-1.5 text-sm">
-                            <option value="">No extra baggage</option>
+                <div x-show="hasSsr" class="rounded-xl border border-gray-200 p-4">
+                    <div class="flex items-baseline justify-between gap-3">
+                        <p class="text-sm font-semibold text-brand-900">
+                            <span x-text="p.firstName || ('Guest ' + (i + 1))"></span>
+                            <span class="ml-1.5 text-xs font-normal uppercase tracking-wide text-gray-400" x-text="p.type"></span>
+                        </p>
+                        <p x-show="passengerAddOnTotal(p) > 0" x-cloak class="shrink-0 text-sm font-semibold text-brand-900">
+                            +<span x-text="currency"></span> <span x-text="money(passengerAddOnTotal(p))"></span>
+                        </p>
+                    </div>
+
+                    {{-- Checked baggage. Infants get no allowance to extend. --}}
+                    <div x-show="ssr.baggage.length && p.type !== 'Infant'" class="mt-4">
+                        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Checked baggage</p>
+                        <div role="radiogroup" aria-label="Checked baggage" class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            <button type="button" role="radio" :aria-checked="! p.baggage" @click="p.baggage = ''"
+                                    :class="addOnCardClass(! p.baggage)">
+                                <template x-if="! p.baggage"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
+                                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                                <span class="mt-1.5 text-sm font-semibold text-brand-900">None</span>
+                                <span class="text-[11px] text-gray-500"
+                                      x-text="quote.baggage ? quote.baggage + ' included' : 'Cabin bag only'"></span>
+                            </button>
+
                             <template x-for="b in ssr.baggage" :key="b.code">
-                                <option :value="b.code" x-text="b.label + ' — ' + currency + ' ' + money(b.price)"></option>
+                                <button type="button" role="radio" :aria-checked="p.baggage === b.code" @click="p.baggage = b.code"
+                                        :class="addOnCardClass(p.baggage === b.code)">
+                                    <template x-if="p.baggage === b.code"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
+                                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25M16.5 6.144V5.25A2.25 2.25 0 0014.25 3h-4.5A2.25 2.25 0 007.5 5.25v.894m9 0a48.667 48.667 0 00-9 0m9 0a48.11 48.11 0 013.413.387c1.07.16 1.837 1.094 1.837 2.175v2.183a2.18 2.18 0 01-.75 1.661m-15-6.406a48.114 48.114 0 00-3.413.387C2.767 8.13 2 9.064 2 10.145v2.183c0 .655.286 1.253.75 1.661" />
+                                    </svg>
+                                    <span class="mt-1.5 text-sm font-semibold text-brand-900" x-text="b.label"></span>
+                                    <span class="text-[11px] font-medium text-gray-600">
+                                        <span x-text="currency"></span> <span x-text="money(b.price)"></span>
+                                    </span>
+                                    <span class="text-[10px] text-gray-400" x-text="b.origin + ' → ' + b.destination"></span>
+                                </button>
                             </template>
-                        </select>
-                        <select x-show="ssr.meals.length" x-model="p.meal" class="rounded-lg border-gray-300 py-1.5 text-sm">
-                            <option value="">No meal</option>
+                        </div>
+                    </div>
+
+                    {{-- Meals --}}
+                    <div x-show="ssr.meals.length" class="mt-4">
+                        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Meal</p>
+                        <div role="radiogroup" aria-label="Meal" class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            <button type="button" role="radio" :aria-checked="! p.meal" @click="p.meal = ''"
+                                    :class="addOnCardClass(! p.meal)">
+                                <template x-if="! p.meal"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
+                                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                                <span class="mt-1.5 text-sm font-semibold text-brand-900">None</span>
+                                <span class="text-[11px] text-gray-500">No meal ordered</span>
+                            </button>
+
                             <template x-for="m in ssr.meals" :key="m.code">
-                                <option :value="m.code" x-text="m.label + ' — ' + currency + ' ' + money(m.price)"></option>
+                                <button type="button" role="radio" :aria-checked="p.meal === m.code" @click="p.meal = m.code"
+                                        :class="addOnCardClass(p.meal === m.code)">
+                                    <template x-if="p.meal === m.code"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
+                                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 12.5h16a8 8 0 01-16 0zM2.5 21h19" />
+                                        <path stroke-linecap="round" d="M9.2 4c0 1.1-1 1.6-1 2.7s1 1.6 1 1.6M13.4 3.4c0 1.3-1.2 1.9-1.2 3.1s1.2 1.8 1.2 1.8" />
+                                    </svg>
+                                    <span class="mt-1.5 line-clamp-2 text-sm font-semibold leading-snug text-brand-900" x-text="m.label"></span>
+                                    <span class="text-[11px] font-medium text-gray-600">
+                                        <span x-text="currency"></span> <span x-text="money(m.price)"></span>
+                                    </span>
+                                    <span class="text-[10px] text-gray-400" x-text="m.origin + ' → ' + m.destination"></span>
+                                </button>
                             </template>
-                        </select>
+                        </div>
                     </div>
                 </div>
             </template>
 
-            <p x-show="ancillaryTotal > 0" x-cloak class="text-sm text-gray-600">Add-ons: <span class="font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(ancillaryTotal)"></span></span></p>
+            <div x-show="ancillaryTotal > 0" x-cloak class="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
+                <span class="text-gray-600">Add-ons total</span>
+                <span class="font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(ancillaryTotal)"></span></span>
+            </div>
 
             <div class="flex justify-between border-t border-gray-100 pt-4">
                 <button type="button" @click="back()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>

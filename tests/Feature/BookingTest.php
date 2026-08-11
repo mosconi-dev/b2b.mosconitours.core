@@ -129,6 +129,26 @@ class BookingTest extends TestCase
             ->assertSee("redirectUrl: '".route('flights')."'", false);
     }
 
+    /**
+     * Add-ons are picked from cards, not a dropdown.
+     *
+     * An agent reading a price back to a client should not have to open a select to
+     * see it, and the chosen add-on has to stay visible while they talk.
+     */
+    public function test_create_renders_addons_as_selectable_cards(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk()
+            ->assertSee('Checked baggage')
+            ->assertSee('Add-ons total')
+            ->assertSee('addOnCardClass(', escape: false)     // cards, driven by selection state
+            ->assertSee('role="radiogroup"', escape: false)   // and still a radio group
+            ->assertDontSee('>No extra baggage<', false);     // the old select option is gone
+    }
+
     public function test_create_requires_booking_create_permission(): void
     {
         $this->fakeQuote();
