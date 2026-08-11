@@ -344,9 +344,10 @@
                 <p class="text-sm text-gray-500">No baggage or meal add-ons are available for this fare.</p>
             </template>
 
-            {{-- One card per option rather than a dropdown: an agent reading a price
-                 back to a client should not have to open a select to see it, and the
-                 selected add-on stays visible while they talk. --}}
+            {{-- Two summary cards per passenger, not two grids of tiles. With six
+                 guests the inline grid became a wall of options nobody could scan;
+                 this keeps each passenger to two lines and moves the choosing into a
+                 picker that opens on demand. --}}
             <template x-for="(p, i) in passengers" :key="i">
                 <div x-show="hasSsr" class="rounded-xl border border-gray-200 p-4">
                     <div class="flex items-baseline justify-between gap-3">
@@ -359,68 +360,51 @@
                         </p>
                     </div>
 
-                    {{-- Checked baggage. Infants get no allowance to extend. --}}
-                    <div x-show="ssr.baggage.length && p.type !== 'Infant'" class="mt-4">
-                        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Checked baggage</p>
-                        <div role="radiogroup" aria-label="Checked baggage" class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            <button type="button" role="radio" :aria-checked="! p.baggage" @click="p.baggage = ''"
-                                    :class="addOnCardClass(! p.baggage)">
-                                <template x-if="! p.baggage"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
-                                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {{-- Baggage. Infants have no allowance to extend. --}}
+                        <button type="button" x-show="ssr.baggage.length && p.type !== 'Infant'"
+                                @click="openAddOnPicker(i, 'baggage')"
+                                :class="addOnTileClass(!! p.baggage)">
+                            <span :class="addOnIconClass(!! p.baggage)">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25M16.5 6.144V5.25A2.25 2.25 0 0014.25 3h-4.5A2.25 2.25 0 007.5 5.25v.894m9 0a48.667 48.667 0 00-9 0m9 0a48.11 48.11 0 013.413.387c1.07.16 1.837 1.094 1.837 2.175v2.183a2.18 2.18 0 01-.75 1.661m-15-6.406a48.114 48.114 0 00-3.413.387C2.767 8.13 2 9.064 2 10.145v2.183c0 .655.286 1.253.75 1.661" />
                                 </svg>
-                                <span class="mt-1.5 text-sm font-semibold text-brand-900">None</span>
-                                <span class="text-[11px] text-gray-500"
-                                      x-text="quote.baggage ? quote.baggage + ' included' : 'Cabin bag only'"></span>
-                            </button>
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Checked baggage</span>
+                                <span class="block truncate text-sm font-semibold text-brand-900" x-text="addOnSummary(p, 'baggage').title"></span>
+                                <span class="block truncate text-[11px] text-gray-500" x-text="addOnSummary(p, 'baggage').note"></span>
+                            </span>
+                            <span class="shrink-0 text-right">
+                                <span x-show="addOnSummary(p, 'baggage').price > 0" x-cloak class="block text-sm font-semibold text-brand-900">
+                                    <span x-text="currency"></span> <span x-text="money(addOnSummary(p, 'baggage').price)"></span>
+                                </span>
+                                <span class="block text-[11px] font-medium text-blue-600" x-text="p.baggage ? 'Change' : 'Select'"></span>
+                            </span>
+                        </button>
 
-                            <template x-for="b in ssr.baggage" :key="b.code">
-                                <button type="button" role="radio" :aria-checked="p.baggage === b.code" @click="p.baggage = b.code"
-                                        :class="addOnCardClass(p.baggage === b.code)">
-                                    <template x-if="p.baggage === b.code"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
-                                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25M16.5 6.144V5.25A2.25 2.25 0 0014.25 3h-4.5A2.25 2.25 0 007.5 5.25v.894m9 0a48.667 48.667 0 00-9 0m9 0a48.11 48.11 0 013.413.387c1.07.16 1.837 1.094 1.837 2.175v2.183a2.18 2.18 0 01-.75 1.661m-15-6.406a48.114 48.114 0 00-3.413.387C2.767 8.13 2 9.064 2 10.145v2.183c0 .655.286 1.253.75 1.661" />
-                                    </svg>
-                                    <span class="mt-1.5 text-sm font-semibold text-brand-900" x-text="b.label"></span>
-                                    <span class="text-[11px] font-medium text-gray-600">
-                                        <span x-text="currency"></span> <span x-text="money(b.price)"></span>
-                                    </span>
-                                    <span class="text-[10px] text-gray-400" x-text="b.origin + ' → ' + b.destination"></span>
-                                </button>
-                            </template>
-                        </div>
-                    </div>
-
-                    {{-- Meals --}}
-                    <div x-show="ssr.meals.length" class="mt-4">
-                        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Meal</p>
-                        <div role="radiogroup" aria-label="Meal" class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            <button type="button" role="radio" :aria-checked="! p.meal" @click="p.meal = ''"
-                                    :class="addOnCardClass(! p.meal)">
-                                <template x-if="! p.meal"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
-                                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        {{-- Meal --}}
+                        <button type="button" x-show="ssr.meals.length"
+                                @click="openAddOnPicker(i, 'meal')"
+                                :class="addOnTileClass(!! p.meal)">
+                            <span :class="addOnIconClass(!! p.meal)">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 12.5h16a8 8 0 01-16 0zM2.5 21h19" />
+                                    <path stroke-linecap="round" d="M9.2 4c0 1.1-1 1.6-1 2.7s1 1.6 1 1.6M13.4 3.4c0 1.3-1.2 1.9-1.2 3.1s1.2 1.8 1.2 1.8" />
                                 </svg>
-                                <span class="mt-1.5 text-sm font-semibold text-brand-900">None</span>
-                                <span class="text-[11px] text-gray-500">No meal ordered</span>
-                            </button>
-
-                            <template x-for="m in ssr.meals" :key="m.code">
-                                <button type="button" role="radio" :aria-checked="p.meal === m.code" @click="p.meal = m.code"
-                                        :class="addOnCardClass(p.meal === m.code)">
-                                    <template x-if="p.meal === m.code"><span class="absolute right-2 top-2 text-blue-600">&#10003;</span></template>
-                                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 12.5h16a8 8 0 01-16 0zM2.5 21h19" />
-                                        <path stroke-linecap="round" d="M9.2 4c0 1.1-1 1.6-1 2.7s1 1.6 1 1.6M13.4 3.4c0 1.3-1.2 1.9-1.2 3.1s1.2 1.8 1.2 1.8" />
-                                    </svg>
-                                    <span class="mt-1.5 line-clamp-2 text-sm font-semibold leading-snug text-brand-900" x-text="m.label"></span>
-                                    <span class="text-[11px] font-medium text-gray-600">
-                                        <span x-text="currency"></span> <span x-text="money(m.price)"></span>
-                                    </span>
-                                    <span class="text-[10px] text-gray-400" x-text="m.origin + ' → ' + m.destination"></span>
-                                </button>
-                            </template>
-                        </div>
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Meal</span>
+                                <span class="block truncate text-sm font-semibold text-brand-900" x-text="addOnSummary(p, 'meal').title"></span>
+                                <span class="block truncate text-[11px] text-gray-500" x-text="addOnSummary(p, 'meal').note"></span>
+                            </span>
+                            <span class="shrink-0 text-right">
+                                <span x-show="addOnSummary(p, 'meal').price > 0" x-cloak class="block text-sm font-semibold text-brand-900">
+                                    <span x-text="currency"></span> <span x-text="money(addOnSummary(p, 'meal').price)"></span>
+                                </span>
+                                <span class="block text-[11px] font-medium text-blue-600" x-text="p.meal ? 'Change' : 'Select'"></span>
+                            </span>
+                        </button>
                     </div>
                 </div>
             </template>
@@ -433,6 +417,72 @@
             <div class="flex justify-between border-t border-gray-100 pt-4">
                 <button type="button" @click="back()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
                 <button type="button" @click="next()" class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">Continue to payment</button>
+            </div>
+
+            {{-- The picker. One dialog shared by every card, holding a *draft* choice
+                 that only lands on the passenger when Select is pressed — so an agent
+                 browsing options in front of a client cannot change the price by
+                 accident, and Cancel genuinely undoes. --}}
+            <div x-show="addOnPicker" x-cloak
+                 class="fixed inset-0 z-50 flex items-end justify-center bg-gray-900/40 p-0 sm:items-center sm:p-4"
+                 @click.self="cancelAddOnPicker()" @keydown.escape.window="cancelAddOnPicker()"
+                 role="dialog" aria-modal="true" aria-labelledby="addon-picker-title">
+                <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
+                    <header class="border-b border-gray-100 px-5 py-4">
+                        <h3 id="addon-picker-title" class="text-sm font-semibold text-brand-900" x-text="addOnPickerTitle"></h3>
+                        <p class="mt-0.5 text-xs text-gray-500" x-text="addOnPickerSubtitle"></p>
+                    </header>
+
+                    <div class="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3" role="radiogroup" :aria-label="addOnPickerTitle">
+                        <button type="button" role="radio" :aria-checked="addOnPicker && ! addOnPicker.draft"
+                                @click="addOnPicker.draft = ''" :class="addOnRowClass(addOnPicker && ! addOnPicker.draft)">
+                            <span :class="addOnDotClass(addOnPicker && ! addOnPicker.draft)"></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-sm font-medium text-brand-900" x-text="addOnPickerNoneTitle"></span>
+                                <span class="block text-[11px] text-gray-500" x-text="addOnPickerNoneNote"></span>
+                            </span>
+                            <span class="shrink-0 text-sm text-gray-400">&mdash;</span>
+                        </button>
+
+                        {{-- Grouped by leg: TBO repeats the same dish per segment at
+                             different prices, so an ungrouped list shows "Veg Sandwich"
+                             three times with nothing to tell them apart. --}}
+                        <template x-for="g in addOnPickerGroups" :key="g.route">
+                            <div class="pt-1">
+                                <p class="px-1 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400" x-text="g.route"></p>
+                                <div class="space-y-1.5">
+                                    <template x-for="o in g.options" :key="o.code">
+                                        <button type="button" role="radio" :aria-checked="addOnPicker.draft === o.code"
+                                                @click="addOnPicker.draft = o.code" :class="addOnRowClass(addOnPicker.draft === o.code)">
+                                            <span :class="addOnDotClass(addOnPicker.draft === o.code)"></span>
+                                            <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="o.label"></span>
+                                            <span class="shrink-0 text-sm font-semibold"
+                                                  :class="Number(o.price) > 0 ? 'text-brand-900' : 'text-emerald-600'"
+                                                  x-text="addOnPriceLabel(o.price)"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <footer class="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-3">
+                        <p class="text-xs text-gray-500">
+                            Selected:
+                            <span class="font-semibold text-brand-900" x-text="addOnPickerDraftLabel"></span>
+                        </p>
+                        <div class="flex shrink-0 gap-2">
+                            <button type="button" @click="cancelAddOnPicker()"
+                                    class="rounded-lg border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                                Cancel
+                            </button>
+                            <button type="button" @click="confirmAddOnPicker()"
+                                    class="rounded-lg bg-blue-600 px-5 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                                Select
+                            </button>
+                        </div>
+                    </footer>
+                </div>
             </div>
         </section>
 

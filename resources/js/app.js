@@ -1043,15 +1043,147 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     /**
-     * Styling for one add-on card. These are radios wearing a card: the whole tile is
-     * the hit area, so the selected one has to be obvious at a glance — border, tint
-     * and a tick, not colour alone.
+     * What one passenger's baggage or meal card reads, chosen or not.
+     *
+     * The empty case says what the fare already includes rather than just "none" —
+     * with a client on the phone the question is how much baggage they *have*, not
+     * how much more is for sale.
      */
-    addOnCardClass(selected) {
-        return 'relative flex flex-col items-start rounded-xl border p-3 text-left transition ' +
+    addOnSummary(p, kind) {
+        const chosen = this.addOnOption(kind, p[kind]);
+
+        if (chosen) {
+            return {
+                title: chosen.label,
+                note: `${chosen.origin} → ${chosen.destination}`,
+                price: Number(chosen.price) || 0,
+            };
+        }
+
+        return kind === 'baggage'
+            ? {
+                title: 'No extra baggage',
+                note: this.quote?.baggage ? `${this.quote.baggage} already included` : 'Cabin bag only',
+                price: 0,
+            }
+            : { title: 'No meal', note: 'Nothing ordered', price: 0 };
+    },
+
+    addOnOption(kind, code) {
+        if (! code || ! this.ssr) return null;
+        const list = kind === 'baggage' ? this.ssr.baggage : this.ssr.meals;
+        return (list ?? []).find((o) => o.code === code) ?? null;
+    },
+
+    // ----- the picker dialog -------------------------------------------------
+    // Holds a draft so browsing options cannot change the price; only Select commits.
+
+    addOnPicker: null, // { index, kind, draft }
+
+    openAddOnPicker(index, kind) {
+        this.addOnPicker = { index, kind, draft: this.passengers[index]?.[kind] ?? '' };
+    },
+
+    cancelAddOnPicker() {
+        this.addOnPicker = null;
+    },
+
+    confirmAddOnPicker() {
+        if (! this.addOnPicker) return;
+        const { index, kind, draft } = this.addOnPicker;
+        if (this.passengers[index]) this.passengers[index][kind] = draft;
+        this.addOnPicker = null;
+    },
+
+    get addOnPickerOptions() {
+        if (! this.addOnPicker || ! this.ssr) return [];
+        return (this.addOnPicker.kind === 'baggage' ? this.ssr.baggage : this.ssr.meals) ?? [];
+    },
+
+    /**
+     * The picker's options grouped by leg.
+     *
+     * TBO sends these per segment, so a Spicejet DEL–DXB return came back as 41 meals
+     * — the same dishes repeated for DEL→DXB, DXB→BOM and BOM→DEL at different prices.
+     * Ungrouped, an agent sees "Veg Sandwich" three times and cannot tell them apart.
+     */
+    get addOnPickerGroups() {
+        const groups = [];
+
+        this.addOnPickerOptions.forEach((o) => {
+            const route = `${o.origin} → ${o.destination}`;
+            const found = groups.find((g) => g.route === route);
+            found ? found.options.push(o) : groups.push({ route, options: [o] });
+        });
+
+        return groups;
+    },
+
+    /** Most of these are free; "PHP 0.00" reads like a bug next to a real price. */
+    addOnPriceLabel(price) {
+        return Number(price) > 0 ? `${this.currency} ${this.money(price)}` : 'Free';
+    },
+
+    get addOnPickerPassenger() {
+        return this.addOnPicker ? this.passengers[this.addOnPicker.index] : null;
+    },
+
+    get addOnPickerTitle() {
+        if (! this.addOnPicker) return '';
+        const who = this.addOnPickerPassenger;
+        const name = who?.firstName || `Guest ${this.addOnPicker.index + 1}`;
+        return `${this.addOnPicker.kind === 'baggage' ? 'Checked baggage' : 'Meal'} for ${name}`;
+    },
+
+    get addOnPickerSubtitle() {
+        if (! this.addOnPicker) return '';
+        return this.addOnPicker.kind === 'baggage'
+            ? 'Charged per passenger, on top of the allowance already in the fare.'
+            : 'Ordered in advance and served on board.';
+    },
+
+    get addOnPickerNoneTitle() {
+        return this.addOnPicker?.kind === 'baggage' ? 'No extra baggage' : 'No meal';
+    },
+
+    get addOnPickerNoneNote() {
+        if (this.addOnPicker?.kind !== 'baggage') return 'Nothing ordered';
+        return this.quote?.baggage ? `${this.quote.baggage} already included` : 'Cabin bag only';
+    },
+
+    /** The footer's running answer, so Select is never a leap of faith. */
+    get addOnPickerDraftLabel() {
+        if (! this.addOnPicker) return '';
+        const o = this.addOnOption(this.addOnPicker.kind, this.addOnPicker.draft);
+        return o ? `${o.label} · ${this.addOnPriceLabel(o.price)}` : this.addOnPickerNoneTitle;
+    },
+
+    // ----- add-on styling ----------------------------------------------------
+
+    /** A passenger's summary card. Tinted once something is actually chosen. */
+    addOnTileClass(chosen) {
+        return 'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ' +
+            (chosen
+                ? 'border-blue-300 bg-blue-50/50 hover:border-blue-400'
+                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50');
+    },
+
+    addOnIconClass(chosen) {
+        return 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ' +
+            (chosen ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400');
+    },
+
+    /** One option row inside the picker. */
+    addOnRowClass(selected) {
+        return 'flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ' +
             (selected
                 ? 'border-blue-600 bg-blue-50/60 ring-1 ring-blue-600'
                 : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50');
+    },
+
+    addOnDotClass(selected) {
+        return 'h-4 w-4 shrink-0 rounded-full border-[5px] transition ' +
+            (selected ? 'border-blue-600' : 'border-gray-300');
     },
 
     get grandTotal() {

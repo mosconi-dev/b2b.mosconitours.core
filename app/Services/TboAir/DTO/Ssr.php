@@ -47,7 +47,16 @@ class Ssr implements Arrayable, JsonSerializable
             ->filter(fn ($m): bool => filled(data_get($m, 'Code')))
             ->map(fn (array $m): array => [
                 'code' => (string) data_get($m, 'Code'),
-                'label' => (string) data_get($m, 'AirlineDescription', data_get($m, 'Description', 'Meal')),
+                // data_get's default never fires here: TBO sends the key with an empty
+                // string rather than omitting it, so three of Spicejet's 41 meals
+                // rendered as a nameless row with a price. Fall through on blank.
+                'label' => self::firstFilled([
+                    data_get($m, 'AirlineDescription'),
+                    data_get($m, 'Description'),
+                    // Nothing but a code left. Say so rather than showing a bare "2",
+                    // which reads as a broken row next to real dish names.
+                    filled(data_get($m, 'Code')) ? 'Meal '.data_get($m, 'Code') : null,
+                ], 'Meal'),
                 'price' => (float) data_get($m, 'Price', 0),
                 'currency' => (string) data_get($m, 'Currency', 'PHP'),
                 'origin' => (string) data_get($m, 'Origin', ''),
@@ -86,6 +95,22 @@ class Ssr implements Arrayable, JsonSerializable
      *
      * @return Collection<int, array<string, mixed>>
      */
+    /**
+     * The first candidate that is actually present, ignoring empty strings.
+     *
+     * @param  array<int, mixed>  $candidates
+     */
+    private static function firstFilled(array $candidates, string $fallback): string
+    {
+        foreach ($candidates as $candidate) {
+            if (is_scalar($candidate) && trim((string) $candidate) !== '') {
+                return trim((string) $candidate);
+            }
+        }
+
+        return $fallback;
+    }
+
     private static function flatten(mixed $list): Collection
     {
         $items = collect(is_array($list) ? $list : []);

@@ -130,12 +130,10 @@ class BookingTest extends TestCase
     }
 
     /**
-     * Add-ons are picked from cards, not a dropdown.
-     *
-     * An agent reading a price back to a client should not have to open a select to
-     * see it, and the chosen add-on has to stay visible while they talk.
+     * Add-ons are a summary card per passenger that opens a picker — not a dropdown,
+     * and not a wall of tiles that becomes unreadable at six guests.
      */
-    public function test_create_renders_addons_as_selectable_cards(): void
+    public function test_create_renders_addons_as_cards_with_a_picker(): void
     {
         $this->fakeQuote();
 
@@ -144,9 +142,12 @@ class BookingTest extends TestCase
             ->assertOk()
             ->assertSee('Checked baggage')
             ->assertSee('Add-ons total')
-            ->assertSee('addOnCardClass(', escape: false)     // cards, driven by selection state
-            ->assertSee('role="radiogroup"', escape: false)   // and still a radio group
-            ->assertDontSee('>No extra baggage<', false);     // the old select option is gone
+            ->assertSee('openAddOnPicker(', escape: false)     // the card opens the dialog
+            ->assertSee('confirmAddOnPicker(', escape: false)  // Select commits the draft
+            ->assertSee('cancelAddOnPicker(', escape: false)   // Cancel discards it
+            ->assertSee('role="dialog"', escape: false)
+            ->assertSee('role="radiogroup"', escape: false)
+            ->assertDontSee('<option value="">No extra baggage', false); // the old select is gone
     }
 
     public function test_create_requires_booking_create_permission(): void
