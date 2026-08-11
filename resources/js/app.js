@@ -1088,6 +1088,96 @@ Alpine.data('bookingWizard', (config = {}) => ({
         return this.quote?.baggage || null;
     },
 
+    // ----- date of birth -----------------------------------------------------
+    // Three selects rather than a calendar: a birth date is decades back, and a date
+    // picker makes an agent page through hundreds of months to reach 1990. The parts
+    // are held here while they are half-filled, because a partial date cannot be
+    // represented in the ISO string the passenger actually carries.
+
+    dobParts: {}, // passenger index -> { d, m, y }
+
+    dobMonths: [
+        { value: '01', name: 'January' }, { value: '02', name: 'February' },
+        { value: '03', name: 'March' }, { value: '04', name: 'April' },
+        { value: '05', name: 'May' }, { value: '06', name: 'June' },
+        { value: '07', name: 'July' }, { value: '08', name: 'August' },
+        { value: '09', name: 'September' }, { value: '10', name: 'October' },
+        { value: '11', name: 'November' }, { value: '12', name: 'December' },
+    ],
+
+    get dobYears() {
+        const now = new Date().getFullYear();
+        return Array.from({ length: 121 }, (_, k) => String(now - k));
+    },
+
+    /** Days that exist in the chosen month, so 31 February is never offered. */
+    dobDays(index) {
+        const year = Number(this.dobPart(index, 'y'));
+        const month = Number(this.dobPart(index, 'm'));
+
+        // No month yet: 31 keeps every day reachable. A missing year is treated as a
+        // leap year so 29 February stays selectable until the year says otherwise.
+        const count = month ? new Date(year || 2000, month, 0).getDate() : 31;
+
+        return Array.from({ length: count }, (_, k) => String(k + 1).padStart(2, '0'));
+    },
+
+    dobPart(index, part) {
+        const cached = this.dobParts[index];
+        if (cached && cached[part] !== undefined) return cached[part];
+
+        const iso = this.passengers[index]?.dateOfBirth;
+        if (! iso) return '';
+
+        const [y, m, d] = String(iso).split('-');
+        return { y, m, d }[part] ?? '';
+    },
+
+    setDobPart(index, part, value) {
+        const parts = {
+            y: this.dobPart(index, 'y'),
+            m: this.dobPart(index, 'm'),
+            d: this.dobPart(index, 'd'),
+            ...(this.dobParts[index] ?? {}),
+            [part]: value,
+        };
+
+        // Changing month or year can strand the day — 31 January to February.
+        const available = Number(parts.m)
+            ? new Date(Number(parts.y) || 2000, Number(parts.m), 0).getDate()
+            : 31;
+
+        if (Number(parts.d) > available) parts.d = '';
+
+        this.dobParts[index] = parts;
+        this.passengers[index].dateOfBirth = this.composeDob(parts);
+    },
+
+    /** Only a complete date that is genuinely in the past reaches the passenger. */
+    composeDob(parts) {
+        if (! parts.y || ! parts.m || ! parts.d) return '';
+
+        const iso = `${parts.y}-${parts.m}-${parts.d}`;
+
+        return new Date(`${iso}T00:00:00`) > new Date() ? '' : iso;
+    },
+
+    /**
+     * Why the field is still empty, when the agent has clearly filled something in.
+     * Silence here reads as the form ignoring them.
+     */
+    dobError(index) {
+        const parts = this.dobParts[index];
+        if (! parts) return '';
+
+        const filled = ['y', 'm', 'd'].filter((k) => parts[k]);
+        if (! filled.length || this.passengers[index]?.dateOfBirth) return '';
+
+        return filled.length < 3
+            ? 'Choose a month, day and year.'
+            : 'A date of birth cannot be in the future.';
+    },
+
     /** The resolved options a passenger holds for this kind, in leg order. */
     addOnChoices(p, kind) {
         return this.addOnKeys(p, kind)
