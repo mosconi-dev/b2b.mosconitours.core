@@ -3,17 +3,23 @@
 namespace Tests\Feature\TboAir;
 
 use App\Enums\BookingStatus;
+use App\Jobs\FulfilBookingJob;
 use App\Models\Booking;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
 /**
- * The HTTP surface of the money step. Every supplier call is faked.
+ * The HTTP surface of the money step.
+ *
+ * There is no hold here by design: completing a booking queues Book → Ticket as one
+ * act, the way the system live today does it. What these tests pin is that the queue is
+ * what spends money — nothing reaches the supplier inside a request — and that the one
+ * state which can strand a real PNR still has a way out.
  */
 class TicketingRoutesTest extends TestCase
 {
@@ -68,189 +74,178 @@ class TicketingRoutesTest extends TestCase
 
     // ---- Permissions ------------------------------------------------------
 
-    public function test_issuing_requires_the_issue_permission(): void
+    public function test_completing_requires_the_issue_permission(): void
     {
-        $this->fake();
-        $user = $this->agent();
+        Queue::fake();
+        $user = $this->agent(['flight.book']);
 
         $this->actingAs($user)
-            ->post(route('bookings.issue', $this->booking($user)))
+            ->post(route('bookings.fulfil', $this->booking($user)))
             ->assertForbidden();
 
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Ticket'));
+        Queue::assertNothingPushed();
     }
 
-    public function test_holding_requires_the_book_permission(): void
+    /** It always ends in a ticket, so it needs the ability to book as well. */
+    public function test_completing_requires_the_book_permission(): void
     {
-        $this->fake();
-        $user = $this->agent(['flight.issue']); // issue alone must not grant hold
+        Queue::fake();
+        $user = $this->agent(['flight.issue']);
 
         $this->actingAs($user)
-            ->post(route('bookings.book', $this->booking($user, ['is_lcc' => false])))
+            ->post(route('bookings.fulfil', $this->booking($user)))
             ->assertForbidden();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_an_agent_cannot_complete_someone_elses_booking(): void
+    {
+        Queue::fake();
+        $owner = $this->agent();
+        $other = $this->agent(['flight.book', 'flight.issue']);
+
+        $this->actingAs($other)
+            ->post(route('bookings.fulfil', $this->booking($owner)))
+            ->assertForbidden();
+
+        Queue::assertNothingPushed();
     }
 
     /**
-     * Holding requires the ability to ticket as well. A PNR nobody here is allowed to
-     * issue just occupies airline seats until someone releases it.
+     * The wizard refuses at the door rather than after ten minutes of passenger entry:
+     * finishing it now issues a ticket.
      */
-    public function test_holding_also_requires_the_issue_permission(): void
+    public function test_the_wizard_is_closed_to_an_agent_who_cannot_issue(): void
     {
-        $this->fake();
-        $user = $this->agent(['flight.book']); // can hold, cannot ticket
-
-        $this->actingAs($user)
-            ->post(route('bookings.book', $this->booking($user, ['is_lcc' => false])))
-            ->assertForbidden();
-
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Book'));
-    }
-
-    public function test_the_hold_button_is_hidden_without_the_issue_permission(): void
-    {
-        $this->fake();
-        $user = $this->agent(['flight.book']);
-
-        $booking = $this->booking($user, ['is_lcc' => false]);
-
-        // The explanatory copy mentions "Hold PNR" either way, so assert on the form
-        // target rather than the words.
-        $this->actingAs($user)
-            ->get(route('bookings.show', $booking))
-            ->assertOk()
-            ->assertDontSee(route('bookings.book', $booking))
-            ->assertSee('do not have permission to hold');
-    }
-
-    public function test_an_agent_cannot_ticket_someone_elses_booking(): void
-    {
-        $this->fake();
-        $owner = $this->agent();
-        $other = $this->agent(['flight.issue']);
-
-        $this->actingAs($other)
-            ->post(route('bookings.issue', $this->booking($owner)))
+        $this->actingAs($this->agent())
+            ->get(route('bookings.create', ['resultIndex' => 'x', 'traceId' => 'y']))
             ->assertForbidden();
     }
 
-    // ---- The happy path ---------------------------------------------------
+    // ---- Queueing ---------------------------------------------------------
 
-    public function test_an_agent_with_permission_issues_a_ticket(): void
+    /**
+     * Nothing may reach the supplier inside a web request. Ticket alone has taken 50
+     * seconds against the real one.
+     */
+    public function test_completing_queues_the_work_and_touches_nothing_itself(): void
     {
+        Queue::fake();
         $this->fake();
-        $user = $this->agent(['flight.issue']);
+        $user = $this->agent(['flight.book', 'flight.issue']);
         $booking = $this->booking($user);
 
         $this->actingAs($user)
-            ->post(route('bookings.issue', $booking))
+            ->post(route('bookings.fulfil', $booking))
             ->assertRedirect()
-            ->assertSessionHas('status', fn (string $s): bool => str_contains($s, 'ticketed'));
+            ->assertSessionHas('status', fn (string $s): bool => str_contains($s, 'contacting the airline'));
 
-        $this->assertSame(BookingStatus::Ticketed, $booking->fresh()->status);
+        Queue::assertPushed(FulfilBookingJob::class, fn ($job): bool => $job->bookingId === $booking->id);
+        Http::assertNothingSent();
+        $this->assertSame(BookingStatus::Processing, $booking->fresh()->status);
     }
 
-    public function test_a_non_lcc_is_held_then_issued(): void
+    /** A booking already at its ending cannot be sent round again. */
+    public function test_a_ticketed_booking_cannot_be_completed_twice(): void
     {
-        $this->fake();
+        Queue::fake();
         $user = $this->agent(['flight.book', 'flight.issue']);
-        $booking = $this->booking($user, ['is_lcc' => false]);
-
-        $this->actingAs($user)->post(route('bookings.book', $booking))->assertRedirect();
-        $this->assertSame(BookingStatus::Booked, $booking->fresh()->status);
-
-        $this->actingAs($user)->post(route('bookings.issue', $booking))->assertRedirect();
-        $this->assertSame(BookingStatus::Ticketed, $booking->fresh()->status);
-    }
-
-    // ---- Failure reporting ------------------------------------------------
-
-    public function test_a_domain_refusal_is_shown_without_changing_the_booking(): void
-    {
-        $this->fake();
-        $user = $this->agent(['flight.issue']);
-        $booking = $this->booking($user, ['is_lcc' => false]); // quoted non-LCC has no PNR
+        $booking = $this->booking($user, ['status' => BookingStatus::Ticketed, 'pnr' => 'QWER12']);
 
         $this->actingAs($user)
-            ->post(route('bookings.issue', $booking))
+            ->post(route('bookings.fulfil', $booking))
             ->assertRedirect()
-            ->assertSessionHas('error', fn (string $s): bool => str_contains($s, 'cannot be ticketed'));
+            ->assertSessionHas('error', fn (string $s): bool => str_contains($s, 'cannot be completed'));
 
-        $this->assertSame(BookingStatus::Quoted, $booking->fresh()->status);
+        Queue::assertNothingPushed();
     }
 
-    /**
-     * A timeout may mean the request landed. The agent must be told to check, never
-     * invited to retry.
-     */
-    public function test_a_timeout_warns_that_the_booking_may_exist(): void
+    /** The recovery path for a reservation that was made but never issued. */
+    public function test_a_held_pnr_can_be_finished(): void
     {
-        $this->fake([
-            '*Booking/Ticket*' => fn () => throw new ConnectionException('timed out'),
+        Queue::fake();
+        $user = $this->agent(['flight.book', 'flight.issue']);
+        $booking = $this->booking($user, [
+            'is_lcc' => false, 'status' => BookingStatus::Booked, 'pnr' => 'QWER12',
         ]);
 
-        $user = $this->agent(['flight.issue']);
+        $this->actingAs($user)->post(route('bookings.fulfil', $booking))->assertRedirect();
 
-        $this->actingAs($user)
-            ->post(route('bookings.issue', $this->booking($user)))
-            ->assertRedirect()
-            ->assertSessionHas('error', fn (string $s): bool => str_contains($s, 'may still have been created'));
+        Queue::assertPushed(FulfilBookingJob::class);
+        $this->assertSame(BookingStatus::Booked, $booking->fresh()->status); // the job moves it, not the request
     }
 
     // ---- The page ---------------------------------------------------------
 
-    public function test_the_page_offers_issue_to_a_permitted_agent(): void
+    public function test_the_page_never_offers_a_hold(): void
     {
-        $this->fake();
-        $user = $this->agent(['flight.issue']);
+        $user = $this->agent(['flight.book', 'flight.issue']);
 
         $this->actingAs($user)
-            ->get(route('bookings.show', $this->booking($user)))
+            ->get(route('bookings.show', $this->booking($user, ['is_lcc' => false])))
             ->assertOk()
-            ->assertSee('Issue ticket');
+            ->assertDontSee('Hold PNR');
     }
 
-    public function test_the_page_hides_issue_without_permission(): void
+    public function test_a_processing_booking_says_it_is_working(): void
     {
-        $this->fake();
-        $user = $this->agent();
+        $user = $this->agent(['flight.book', 'flight.issue']);
+        $booking = $this->booking($user, ['status' => BookingStatus::Processing]);
 
         $this->actingAs($user)
-            ->get(route('bookings.show', $this->booking($user)))
+            ->get(route('bookings.show', $booking))
             ->assertOk()
-            ->assertDontSee('Issue ticket');
+            ->assertSee('Contacting the airline')
+            ->assertSee(route('bookings.status', $booking));   // it polls for the ending
+    }
+
+    public function test_a_held_booking_warns_that_no_ticket_exists(): void
+    {
+        $user = $this->agent(['flight.book', 'flight.issue']);
+        $booking = $this->booking($user, [
+            'is_lcc' => false, 'status' => BookingStatus::Booked, 'pnr' => 'QWER12',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('bookings.show', $booking))
+            ->assertOk()
+            ->assertSee('Ticket not issued')
+            ->assertSee('QWER12')
+            ->assertSee('Finish ticketing');
+    }
+
+    /**
+     * A failed booking that nonetheless holds a PNR must not invite a plain rebook —
+     * that is how the same passengers get ticketed twice.
+     */
+    public function test_a_failed_booking_with_a_pnr_warns_before_rebooking(): void
+    {
+        $user = $this->agent(['flight.book', 'flight.issue']);
+        $booking = $this->booking($user, ['status' => BookingStatus::Failed, 'pnr' => 'QWER12']);
+
+        $this->actingAs($user)
+            ->get(route('bookings.show', $booking))
+            ->assertOk()
+            ->assertSee('did not complete')
+            ->assertSee('ticketed twice');
     }
 
     public function test_a_ticketed_booking_offers_nothing_further(): void
     {
-        $this->fake();
         $user = $this->agent(['flight.book', 'flight.issue']);
 
         $this->actingAs($user)
             ->get(route('bookings.show', $this->booking($user, ['status' => BookingStatus::Ticketed])))
             ->assertOk()
-            ->assertDontSee('Issue ticket')
+            ->assertDontSee('Complete booking')
+            ->assertDontSee('Finish ticketing')
             ->assertDontSee('Hold PNR');
     }
 
-    /**
-     * The page carried "Ticketing (Book / Ticket) is not enabled yet" from before
-     * Phase 4.1 and kept saying it underneath a working Issue button.
-     */
-    public function test_the_page_does_not_claim_ticketing_is_unavailable(): void
+    public function test_a_live_booking_is_flagged_before_completing(): void
     {
-        $this->fake();
-        $user = $this->agent(['flight.issue']);
-
-        $this->actingAs($user)
-            ->get(route('bookings.show', $this->booking($user)))
-            ->assertOk()
-            ->assertDontSee('not enabled');
-    }
-
-    public function test_a_live_booking_is_flagged_before_issuing(): void
-    {
-        $this->fake();
-        $user = $this->agent(['flight.issue']);
+        $user = $this->agent(['flight.book', 'flight.issue']);
 
         $this->actingAs($user)
             ->get(route('bookings.show', $this->booking($user, ['environment' => 'live'])))
@@ -258,16 +253,37 @@ class TicketingRoutesTest extends TestCase
             ->assertSee('This is a LIVE booking', false);
     }
 
-    public function test_an_lcc_is_not_offered_a_hold(): void
-    {
-        $this->fake();
-        $user = $this->agent(['flight.book', 'flight.issue']);
+    // ---- Polling ----------------------------------------------------------
 
-        $booking = $this->booking($user, ['is_lcc' => true]);
+    public function test_the_status_endpoint_reports_progress(): void
+    {
+        $user = $this->agent(['flight.book', 'flight.issue']);
+        $booking = $this->booking($user, ['status' => BookingStatus::Processing]);
 
         $this->actingAs($user)
-            ->get(route('bookings.show', $booking))
+            ->getJson(route('bookings.status', $booking))
             ->assertOk()
-            ->assertDontSee(route('bookings.book', $booking));
+            ->assertJson(['status' => 'processing', 'inFlight' => true]);
+    }
+
+    public function test_the_status_endpoint_reports_the_ending(): void
+    {
+        $user = $this->agent(['flight.book', 'flight.issue']);
+        $booking = $this->booking($user, ['status' => BookingStatus::Ticketed, 'pnr' => 'QWER12']);
+
+        $this->actingAs($user)
+            ->getJson(route('bookings.status', $booking))
+            ->assertOk()
+            ->assertJson(['status' => 'ticketed', 'inFlight' => false, 'pnr' => 'QWER12']);
+    }
+
+    public function test_the_status_endpoint_is_closed_to_other_agents(): void
+    {
+        $owner = $this->agent();
+        $other = $this->agent();
+
+        $this->actingAs($other)
+            ->getJson(route('bookings.status', $this->booking($owner)))
+            ->assertForbidden();
     }
 }

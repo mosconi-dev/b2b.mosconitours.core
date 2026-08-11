@@ -106,10 +106,37 @@ class BookingService
     }
 
     /**
+     * Take a booking all the way to a ticket. **This is the whole transaction.**
+     *
+     * There is no hold in this flow, deliberately. An agent presses Complete booking
+     * once and either gets tickets or gets told why not: non-LCC runs Book then Ticket
+     * back to back, LCC runs Ticket alone. `Booked` exists only as the moment between
+     * the two calls.
+     *
+     * The chain stops dead if Book fails, because book() throws. That is not incidental
+     * — the live system sets a failure status and then calls Ticket anyway with a null
+     * book response, ticketing against a reservation that was never made.
+     *
+     * Safe to re-run: a non-LCC booking that already holds a PNR resumes at Ticket
+     * rather than trying to reserve the seats a second time.
+     */
+    public function fulfil(Booking $booking, ?string $userAgent = null): Booking
+    {
+        if (! $booking->is_lcc && $booking->status !== BookingStatus::Booked) {
+            $booking = $this->book($booking, $userAgent);
+        }
+
+        return $this->issue($booking, $userAgent);
+    }
+
+    /**
      * Hold the PNR for a non-LCC booking. Creates a reservation; spends nothing.
      *
      * LCC fares have no Book step at all — Ticket books and issues in one — so calling
      * this on one is a programming error, not a supplier failure.
+     *
+     * Not reachable from the UI: it is the first half of fulfil(). Exposing a hold
+     * would let agents strand PNRs we have no ReleasePNR call to clean up.
      */
     public function book(Booking $booking, ?string $userAgent = null): Booking
     {
@@ -119,7 +146,7 @@ class BookingService
 
         return $this->withBookingLock($booking, function (Booking $booking) use ($userAgent): Booking {
             $this->guardEnvironment($booking);
-            $this->guardStatus($booking, [BookingStatus::Quoted], 'booked');
+            $this->guardStatus($booking, [BookingStatus::Quoted, BookingStatus::Processing], 'booked');
 
             $result = $this->tbo->book($booking, $userAgent);
 
@@ -155,7 +182,11 @@ class BookingService
         return $this->withBookingLock($booking, function (Booking $booking) use ($userAgent): Booking {
             $this->guardEnvironment($booking);
 
-            $from = $booking->is_lcc ? [BookingStatus::Quoted] : [BookingStatus::Booked];
+            // LCC has no Book step, so it arrives here straight from the queue; non-LCC
+            // must already hold the PNR that book() put on it.
+            $from = $booking->is_lcc
+                ? [BookingStatus::Quoted, BookingStatus::Processing]
+                : [BookingStatus::Booked];
             $this->guardStatus($booking, $from, 'ticketed');
 
             if (! $booking->is_lcc && ! filled($booking->pnr)) {

@@ -8,11 +8,12 @@ namespace App\Enums;
  */
 enum BookingStatus: string
 {
-    case Quoted = 'quoted';       // priced + passengers captured; nothing sent to TBO yet
-    case Booked = 'booked';       // PNR held (non-LCC)
-    case Ticketed = 'ticketed';   // issued
-    case Failed = 'failed';       // a booking/ticketing attempt failed
-    case Cancelled = 'cancelled'; // released / voided
+    case Quoted = 'quoted';         // priced + passengers captured; nothing sent to TBO yet
+    case Processing = 'processing'; // queued with the supplier; Book/Ticket in flight
+    case Booked = 'booked';         // PNR held (non-LCC), mid-chain — not a resting state
+    case Ticketed = 'ticketed';     // issued
+    case Failed = 'failed';         // a booking/ticketing attempt failed
+    case Cancelled = 'cancelled';   // released / voided
     case Refunded = 'refunded';
 
     /**
@@ -21,12 +22,25 @@ enum BookingStatus: string
     public function allowedTransitions(): array
     {
         return match ($this) {
-            self::Quoted => [self::Booked, self::Ticketed, self::Failed, self::Cancelled],
+            self::Quoted => [self::Processing, self::Booked, self::Ticketed, self::Failed, self::Cancelled],
+            self::Processing => [self::Booked, self::Ticketed, self::Failed, self::Cancelled],
             self::Booked => [self::Ticketed, self::Failed, self::Cancelled],
             self::Ticketed => [self::Cancelled, self::Refunded],
             self::Cancelled => [self::Refunded],
             self::Failed, self::Refunded => [],
         };
+    }
+
+    /**
+     * Whether the supplier still owes us an answer.
+     *
+     * `Booked` counts: a non-LCC booking passes through it on the way to a ticket, and
+     * a booking sitting there is a held PNR nobody has paid for — something to finish
+     * or release, never somewhere to stop.
+     */
+    public function isInFlight(): bool
+    {
+        return $this === self::Processing || $this === self::Booked;
     }
 
     public function canTransitionTo(self $to): bool
@@ -51,6 +65,7 @@ enum BookingStatus: string
     {
         return match ($this) {
             self::Ticketed => 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+            self::Processing => 'bg-sky-50 text-sky-700 ring-sky-600/20',
             self::Booked => 'bg-blue-50 text-blue-700 ring-blue-600/20',
             self::Quoted => 'bg-gray-100 text-gray-600 ring-gray-500/20',
             self::Cancelled => 'bg-amber-50 text-amber-700 ring-amber-600/20',

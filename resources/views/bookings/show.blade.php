@@ -69,74 +69,108 @@
             </dl>
         </div>
 
-        {{-- Ticketing. A quoted booking is only a priced hold on our side; nothing
-             exists at the airline until one of these is pressed. --}}
+        {{-- Ticketing. There is no hold to press: completing the booking queued Book →
+             Ticket as one act, so this panel reports on that rather than driving it.
+             The only button here is a recovery, for the one state that strands. --}}
         @php
-            // Non-LCC reserves first, then issues. LCC has no hold step — Ticket books
-            // and issues together — so it goes straight to Issue from quoted.
-            $canHold = ! $booking->is_lcc && $booking->status === \App\Enums\BookingStatus::Quoted;
-            $canIssue = $booking->status === ($booking->is_lcc
-                ? \App\Enums\BookingStatus::Quoted
-                : \App\Enums\BookingStatus::Booked);
+            $statuses = \App\Enums\BookingStatus::class;
+            $canRetry = auth()->user()->can('flight.book') && auth()->user()->can('flight.issue');
         @endphp
 
-        @if ($canHold || $canIssue)
-            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 class="text-base font-semibold text-brand-900">Ticketing</h2>
-
-                @if ($booking->environment === 'live')
-                    <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                        <strong>This is a LIVE booking.</strong> Issuing creates a real ticket and spends real money.
+        @if ($booking->status === $statuses::Processing)
+            {{-- Follows the queue to its ending. Book and Ticket together have taken
+                 over a minute against the real supplier, so this can sit a while. --}}
+            <div class="rounded-xl border border-sky-200 bg-sky-50 p-6 shadow-sm"
+                 x-data="{
+                     poll() {
+                         fetch('{{ route('bookings.status', $booking) }}', { headers: { Accept: 'application/json' } })
+                             .then(r => r.ok ? r.json() : null)
+                             .then(d => d && !d.inFlight ? window.location.reload() : setTimeout(() => this.poll(), 4000))
+                             .catch(() => setTimeout(() => this.poll(), 8000));
+                     },
+                 }"
+                 x-init="setTimeout(() => poll(), 4000)">
+                <div class="flex items-start gap-3">
+                    <svg class="mt-0.5 h-5 w-5 shrink-0 animate-spin text-sky-600" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <div>
+                        <h2 class="text-base font-semibold text-sky-900">Contacting the airline</h2>
+                        <p class="mt-1 text-sm text-sky-800">
+                            {{ $booking->is_lcc ? 'Issuing your ticket' : 'Reserving your seats, then issuing the ticket' }}.
+                            This can take a minute or two — the page updates itself when it is done, and it keeps
+                            going if you leave.
+                        </p>
                     </div>
+                </div>
+            </div>
+        @elseif ($booking->status === $statuses::Booked)
+            {{-- The one genuinely stranded state: seats reserved, nothing paid for. It
+                 must be finished or it eventually dies at the airline. --}}
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-amber-900">Ticket not issued</h2>
+                <p class="mt-2 text-sm text-amber-800">
+                    The airline reserved these seats under PNR <strong>{{ $booking->pnr }}</strong>, but the ticket
+                    was not issued. The reservation will be released by the airline if it stays unticketed.
+                </p>
+                @if ($canRetry)
+                    <form method="POST" action="{{ route('bookings.fulfil', $booking) }}" class="mt-4"
+                          x-data="{ submitting: false }" @submit="submitting = true">
+                        @csrf
+                        <button type="submit" :disabled="submitting"
+                                class="rounded-lg bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-50">
+                            <span x-show="! submitting">Finish ticketing</span>
+                            <span x-show="submitting" x-cloak>Sending…</span>
+                        </button>
+                    </form>
+                @else
+                    <p class="mt-3 text-sm text-amber-700">You do not have permission to issue tickets — ask someone who does.</p>
                 @endif
-
-                <p class="mt-3 text-sm text-gray-500">
-                    @if ($canHold)
-                        This fare is held on our side only. <strong class="text-brand-900">Hold PNR</strong> reserves
-                        the seats with the airline without paying; you then issue the ticket separately.
+            </div>
+        @elseif ($booking->status === $statuses::Failed)
+            <div class="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-red-900">This booking did not complete</h2>
+                <p class="mt-2 text-sm text-red-800">
+                    The airline did not issue a ticket
+                    @if (filled($booking->pnr))
+                        against PNR <strong>{{ $booking->pnr }}</strong> — check with support before rebooking, so the
+                        same passengers are not ticketed twice.
                     @else
-                        Issuing charges {{ $booking->currency }}
-                        {{ number_format((float) $booking->total_amount, 2) }} and cannot be undone here.
+                        and nothing was reserved. Search again to rebook these passengers.
                     @endif
                 </p>
-
-                <div class="mt-4 flex flex-wrap items-center gap-3">
-                    @if ($canHold)
-                        {{-- Both abilities: holding a PNR you may not ticket leaves a
-                             reservation on the airline that nobody here can complete. --}}
-                        @if (auth()->user()->can('flight.book') && auth()->user()->can('flight.issue'))
-                            <form method="POST" action="{{ route('bookings.book', $booking) }}">
-                                @csrf
-                                <button type="submit"
-                                        class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">
-                                    Hold PNR
-                                </button>
-                            </form>
-                        @else
-                            <p class="text-sm text-gray-400">You do not have permission to hold this booking.</p>
-                        @endif
-                    @endif
-
-                    @if ($canIssue)
-                        @can('flight.issue')
-                            <form method="POST" action="{{ route('bookings.issue', $booking) }}"
-                                  x-data="{ submitting: false }" @submit="submitting = true">
-                                @csrf
-                                <button type="submit" :disabled="submitting"
-                                        @class([
-                                            'rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50',
-                                            'bg-red-600 hover:bg-red-700' => $booking->environment === 'live',
-                                            'bg-blue-600 hover:bg-blue-700' => $booking->environment !== 'live',
-                                        ])>
-                                    <span x-show="! submitting">Issue ticket</span>
-                                    <span x-show="submitting" x-cloak>Issuing…</span>
-                                </button>
-                            </form>
-                        @else
-                            <p class="text-sm text-gray-400">You do not have permission to issue tickets.</p>
-                        @endcan
-                    @endif
-                </div>
+            </div>
+        @elseif ($booking->status === $statuses::Quoted)
+            {{-- Only reachable for bookings saved before ticketing became one act. --}}
+            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-brand-900">Not yet ticketed</h2>
+                <p class="mt-2 text-sm text-gray-500">
+                    This is a saved quote — nothing has been sent to the airline. Completing it charges
+                    {{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }} and issues the ticket.
+                </p>
+                @if ($booking->environment === 'live')
+                    <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <strong>This is a LIVE booking.</strong> Completing it creates a real ticket and spends real money.
+                    </div>
+                @endif
+                @if ($canRetry)
+                    <form method="POST" action="{{ route('bookings.fulfil', $booking) }}" class="mt-4"
+                          x-data="{ submitting: false }" @submit="submitting = true">
+                        @csrf
+                        <button type="submit" :disabled="submitting"
+                                @class([
+                                    'rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50',
+                                    'bg-red-600 hover:bg-red-700' => $booking->environment === 'live',
+                                    'bg-blue-600 hover:bg-blue-700' => $booking->environment !== 'live',
+                                ])>
+                            <span x-show="! submitting">Complete booking</span>
+                            <span x-show="submitting" x-cloak>Sending…</span>
+                        </button>
+                    </form>
+                @else
+                    <p class="mt-3 text-sm text-gray-400">You do not have permission to issue tickets.</p>
+                @endif
             </div>
         @endif
 

@@ -34,7 +34,11 @@ class SeatAvailabilityTest extends TestCase
 
     private function bookingUser(): User
     {
-        return $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create']);
+        // flight.issue too: completing the wizard now issues the ticket, so the wizard
+        // itself is gated on the ability to spend.
+        return $this->userWith([
+            'flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue',
+        ]);
     }
 
     private function payload(array $overrides = []): array

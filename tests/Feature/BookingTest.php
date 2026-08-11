@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\BookingStatus;
+use App\Jobs\FulfilBookingJob;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\BookingService;
@@ -10,6 +11,7 @@ use App\Services\Booking\Exceptions\BookingException;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
@@ -22,6 +24,11 @@ class BookingTest extends TestCase
     {
         parent::setUp();
         $this->seed(PermissionSeeder::class);
+
+        // Completing the wizard now queues Book → Ticket. These tests are about what
+        // gets *saved*, so the job is recorded rather than run — otherwise every one of
+        // them would also be a ticketing test, against unfaked supplier calls.
+        Queue::fake();
     }
 
     private function fixture(string $name): array
@@ -40,7 +47,7 @@ class BookingTest extends TestCase
 
     private function bookingUser(): User
     {
-        return $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create']);
+        return $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue']);
     }
 
     private function payload(array $overrides = []): array
@@ -152,7 +159,12 @@ class BookingTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_store_creates_a_quoted_booking_from_a_fresh_quote(): void
+    /**
+     * Completing the wizard is the whole transaction, so the booking lands as
+     * `processing` with Book → Ticket already queued — not as a quote waiting for
+     * someone to press a second button.
+     */
+    public function test_store_creates_a_processing_booking_and_queues_the_ticket(): void
     {
         $this->fakeQuote();
         $user = $this->bookingUser();
@@ -162,8 +174,10 @@ class BookingTest extends TestCase
             ->assertRedirect();
 
         $booking = Booking::firstOrFail();
+        Queue::assertPushed(FulfilBookingJob::class, fn ($job): bool => $job->bookingId === $booking->id);
+
         $this->assertSame($user->id, $booking->user_id);
-        $this->assertSame(BookingStatus::Quoted, $booking->status);
+        $this->assertSame(BookingStatus::Processing, $booking->status);
         $this->assertSame('test', $booking->environment);
         $this->assertTrue($booking->is_lcc);
         $this->assertEqualsWithDelta(6400, (float) $booking->total_amount, 0.001);

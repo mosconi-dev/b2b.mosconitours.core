@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BookingStatus;
 use App\Http\Requests\StoreBookingRequest;
+use App\Jobs\FulfilBookingJob;
 use App\Models\Booking;
 use App\Models\User;
 use App\Models\Wallet;
@@ -176,6 +178,10 @@ class BookingController extends Controller
                 : $this->storeError($request, 'We could not confirm this fare — it may have expired. Please search again.', 502);
         }
 
+        // Completing the wizard is the whole transaction: Book and Ticket run on the
+        // queue from here, with no hold and nothing further for the agent to press.
+        $this->queueFulfilment($booking, $request->userAgent());
+
         if ($request->expectsJson()) {
             return response()->json([
                 'redirect' => route('bookings.show', $booking),
@@ -185,71 +191,68 @@ class BookingController extends Controller
 
         return redirect()
             ->route('bookings.show', $booking)
-            ->with('status', "Booking {$booking->reference} created.");
+            ->with('status', "Booking {$booking->reference} confirmed — contacting the airline now.");
     }
 
     /**
-     * Hold the PNR for a non-LCC booking. Creates a reservation; spends nothing.
-     */
-    public function book(Request $request, Booking $booking, BookingService $bookings): RedirectResponse
-    {
-        return $this->runSupplierWrite(
-            $request,
-            $booking,
-            fn (): Booking => $bookings->book($booking, $request->userAgent()),
-            fn (Booking $b): string => "Booking {$b->reference} is held with the airline — PNR {$b->pnr}.",
-        );
-    }
-
-    /**
-     * Issue the ticket. **Spends the agency wallet and our supplier balance.**
-     */
-    public function issue(Request $request, Booking $booking, BookingService $bookings): RedirectResponse
-    {
-        return $this->runSupplierWrite(
-            $request,
-            $booking,
-            fn (): Booking => $bookings->issue($booking, $request->userAgent()),
-            fn (Booking $b): string => "Booking {$b->reference} is ticketed — PNR {$b->pnr}.",
-        );
-    }
-
-    /**
-     * Run a Book/Ticket call and turn its outcome into a message.
+     * Resume a booking the queue did not finish.
      *
-     * An **unresolved** outcome is deliberately not styled as a plain error: the
-     * booking may hold a live PNR, so the agent must be told to stop rather than
-     * invited to try again. Everything else is reported as it happened.
-     *
-     * @param  callable(): Booking  $write
-     * @param  callable(Booking): string  $success
+     * Not a hold and not a second purchase: the job it dispatches picks up where the
+     * chain stopped, so a booking already holding a PNR goes straight to Ticket. This
+     * is the recovery path for the one state that genuinely strands — a reservation
+     * made but never issued.
      */
-    private function runSupplierWrite(Request $request, Booking $booking, callable $write, callable $success): RedirectResponse
+    public function fulfil(Request $request, Booking $booking): RedirectResponse
     {
         abort_unless(
             $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
             403,
         );
 
-        try {
-            $booking = $write();
-        } catch (BookingException $e) {
-            if ($e->unresolved) {
-                report($e);
-            }
-
-            return back()->with('error', $e->getMessage());
-        } catch (TboAirException $e) {
-            report($e);
-
-            // A timeout is the dangerous one: the request may have landed. Never
-            // suggest retrying — GetBookingDetails has to settle it first.
-            return back()->with('error', $e->isTimeout()
-                ? "The airline did not respond in time. Booking {$booking->reference} may still have been created — please check it before trying again."
-                : 'The airline rejected this request. Please try again, or contact support if it persists.');
+        if (! $booking->status->isInFlight() && $booking->status !== BookingStatus::Quoted) {
+            return back()->with(
+                'error',
+                "Booking {$booking->reference} is {$booking->status->value} and cannot be completed."
+            );
         }
 
-        return back()->with('status', $success($booking));
+        $this->queueFulfilment($booking, $request->userAgent());
+
+        return back()->with('status', "Completing booking {$booking->reference} — contacting the airline now.");
+    }
+
+    /**
+     * What the booking page polls while the queue works.
+     */
+    public function status(Request $request, Booking $booking): JsonResponse
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        return response()->json([
+            'status' => $booking->status->value,
+            'label' => $booking->status->label(),
+            'inFlight' => $booking->status->isInFlight(),
+            'pnr' => $booking->pnr,
+        ]);
+    }
+
+    /**
+     * Mark the booking as being worked on, then hand it to the queue.
+     *
+     * The status moves first and in the same breath as the dispatch, so the page never
+     * shows a booking as merely `quoted` while a job is already on its way to spending
+     * money against it.
+     */
+    private function queueFulfilment(Booking $booking, ?string $userAgent): void
+    {
+        if ($booking->status === BookingStatus::Quoted) {
+            $booking->update(['status' => BookingStatus::Processing]);
+        }
+
+        FulfilBookingJob::dispatch($booking->id, $userAgent);
     }
 
     /**

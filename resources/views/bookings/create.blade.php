@@ -435,8 +435,8 @@
             <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                 <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
-            <h2 class="mt-4 text-lg font-bold text-brand-900">Booking saved</h2>
-            <p class="mt-1 text-sm text-gray-500">Reference <span class="font-mono font-semibold text-brand-900" x-text="reference"></span> — held as a priced quote. Nothing is booked with the airline yet: open the booking to issue the ticket.</p>
+            <h2 class="mt-4 text-lg font-bold text-brand-900">Booking confirmed</h2>
+            <p class="mt-1 text-sm text-gray-500">Reference <span class="font-mono font-semibold text-brand-900" x-text="reference"></span> — we are contacting the airline now. Open the booking to watch it complete; the ticket numbers appear there when it is done.</p>
             <div class="mt-6 flex items-center justify-center gap-3">
                 <a :href="showUrl" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">View booking</a>
                 <a :href="flightsUrl" class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">Book another</a>
