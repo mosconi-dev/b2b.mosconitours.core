@@ -216,6 +216,14 @@ class BookingService
 
         $this->rememberSupplierIds($booking, $authoritative);
 
+        // Ticket numbers outrank every status field. On a booking we ticketed
+        // successfully, GetBookingDetails reported Ticketed=false and a top-level
+        // Status of 5 (BookedOther) while carrying real ticket numbers — believing the
+        // status would have recorded a paid, issued booking as merely held.
+        if ($authoritative->isTicketed()) {
+            return TboBookingStatus::Successful;
+        }
+
         return $authoritative->needsReconciliation() ? null : $authoritative->status;
     }
 
@@ -235,6 +243,62 @@ class BookingService
 
         if ($attributes !== []) {
             $booking->forceFill($attributes)->save();
+        }
+
+        $this->rememberTickets($booking, $result);
+    }
+
+    /**
+     * Write each issued ticket number onto its passenger row.
+     *
+     * The ticket number is the artefact the traveller and the airline both work from,
+     * and ReleasePNR/Void will need it. TBO only returns it on GetBookingDetails, so
+     * it is stored the moment a read produces one.
+     *
+     * Matched on **name**, falling back to position. TBO's `PaxId` is its own internal
+     * identifier (`99470`, not `1`), so it says nothing about which of our rows a
+     * ticket belongs to — and attaching one passenger's ticket to another is not a
+     * mistake anyone would catch later.
+     */
+    private function rememberTickets(Booking $booking, BookingResult $result): void
+    {
+        $tickets = $result->tickets();
+
+        if ($tickets === []) {
+            return;
+        }
+
+        $pax = (array) ($booking->pax ?? []);
+        $changed = false;
+
+        $name = fn (array $row): string => strtolower(trim(
+            ($row['firstName'] ?? '').' '.($row['lastName'] ?? '')
+        ));
+
+        foreach (array_values($tickets) as $i => $ticket) {
+            $index = null;
+
+            foreach ($pax as $j => $row) {
+                if ($name($row) !== '' && $name($row) === strtolower(trim($ticket['name']))) {
+                    $index = $j;
+                    break;
+                }
+            }
+
+            // Same order we sent them in, so position is a sound fallback.
+            $index ??= $i;
+
+            if (! isset($pax[$index]) || ($pax[$index]['ticketNumber'] ?? null) === $ticket['number']) {
+                continue;
+            }
+
+            $pax[$index]['ticketNumber'] = $ticket['number'];
+            $pax[$index]['ticketIssuedAt'] = $ticket['issuedAt'];
+            $changed = true;
+        }
+
+        if ($changed) {
+            $booking->forceFill(['pax' => $pax])->save();
         }
     }
 

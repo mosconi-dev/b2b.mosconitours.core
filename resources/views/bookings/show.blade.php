@@ -39,6 +39,12 @@
                     <dt class="text-gray-500">PNR</dt>
                     <dd class="font-medium text-brand-900">{{ $booking->pnr ?? '—' }}</dd>
                 </div>
+                @if (filled($booking->booking_id))
+                    <div>
+                        <dt class="text-gray-500">Airline booking ID</dt>
+                        <dd class="font-medium text-brand-900">{{ $booking->booking_id }}</dd>
+                    </div>
+                @endif
                 <div>
                     <dt class="text-gray-500">Created</dt>
                     <dd class="font-medium text-brand-900">{{ $booking->created_at?->format('M j, Y H:i') }}</dd>
@@ -121,6 +127,72 @@
             </div>
         @endif
 
+        {{-- Itinerary. The booking page showed no flight at all before this — every
+             field here already sat in the stored quote. --}}
+        @php $trips = data_get($booking->quote, 'trips', []); @endphp
+        @if (! empty($trips))
+            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-brand-900">Itinerary</h2>
+
+                @foreach ($trips as $trip)
+                    <div class="mt-4 @if(! $loop->first) border-t border-gray-100 pt-4 @endif">
+                        @if (count($trips) > 1)
+                            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                {{ $trip['direction'] === 'inbound' ? 'Return' : 'Outbound' }}
+                            </p>
+                        @endif
+
+                        @foreach ($trip['segments'] ?? [] as $seg)
+                            @php
+                                $dep = data_get($seg, 'origin.time');
+                                $arr = data_get($seg, 'destination.time');
+                                $fmt = fn (?string $t) => $t ? \Illuminate\Support\Carbon::parse($t)->format('M j, g:i A') : '—';
+                            @endphp
+                            <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium text-brand-900">
+                                        {{ data_get($seg, 'origin.code') }} → {{ data_get($seg, 'destination.code') }}
+                                        <span class="ml-1 font-normal text-gray-400">{{ $seg['flightNumber'] ?? '' }}</span>
+                                    </p>
+                                    <p class="text-xs text-gray-500">
+                                        {{ $fmt($dep) }} — {{ $fmt($arr) }}
+                                        @if (! empty($seg['duration'])) · {{ intdiv((int) $seg['duration'], 60) }}h {{ (int) $seg['duration'] % 60 }}m @endif
+                                    </p>
+                                </div>
+                                <p class="text-xs text-gray-500">
+                                    {{ $seg['airlineName'] ?? '' }}
+                                    @if (! empty($seg['cabin'])) · {{ $seg['cabin'] }} @endif
+                                    @if (! empty($seg['baggage'])) · {{ $seg['baggage'] }} checked @endif
+                                </p>
+                            </div>
+
+                            @if (! empty($seg['layoverAfter']))
+                                <p class="border-l-2 border-gray-100 py-1 pl-3 text-xs text-gray-400">
+                                    {{ intdiv((int) $seg['layoverAfter'], 60) }}h {{ (int) $seg['layoverAfter'] % 60 }}m layover
+                                </p>
+                            @endif
+                        @endforeach
+                    </div>
+                @endforeach
+
+                @php $rules = data_get($booking->quote, 'miniFareRules', []); @endphp
+                @if (! empty($rules))
+                    <details class="mt-4 border-t border-gray-100 pt-3">
+                        <summary class="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700">Fare conditions</summary>
+                        <div class="mt-2 space-y-1">
+                            @foreach ($rules as $rule)
+                                <p class="text-xs text-gray-500">
+                                    <span class="font-medium text-gray-700">{{ $rule['type'] ?? '' }}</span>
+                                    {{ $rule['details'] ?? '' }}
+                                    @if (! empty($rule['journeyPoints'])) <span class="text-gray-400">({{ $rule['journeyPoints'] }})</span> @endif
+                                </p>
+                            @endforeach
+                        </div>
+                    </details>
+                @endif
+            </div>
+        @endif
+
         {{-- Passengers --}}
         <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 class="text-base font-semibold text-brand-900">Passengers</h2>
@@ -132,12 +204,26 @@
                             @php
                                 $meta = [$p['type'] ?? 'Passenger'];
                                 if (! empty($p['dateOfBirth'])) { $meta[] = $p['dateOfBirth']; }
-                                if (! empty($p['passportNo'])) { $meta[] = 'Passport '.$p['passportNo']; }
+                                if (! empty($p['documentNumber'])) {
+                                    $meta[] = (data_get($booking->quote, 'isDomestic') ? 'ID ' : 'Passport ').$p['documentNumber'];
+                                }
                                 if (! empty($p['ssr']['baggage'])) { $meta[] = 'Baggage '.$p['ssr']['baggage']['label']; }
                                 if (! empty($p['ssr']['meal'])) { $meta[] = $p['ssr']['meal']['label']; }
                             @endphp
                             <p class="text-xs text-gray-500">{{ implode(' · ', $meta) }}</p>
                         </div>
+
+                        @if (! empty($p['ticketNumber']))
+                            <div class="shrink-0 text-right">
+                                <p class="font-mono text-sm font-medium text-emerald-700">{{ $p['ticketNumber'] }}</p>
+                                <p class="text-[11px] text-gray-400">
+                                    Ticket
+                                    @if (! empty($p['ticketIssuedAt']))
+                                        · {{ \Illuminate\Support\Carbon::parse($p['ticketIssuedAt'])->format('M j, Y') }}
+                                    @endif
+                                </p>
+                            </div>
+                        @endif
                     </div>
                 @endforeach
             </div>
@@ -153,8 +239,18 @@
                 <div class="mt-4 divide-y divide-gray-100 text-sm">
                     @foreach ($breakdown as $b)
                         <div class="flex items-center justify-between py-2">
-                            <span class="text-gray-600">{{ $b['count'] ?? 1 }} × {{ $b['passengerType'] ?? 'Passenger' }}</span>
-                            <span class="text-brand-900">{{ $booking->currency }} {{ number_format((((float) ($b['baseFare'] ?? 0)) + ((float) ($b['tax'] ?? 0))) * ((int) ($b['count'] ?? 1)), 2) }}</span>
+                            @php
+                                // TBO's FareBreakdown entry already covers every passenger of
+                                // that type — BaseFare and Tax are the combined figures, not
+                                // per-head. Multiplying by count again doubled the line.
+                                $line = ((float) ($b['baseFare'] ?? 0)) + ((float) ($b['tax'] ?? 0));
+                                $count = max((int) ($b['count'] ?? 1), 1);
+                            @endphp
+                            <span class="text-gray-600">
+                                {{ $count }} × {{ $b['passengerType'] ?? 'Passenger' }}
+                                <span class="text-gray-400">· {{ $booking->currency }} {{ number_format($line / $count, 2) }} each</span>
+                            </span>
+                            <span class="text-brand-900">{{ $booking->currency }} {{ number_format($line, 2) }}</span>
                         </div>
                     @endforeach
                 </div>
@@ -171,8 +267,24 @@
                 </div>
                 <div>
                     <dt class="text-gray-500">Phone</dt>
-                    <dd class="font-medium text-brand-900">{{ data_get($booking->contact, 'phone', '—') }}</dd>
+                    <dd class="font-medium text-brand-900">
+                        @if (filled(data_get($booking->contact, 'mobileCountryCode')))+{{ data_get($booking->contact, 'mobileCountryCode') }} @endif
+                        {{ data_get($booking->contact, 'phone', '—') }}
+                    </dd>
                 </div>
+                @if (filled(data_get($booking->contact, 'addressLine1')))
+                    <div class="col-span-2">
+                        <dt class="text-gray-500">Billing address</dt>
+                        <dd class="font-medium text-brand-900">
+                            {{ collect([
+                                data_get($booking->contact, 'addressLine1'),
+                                data_get($booking->contact, 'addressLine2'),
+                                data_get($booking->contact, 'city'),
+                                data_get($booking->contact, 'countryCode'),
+                            ])->filter()->implode(', ') }}
+                        </dd>
+                    </div>
+                @endif
             </dl>
         </div>
 

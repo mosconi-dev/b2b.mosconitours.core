@@ -340,6 +340,68 @@ class BookAndIssueTest extends TestCase
         $this->assertSame(2, $attempt, 'Book should have been retried exactly once');
     }
 
+    /**
+     * On a booking we ticketed for real, GetBookingDetails reported `Ticketed: false`
+     * and a top-level Status of 5 (BookedOther) while carrying real ticket numbers.
+     * Believing the status would record a paid, issued booking as merely held.
+     */
+    public function test_ticket_numbers_outrank_a_contradictory_status(): void
+    {
+        $ticketed = [
+            'Status' => 5, // BookedOther — what TBO really said after a successful issue
+            'IsSuccess' => true,
+            'Itinerary' => [
+                'PNR' => 'QWER12', 'BookingId' => 75133, 'Ticketed' => false,
+                'Passenger' => [
+                    ['PaxId' => 99470, 'FirstName' => 'Juan', 'LastName' => 'Cruz',
+                        'Ticket' => ['TicketNumber' => '5014484654', 'Status' => 'OK', 'IssueDate' => '2026-08-10T08:54:40']],
+                ],
+            ],
+        ];
+
+        $this->fake([
+            '*Booking/Ticket*' => Http::response(['PNR' => 'QWER12', 'Status' => 8], 200), // ambiguous
+            '*GetBookingDetails*' => Http::response($ticketed, 200),
+        ]);
+
+        $booking = $this->service()->issue($this->booking());
+
+        $this->assertSame(BookingStatus::Ticketed, $booking->status);
+        $this->assertSame('5014484654', $booking->fresh()->pax[0]['ticketNumber']);
+    }
+
+    /**
+     * TBO's PaxId is its own internal identifier (99470, not 1), so tickets are
+     * matched by name — attaching one passenger's ticket to another would not be
+     * caught later.
+     */
+    public function test_tickets_attach_to_the_right_passenger(): void
+    {
+        $this->fake([
+            '*Booking/Ticket*' => Http::response(['PNR' => 'QWER12', 'Status' => 8], 200),
+            '*GetBookingDetails*' => Http::response([
+                'Status' => 1, 'IsSuccess' => true,
+                'Itinerary' => ['PNR' => 'QWER12', 'Passenger' => [
+                    // Deliberately the reverse of our stored order.
+                    ['PaxId' => 99471, 'FirstName' => 'Maria', 'LastName' => 'Cruz',
+                        'Ticket' => ['TicketNumber' => 'SECOND', 'Status' => 'OK']],
+                    ['PaxId' => 99470, 'FirstName' => 'Juan', 'LastName' => 'Cruz',
+                        'Ticket' => ['TicketNumber' => 'FIRST', 'Status' => 'OK']],
+                ]],
+            ], 200),
+        ]);
+
+        $booking = $this->booking(['pax' => [
+            ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'isLeadPax' => true, 'countryCode' => 'PH'],
+            ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => false, 'countryCode' => 'PH'],
+        ]]);
+
+        $pax = $this->service()->issue($booking)->fresh()->pax;
+
+        $this->assertSame('FIRST', $pax[0]['ticketNumber'], 'Juan keeps his own ticket');
+        $this->assertSame('SECOND', $pax[1]['ticketNumber']);
+    }
+
     // ---- Guards -----------------------------------------------------------
 
     public function test_it_refuses_to_ticket_a_booking_from_another_environment(): void

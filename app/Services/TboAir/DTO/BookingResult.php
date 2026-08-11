@@ -65,6 +65,52 @@ class BookingResult implements Arrayable
     }
 
     /**
+     * The issued ticket numbers, one entry per passenger that has one.
+     *
+     * **This is the only trustworthy evidence that a ticket exists.** On a booking we
+     * ticketed successfully, GetBookingDetails still reported `Ticketed: false`, a
+     * top-level `Status` of 5 (BookedOther) and null in every other status field —
+     * while carrying real ticket numbers on each passenger. Believe these over any
+     * status flag.
+     *
+     * @return array<int, array{paxId: int|null, name: string, number: string, issuedAt: ?string, status: ?string}>
+     */
+    public function tickets(): array
+    {
+        $passengers = data_get($this->raw, 'Itinerary.Passenger', data_get($this->raw, 'FlightItinerary.Passenger', []));
+
+        if (! is_array($passengers)) {
+            return [];
+        }
+
+        $tickets = [];
+
+        foreach ($passengers as $passenger) {
+            $number = self::text(data_get($passenger, 'Ticket.TicketNumber'));
+
+            if ($number === null) {
+                continue;
+            }
+
+            $tickets[] = [
+                'paxId' => data_get($passenger, 'PaxId'),
+                'name' => trim(data_get($passenger, 'FirstName', '').' '.data_get($passenger, 'LastName', '')),
+                'number' => $number,
+                'issuedAt' => data_get($passenger, 'Ticket.IssueDate'),
+                'status' => data_get($passenger, 'Ticket.Status'),
+            ];
+        }
+
+        return $tickets;
+    }
+
+    /** Whether TBO has issued at least one ticket against this booking. */
+    public function isTicketed(): bool
+    {
+        return $this->tickets() !== [];
+    }
+
+    /**
      * Whether this outcome must be resolved by reading GetBookingDetails.
      *
      * True for every ambiguous status **and** for a missing one. It is also true when
