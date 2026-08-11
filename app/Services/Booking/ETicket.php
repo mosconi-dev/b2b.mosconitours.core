@@ -71,9 +71,33 @@ class ETicket
     }
 
     /**
+     * Who issued this document, and how the traveller reaches them.
+     *
+     * The agency is the customer's counterparty — when a flight moves, they call the
+     * agency, not us and not the airline. So the details are resolved rather than
+     * printed blank: an agency that has not uploaded a logo still gets a branded
+     * document, and one that has not filled in a contact email falls back to the agent
+     * who actually made the booking.
+     *
+     * @return array{name: string, logo: string, email: ?string, phone: ?string, address: ?string}
+     */
+    public function issuer(): array
+    {
+        $agency = $this->booking->agency;
+
+        return [
+            'name' => $agency?->name ?: config('app.name'),
+            'logo' => $agency?->logoUrl() ?: asset('favicon.png'),
+            'email' => $agency?->contact_email ?: $this->booking->user?->email,
+            'phone' => $agency?->contact_phone ?: null,
+            'address' => $agency?->address ?: null,
+        ];
+    }
+
+    /**
      * Flights grouped the way the passenger reads them: outbound, then return.
      *
-     * @return array<int, array{label: ?string, route: string, segments: array<int, array<string, mixed>>}>
+     * @return array<int, array{label: ?string, route: string, date: ?Carbon, segments: array<int, array<string, mixed>>}>
      */
     public function trips(): array
     {
@@ -103,6 +127,8 @@ class ETicket
                     $segments[count($segments) - 1]['destination']['city'],
                     $segments[count($segments) - 1]['destination']['code'],
                 ),
+                'date' => $segments[0]['origin']['at'],
+                'stops' => count($segments) - 1,
                 'segments' => $segments,
             ];
         }

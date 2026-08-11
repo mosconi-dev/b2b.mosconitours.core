@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\BookingStatus;
+use App\Models\Agency;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\ETicket;
@@ -224,6 +225,54 @@ class BookingETicketTest extends TestCase
             ->get(route('bookings.eticket', $this->booking($user, ['quote_raw' => $raw])))
             ->assertOk()
             ->assertSee('Operated by 2P');
+    }
+
+    /**
+     * The agency's own branding, so the traveller knows who to call.
+     *
+     * They booked with the agency, not with us and not with the airline — when a flight
+     * moves, the agency is who they ring.
+     */
+    public function test_it_carries_the_agencys_branding_and_contact_details(): void
+    {
+        $agency = Agency::factory()->create([
+            'name' => 'Mosconi Tours',
+            'logo_path' => 'agency-logos/mosconi.png',
+            'contact_email' => 'support@mosconitours.test',
+            'contact_phone' => '+63 2 8888 1234',
+        ]);
+        $user = $this->agencyUserWith($agency, ['booking.view']);
+
+        $this->actingAs($user)
+            ->get(route('bookings.eticket', $this->booking($user)))
+            ->assertOk()
+            ->assertSee('Mosconi Tours')
+            ->assertSee('agency-logos/mosconi.png')       // their logo, not ours
+            ->assertSee('support@mosconitours.test')
+            ->assertSee('+63 2 8888 1234')
+            ->assertSee('Need help with this booking?');
+    }
+
+    /**
+     * An agency that has not uploaded a logo or filled in a contact still gets a usable
+     * document: our mark stands in, and the agent who made the booking is the contact.
+     */
+    public function test_it_falls_back_to_our_logo_and_the_booking_agent(): void
+    {
+        $agency = Agency::factory()->create([
+            'name' => 'Sunrise Travel',
+            'logo_path' => null,
+            'contact_email' => null,
+            'contact_phone' => null,
+        ]);
+        $user = $this->agencyUserWith($agency, ['booking.view']);
+
+        $this->actingAs($user)
+            ->get(route('bookings.eticket', $this->booking($user)))
+            ->assertOk()
+            ->assertSee('Sunrise Travel')          // still their name
+            ->assertSee('favicon.png')             // our mark stands in
+            ->assertSee($user->email);             // the agent who booked it
     }
 
     /** A quote has no reservation behind it, so there is nothing to print. */
