@@ -460,36 +460,52 @@
                         <p class="mt-0.5 text-xs text-gray-500" x-text="addOnPickerSubtitle"></p>
                     </header>
 
-                    {{-- One radio group per leg. TBO prices these per segment and
-                         repeats the same option across legs, so a single list forced a
-                         choice for one leg and silently left the rest empty. --}}
-                    <div class="min-h-0 flex-1 overflow-y-auto p-3">
-                        <template x-for="g in addOnPickerGroups" :key="g.route">
-                            <div class="pb-2">
-                                <p class="px-1 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400" x-text="g.route"></p>
-                                <div class="space-y-1.5" role="radiogroup" :aria-label="g.route">
-                                    <button type="button" role="radio" :aria-checked="! addOnPicker.draft[g.key]"
-                                            @click="addOnPicker.draft[g.key] = ''"
-                                            :class="addOnRowClass(! addOnPicker.draft[g.key])">
-                                        <span :class="addOnDotClass(! addOnPicker.draft[g.key])"></span>
-                                        <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="addOnPickerNoneTitle"></span>
-                                        <span class="shrink-0 text-sm text-gray-400">&mdash;</span>
-                                    </button>
-
-                                    <template x-for="o in g.options" :key="o.key">
-                                        <button type="button" role="radio" :aria-checked="addOnPicker.draft[g.key] === o.key"
-                                                @click="addOnPicker.draft[g.key] = o.key"
-                                                :class="addOnRowClass(addOnPicker.draft[g.key] === o.key)">
-                                            <span :class="addOnDotClass(addOnPicker.draft[g.key] === o.key)"></span>
-                                            <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="o.label"></span>
-                                            <span class="shrink-0 text-sm font-semibold"
-                                                  :class="Number(o.price) > 0 ? 'text-brand-900' : 'text-emerald-600'"
-                                                  x-text="addOnPriceLabel(o.price)"></span>
-                                        </button>
-                                    </template>
-                                </div>
-                            </div>
+                    {{-- A tab per leg. TBO prices these per leg and repeats the same
+                         option across them, so one flat list forced a choice for one
+                         leg and silently left the rest empty. --}}
+                    {{-- shrink-0: without it the modal's flex column squeezes this bar
+                         and clips the second line off every tab. --}}
+                    <div x-show="addOnPickerTabs.length > 1" class="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-100 px-3 pt-2">
+                        <template x-for="tab in addOnPickerTabs" :key="tab.key">
+                            <button type="button" @click="addOnPicker.activeLeg = tab.key"
+                                    :aria-selected="addOnPicker.activeLeg === tab.key" role="tab"
+                                    :class="'shrink-0 border-b-2 px-3 pb-2 pt-1 text-left transition ' + (
+                                        addOnPicker.activeLeg === tab.key
+                                            ? 'border-blue-600 text-brand-900'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700')">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="text-xs font-semibold" x-text="tab.route"></span>
+                                    {{-- A filled dot means this leg already has something on it. --}}
+                                    <span x-show="tab.chosen" class="h-1.5 w-1.5 rounded-full bg-blue-600"></span>
+                                </span>
+                                <span x-show="tab.label" class="block text-[10px] text-gray-400" x-text="tab.label"></span>
+                            </button>
                         </template>
+                    </div>
+
+                    <div class="min-h-0 flex-1 overflow-y-auto p-3">
+                        <div class="space-y-1.5" role="radiogroup"
+                             :aria-label="addOnPickerActiveLeg ? addOnPickerActiveLeg.route : addOnPickerTitle">
+                            <button type="button" role="radio" :aria-checked="! addOnPicker.draft[addOnPicker.activeLeg]"
+                                    @click="addOnPicker.draft[addOnPicker.activeLeg] = ''"
+                                    :class="addOnRowClass(! addOnPicker.draft[addOnPicker.activeLeg])">
+                                <span :class="addOnDotClass(! addOnPicker.draft[addOnPicker.activeLeg])"></span>
+                                <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="addOnPickerNoneTitle"></span>
+                                <span class="shrink-0 text-sm text-gray-400">&mdash;</span>
+                            </button>
+
+                            <template x-for="o in addOnPickerActiveOptions" :key="o.key">
+                                <button type="button" role="radio" :aria-checked="addOnPicker.draft[addOnPicker.activeLeg] === o.key"
+                                        @click="addOnPicker.draft[addOnPicker.activeLeg] = o.key"
+                                        :class="addOnRowClass(addOnPicker.draft[addOnPicker.activeLeg] === o.key)">
+                                    <span :class="addOnDotClass(addOnPicker.draft[addOnPicker.activeLeg] === o.key)"></span>
+                                    <span class="min-w-0 flex-1 text-sm font-medium text-brand-900" x-text="o.label"></span>
+                                    <span class="shrink-0 text-sm font-semibold"
+                                          :class="Number(o.price) > 0 ? 'text-brand-900' : 'text-emerald-600'"
+                                          x-text="addOnPriceLabel(o.price)"></span>
+                                </button>
+                            </template>
+                        </div>
                     </div>
 
                     <footer class="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-3">

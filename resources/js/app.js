@@ -1117,14 +1117,15 @@ Alpine.data('bookingWizard', (config = {}) => ({
 
     openAddOnPicker(index, kind) {
         const draft = {};
+        const legs = this.addOnLegs(kind);
 
-        this.addOnLegs(kind).forEach((leg) => { draft[leg.key] = ''; });
+        legs.forEach((leg) => { draft[leg.key] = ''; });
 
         this.addOnChoices(this.passengers[index], kind).forEach((o) => {
             draft[`${o.origin}|${o.destination}`] = o.key;
         });
 
-        this.addOnPicker = { index, kind, draft };
+        this.addOnPicker = { index, kind, draft, activeLeg: legs[0]?.key ?? null };
     },
 
     cancelAddOnPicker() {
@@ -1142,7 +1143,13 @@ Alpine.data('bookingWizard', (config = {}) => ({
         this.addOnPicker = null;
     },
 
-    /** The legs this kind of add-on is offered on, in the order TBO listed them. */
+    /**
+     * The legs this kind of add-on is offered on, in the order TBO listed them.
+     *
+     * Per kind, never shared: on a return with a layover TBO sold meals per flight
+     * (DEL→DXB, DXB→BOM, BOM→DEL) but baggage per direction (DEL→DXB, DXB→DEL) —
+     * a checked bag travels through the connection, a meal does not.
+     */
     addOnLegs(kind) {
         const list = (kind === 'baggage' ? this.ssr?.baggage : this.ssr?.meals) ?? [];
         const legs = [];
@@ -1150,11 +1157,55 @@ Alpine.data('bookingWizard', (config = {}) => ({
         list.forEach((o) => {
             const key = `${o.origin}|${o.destination}`;
             if (! legs.some((l) => l.key === key)) {
-                legs.push({ key, origin: o.origin, destination: o.destination });
+                legs.push({
+                    key,
+                    origin: o.origin,
+                    destination: o.destination,
+                    label: this.legLabel(o.origin, o.destination),
+                });
             }
         });
 
         return legs;
+    },
+
+    /**
+     * Name a leg against the itinerary, so a connection is obvious.
+     *
+     * Returns null when nothing matches, which is not a bug: TBO's baggage row for a
+     * connecting return is `DXB→DEL`, a route that appears in no single segment of
+     * the flight. The route itself is then the only honest label.
+     */
+    legLabel(origin, destination) {
+        const trips = this.quote?.trips ?? [];
+
+        for (const trip of trips) {
+            const segments = trip.segments ?? [];
+            if (! segments.length) continue;
+
+            const direction = trips.length > 1
+                ? (trip.direction === 'inbound' ? 'Return' : 'Outbound')
+                : null;
+
+            const at = segments.findIndex(
+                (s) => s.origin?.code === origin && s.destination?.code === destination,
+            );
+
+            if (at >= 0) {
+                if (segments.length === 1) return direction;
+                return direction
+                    ? `${direction} · flight ${at + 1} of ${segments.length}`
+                    : `Flight ${at + 1} of ${segments.length}`;
+            }
+
+            // The whole direction end to end — how baggage is sold through a connection.
+            if (segments[0].origin?.code === origin
+                && segments[segments.length - 1].destination?.code === destination) {
+                return direction ? `${direction} · all flights` : 'All flights';
+            }
+        }
+
+        return null;
     },
 
     get addOnPickerOptions() {
@@ -1163,24 +1214,34 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     /**
-     * The picker's options grouped by leg.
+     * The picker's legs, as tabs.
      *
-     * TBO sends these per segment, so a Spicejet DEL–DXB return came back as 41 meals
-     * — the same dishes repeated for DEL→DXB, DXB→BOM and BOM→DEL at different prices.
-     * Ungrouped, an agent sees "Veg Sandwich" three times and cannot tell them apart.
+     * TBO sends options per leg, so a Spicejet DEL–DXB return came back as 41 meals —
+     * the same dishes repeated across three flights at different prices. One scrolling
+     * list showed "Veg Sandwich" three times with nothing to tell them apart; a tab
+     * per leg makes the flight the agent is choosing for explicit.
      */
-    get addOnPickerGroups() {
-        const groups = [];
+    get addOnPickerTabs() {
+        if (! this.addOnPicker) return [];
 
-        this.addOnPickerOptions.forEach((o) => {
-            const key = `${o.origin}|${o.destination}`;
-            const found = groups.find((g) => g.key === key);
-            found
-                ? found.options.push(o)
-                : groups.push({ key, route: `${o.origin} → ${o.destination}`, options: [o] });
-        });
+        return this.addOnLegs(this.addOnPicker.kind).map((leg) => ({
+            ...leg,
+            route: `${leg.origin} → ${leg.destination}`,
+            chosen: !! this.addOnPicker.draft[leg.key],
+        }));
+    },
 
-        return groups;
+    /** Options for the tab currently open. */
+    get addOnPickerActiveOptions() {
+        if (! this.addOnPicker?.activeLeg) return [];
+
+        return this.addOnPickerOptions.filter(
+            (o) => `${o.origin}|${o.destination}` === this.addOnPicker.activeLeg,
+        );
+    },
+
+    get addOnPickerActiveLeg() {
+        return this.addOnPickerTabs.find((t) => t.key === this.addOnPicker?.activeLeg) ?? null;
     },
 
     /** Most of these are free; "PHP 0.00" reads like a bug next to a real price. */

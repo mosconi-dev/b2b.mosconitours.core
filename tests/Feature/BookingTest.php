@@ -147,6 +147,11 @@ class BookingTest extends TestCase
             ->assertSee('cancelAddOnPicker(', escape: false)   // Cancel discards it
             ->assertSee('role="dialog"', escape: false)
             ->assertSee('role="radiogroup"', escape: false)
+            // One tab per leg: TBO prices add-ons per leg, and on a connection it
+            // sells meals per flight but baggage for the whole direction.
+            ->assertSee('role="tab"', escape: false)
+            ->assertSee('addOnPickerTabs', escape: false)
+            ->assertSee('addOnPickerActiveOptions', escape: false)
             ->assertDontSee('<option value="">No extra baggage', false); // the old select is gone
     }
 
