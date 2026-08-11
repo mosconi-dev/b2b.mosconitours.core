@@ -233,7 +233,7 @@
 
                     {{-- Per-guest details --}}
                     <template x-for="(p, i) in passengers" :key="i">
-                        <div x-show="guestTab === i" class="space-y-4">
+                        <div x-show="guestTab === i" class="space-y-5">
                             <div>
                                 <h2 class="text-base font-semibold text-brand-900">Guest <span x-text="i + 1"></span> <span class="font-normal text-gray-400">· <span x-text="p.type"></span></span></h2>
                                 <p x-show="documentRequired" x-cloak class="mt-0.5 text-xs text-blue-700"
@@ -251,70 +251,91 @@
                                 </span>
                             </label>
 
-                            <div class="grid grid-cols-2 gap-4 sm:grid-cols-12">
-                                <div class="col-span-2 sm:col-span-2">
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Title</label>
-                                    <select x-model="p.title" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500">
-                                        {{-- TBO accepts exactly these three (Mr=0, Miss=1, Mrs=2). --}}
-                                        <option>Mr</option><option>Mrs</option><option>Miss</option>
-                                    </select>
-                                </div>
-                                <div class="col-span-1 sm:col-span-5">
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">First name</label>
-                                    <input type="text" x-model="p.firstName" placeholder="e.g. Juan" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
-                                <div class="col-span-1 sm:col-span-5">
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Last name</label>
-                                    <input type="text" x-model="p.lastName" placeholder="e.g. Dela Cruz" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
-                            </div>
+                            {{-- ---- Who they are ------------------------------------
+                                 Everything that describes the person, including
+                                 nationality: it is a fact about the guest, not about
+                                 the document they happen to be carrying. --}}
+                            <section class="space-y-4">
+                                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Guest information</h3>
 
-                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Gender</label>
-                                    <select x-model="p.gender" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
-                                            :class="p.gender ? 'text-gray-900' : 'text-gray-400'">
-                                        <option value="" class="text-gray-400">Select</option><option value="M" class="text-gray-900">Male</option><option value="F" class="text-gray-900">Female</option>
-                                    </select>
+                                <div class="grid grid-cols-2 gap-4 sm:grid-cols-12">
+                                    <div class="col-span-2 sm:col-span-2">
+                                        <label class="mb-1 block text-xs font-medium text-gray-600">Title</label>
+                                        <select x-model="p.title" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500">
+                                            {{-- TBO accepts exactly these three (Mr=0, Miss=1, Mrs=2). --}}
+                                            <option>Mr</option><option>Mrs</option><option>Miss</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-span-1 sm:col-span-5">
+                                        <label class="mb-1 block text-xs font-medium text-gray-600">First name</label>
+                                        <input type="text" x-model="p.firstName" placeholder="e.g. Juan" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
+                                    <div class="col-span-1 sm:col-span-5">
+                                        <label class="mb-1 block text-xs font-medium text-gray-600">Last name</label>
+                                        <input type="text" x-model="p.lastName" placeholder="e.g. Dela Cruz" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
                                 </div>
-                                {{-- Required for every passenger: TBO rejects a blank one at
-                                     Ticket, after the booking has been paid for. --}}
-                                @include('bookings._date-select', [
-                                    'field' => 'dateOfBirth',
-                                    'label' => 'Date of birth',
-                                    'required' => true,
-                                ])
-                            </div>
 
-                            {{-- The identity document. Which one depends on the route, not on
-                                 TBO's flags: a passport abroad, any government ID at home. --}}
-                            <div x-show="documentRequired" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600" x-text="quote.isDomestic ? 'ID number' : 'Passport no.'"></label>
-                                    <input type="text" x-model="p.documentNumber" :placeholder="quote.isDomestic ? 'e.g. UMID / driver&apos;s licence' : 'e.g. P1234567A'"
-                                           class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                {{-- Date of birth takes three controls of its own, so it
+                                     gets the wider half and the two short fields share
+                                     the other. --}}
+                                <div class="grid grid-cols-1 gap-4 sm:grid-cols-12">
+                                    <div class="sm:col-span-3">
+                                        <label class="mb-1 block text-xs font-medium text-gray-600">Gender</label>
+                                        <select x-model="p.gender" class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+                                                :class="p.gender ? 'text-gray-900' : 'text-gray-400'">
+                                            <option value="" class="text-gray-400">Select</option><option value="M" class="text-gray-900">Male</option><option value="F" class="text-gray-900">Female</option>
+                                        </select>
+                                    </div>
+                                    <div class="sm:col-span-3">
+                                        <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>
+                                        <input type="text" x-model="p.nationality" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
+                                    {{-- Required for every passenger: TBO rejects a blank one at
+                                         Ticket, after the booking has been paid for. --}}
+                                    <div class="sm:col-span-6">
+                                        @include('bookings._date-select', [
+                                            'field' => 'dateOfBirth',
+                                            'label' => 'Date of birth',
+                                            'required' => true,
+                                        ])
+                                    </div>
                                 </div>
-                                @include('bookings._date-select', [
-                                    'field' => 'documentExpiry',
-                                    'labelExpr' => "quote.isDomestic ? 'ID expiry' : 'Passport expiry'",
-                                ])
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Nationality</label>
-                                    <input type="text" x-model="p.nationality" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
-                            </div>
+                            </section>
 
-                            {{-- Only a passport carries these; a domestic ID does not. --}}
-                            <div x-show="documentRequired && ! quote.isDomestic" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-gray-600">Passport issuing country</label>
-                                    <input type="text" x-model="p.documentIssueCountry" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
+                            {{-- ---- What they travel on -----------------------------
+                                 A dashed rule, not a solid one: this is a change of
+                                 subject within one guest, not the end of the guest. --}}
+                            <section x-show="documentRequired" x-cloak class="space-y-4 border-t border-dashed border-gray-300 pt-5">
+                                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400"
+                                    x-text="quote.isDomestic ? 'Government ID' : 'Passport'"></h3>
+
+                                {{-- Which document depends on the route, not on TBO's
+                                     flags: a passport abroad, any government ID at home. --}}
+                                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label class="mb-1 block text-xs font-medium text-gray-600" x-text="quote.isDomestic ? 'ID number' : 'Passport no.'"></label>
+                                        <input type="text" x-model="p.documentNumber" :placeholder="quote.isDomestic ? 'e.g. UMID / driver&apos;s licence' : 'e.g. P1234567A'"
+                                               class="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
+                                    @include('bookings._date-select', [
+                                        'field' => 'documentExpiry',
+                                        'labelExpr' => "quote.isDomestic ? 'ID expiry' : 'Passport expiry'",
+                                    ])
                                 </div>
-                                @include('bookings._date-select', [
-                                    'field' => 'documentIssueDate',
-                                    'label' => 'Passport issue date',
-                                ])
-                            </div>
+
+                                {{-- Only a passport carries these; a domestic ID does not. --}}
+                                <div x-show="! quote.isDomestic" x-cloak class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label class="mb-1 block text-xs font-medium text-gray-600">Issuing country</label>
+                                        <input type="text" x-model="p.documentIssueCountry" maxlength="2" placeholder="e.g. PH" class="w-full rounded-lg border-gray-300 text-sm uppercase placeholder:normal-case focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
+                                    @include('bookings._date-select', [
+                                        'field' => 'documentIssueDate',
+                                        'label' => 'Issue date',
+                                    ])
+                                </div>
+                            </section>
                         </div>
                     </template>
 
