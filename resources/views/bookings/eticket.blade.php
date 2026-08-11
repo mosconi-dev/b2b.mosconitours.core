@@ -2,9 +2,14 @@
     The printable e-ticket.
 
     Laid out the way an airline lays one out — a branded header, the reference numbers
-    in a band, then one card per flight showing the route as times and airport codes
-    rather than as rows of a grid. The traveller reads the times first, so the times are
-    the largest thing on the page.
+    in a row of their own, then one card per flight showing the route as times and
+    airport codes rather than as rows of a grid. The traveller reads the times first, so
+    the times are the largest thing on the page.
+
+    Ink is deliberate: hairlines and type weight carry the structure, not filled panels.
+    This is a document people print, often on an office laser, and solid colour bands
+    across the top of every copy are the first thing to look cheap and the first thing
+    to drink toner.
 
     Standalone: no app layout, no Tailwind, no JavaScript. Structure stays table-based
     and the CSS stays close to 2.1 (no flex, no grid, no custom properties) so the same
@@ -54,16 +59,16 @@
         }
         .doc-sub { font-size: 10px; color: #9ca3af; letter-spacing: .04em; }
 
-        .accent-rule { height: 3px; background: #ffd60a; margin: 14px 0 0; font-size: 0; }
+        .hairline { height: 1px; background: #e5e7eb; margin: 14px 0 0; font-size: 0; }
 
-        /* ---- reference band ---- */
-        .band { background: #13144a; color: #ffffff; padding: 14px 18px; }
+        /* ---- reference row ---- */
+        .band { padding: 14px 0 16px; border-bottom: 1px solid #e5e7eb; }
         .band .label {
             font-size: 8.5px; letter-spacing: .14em; text-transform: uppercase;
-            color: #8d97e0; padding-bottom: 3px;
+            color: #9ca3af; padding-bottom: 3px;
         }
-        .band .value { font-size: 15px; font-weight: bold; letter-spacing: .04em; }
-        .band .value-sm { font-size: 12px; font-weight: bold; }
+        .band .value { font-size: 15px; font-weight: bold; letter-spacing: .04em; color: #13144a; }
+        .band .value-sm { font-size: 12px; font-weight: bold; color: #1f2937; }
 
         /* ---- section headings ---- */
         .section {
@@ -225,7 +230,7 @@
         </tr>
     </table>
 
-    <div class="accent-rule"></div>
+    <div class="hairline"></div>
 
     {{-- The numbers an airline desk asks for, in the order they ask for them. --}}
     <table class="band">
