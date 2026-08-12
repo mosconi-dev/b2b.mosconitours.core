@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\TboAir;
 
+use App\Enums\Supplier;
 use App\Services\Settings\Settings;
 use App\Services\TboAir\FlightResultTransformer;
 use App\Services\TboAir\TboAirClient;
 use App\Services\TboAir\TboAirConfig;
 use App\Services\TboAir\TboAirService;
-use App\Services\TboAir\TboEnvironmentResolver;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -47,7 +47,7 @@ class TboEnvironmentSwitchTest extends TestCase
 
     public function test_live_setting_routes_the_search_to_live_hosts(): void
     {
-        app(Settings::class)->set(TboEnvironmentResolver::SETTING_KEY, 'live');
+        app(Settings::class)->set(Supplier::TboAir->settingKey(), 'live');
 
         Http::fake([
             'searchapi.tboair.com/*' => Http::response($this->fixture('authenticate.json'), 200),
@@ -61,7 +61,7 @@ class TboEnvironmentSwitchTest extends TestCase
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'tbo-api.tboair.com'));   // live search
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'api-stage.tboair.com')); // never test
 
-        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'environment' => 'live']);
+        $this->assertDatabaseHas('supplier_api_logs', ['type' => 'search', 'environment' => 'live']);
     }
 
     public function test_api_logs_record_the_test_environment(): void
@@ -74,7 +74,7 @@ class TboEnvironmentSwitchTest extends TestCase
         $user = $this->userWith(['flight.view', 'flight.search']);
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
 
-        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'environment' => 'test']);
+        $this->assertDatabaseHas('supplier_api_logs', ['type' => 'search', 'environment' => 'test']);
     }
 
     public function test_token_cache_key_is_namespaced_per_environment(): void

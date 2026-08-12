@@ -64,10 +64,14 @@
                         <!-- Agency e-wallet; renders nothing for platform staff -->
                         <x-wallet-balance />
 
-                        <!-- TBO live-environment indicator -->
-                        @if (app(\App\Services\TboAir\TboEnvironmentResolver::class)->resolve() === 'live')
+                        <!-- Live-environment indicator; names every supplier that is live -->
+                        @php
+                            $liveSuppliers = app(\App\Services\Supplier\SupplierEnvironmentResolver::class)->liveSuppliers();
+                            $liveLabels = implode(' and ', array_map(fn ($s) => $s->label(), $liveSuppliers));
+                        @endphp
+                        @if ($liveSuppliers !== [])
                             <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-600/30"
-                                  title="TBO Air is in LIVE mode — real searches and bookings">
+                                  title="{{ $liveLabels }} in LIVE mode — real searches and bookings">
                                 <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500"></span> Live
                             </span>
                         @endif

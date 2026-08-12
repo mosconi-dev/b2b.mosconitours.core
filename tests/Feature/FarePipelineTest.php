@@ -246,6 +246,6 @@ class FarePipelineTest extends TestCase
             ->postJson(route('flights.fare-quote'), $this->selection())
             ->assertOk();
 
-        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'farequote', 'successful' => true]);
+        $this->assertDatabaseHas('supplier_api_logs', ['type' => 'farequote', 'successful' => true]);
     }
 }

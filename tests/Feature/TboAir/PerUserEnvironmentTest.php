@@ -2,9 +2,10 @@
 
 namespace Tests\Feature\TboAir;
 
+use App\Enums\Supplier;
 use App\Models\User;
 use App\Services\Settings\Settings;
-use App\Services\TboAir\TboEnvironmentResolver;
+use App\Services\Supplier\SupplierEnvironmentResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
@@ -21,7 +22,7 @@ class PerUserEnvironmentTest extends TestCase
 
     private function resolve(User $user): string
     {
-        return app(TboEnvironmentResolver::class)->resolve($user);
+        return app(SupplierEnvironmentResolver::class)->resolve(Supplier::TboAir, $user);
     }
 
     public function test_live_override_requires_the_use_live_permission(): void
@@ -37,7 +38,7 @@ class PerUserEnvironmentTest extends TestCase
 
     public function test_test_override_wins_over_a_global_live_default(): void
     {
-        app(Settings::class)->set(TboEnvironmentResolver::SETTING_KEY, 'live');
+        app(Settings::class)->set(Supplier::TboAir->settingKey(), 'live');
 
         $user = $this->userWith(['flight.view']);
         $user->update(['tbo_environment' => 'test']);
@@ -47,7 +48,7 @@ class PerUserEnvironmentTest extends TestCase
 
     public function test_no_override_follows_the_global_default(): void
     {
-        app(Settings::class)->set(TboEnvironmentResolver::SETTING_KEY, 'live');
+        app(Settings::class)->set(Supplier::TboAir->settingKey(), 'live');
 
         // Global live is a platform decision — not per-user gated.
         $user = $this->userWith(['flight.view']);

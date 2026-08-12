@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Models\TboAirApiLog;
+use App\Models\SupplierApiLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithRbac;
@@ -18,9 +18,9 @@ class UserLogsTest extends TestCase
         $this->seedRbac();
     }
 
-    private function logFor(User $user, array $attrs = []): TboAirApiLog
+    private function logFor(User $user, array $attrs = []): SupplierApiLog
     {
-        return TboAirApiLog::create(array_merge([
+        return SupplierApiLog::create(array_merge([
             'type' => 'search',
             'environment' => 'test',
             'endpoint' => 'https://api-stage.tboair.com/search',

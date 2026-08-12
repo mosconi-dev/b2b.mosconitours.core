@@ -2,7 +2,9 @@
 
 namespace App\Services\Booking;
 
+use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
+use App\Enums\Supplier;
 use App\Enums\TboBookingStatus;
 use App\Exceptions\WalletException;
 use App\Models\Booking;
@@ -78,6 +80,8 @@ class BookingService
         return DB::transaction(function () use ($user, $selection, $quote, $pax, $ancillaryTotal, $total, $contact, $seats, $resultType): Booking {
             $booking = Booking::create([
                 'reference' => $this->reference(),
+                'product' => BookingProduct::Flight,
+                'supplier' => Supplier::TboAir,
                 'user_id' => $user->getKey(),
                 // Stamped once, like the environment: if the booker later transfers to
                 // another agency, this booking stays with the agency that made it.
@@ -320,6 +324,8 @@ class BookingService
     {
         $attributes = array_filter([
             'pnr' => $result->pnr,
+            // The same value under the product-neutral name the bookings list reads.
+            'supplier_reference' => $result->pnr,
             'booking_id' => $result->bookingId,
         ], fn (?string $value): bool => filled($value));
 

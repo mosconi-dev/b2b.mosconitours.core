@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Enums\Supplier;
 use App\Models\AuditLog;
 use App\Services\Settings\Settings;
 use App\Services\TboAir\TboAirService;
-use App\Services\TboAir\TboEnvironmentResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\Concerns\InteractsWithRbac;
@@ -50,7 +50,7 @@ class TboSettingsTest extends TestCase
             ->put(route('admin.settings.tbo.update'), ['environment' => 'live'])
             ->assertRedirect();
 
-        $this->assertSame('live', app(Settings::class)->get(TboEnvironmentResolver::SETTING_KEY));
+        $this->assertSame('live', app(Settings::class)->get(Supplier::TboAir->settingKey()));
         $this->assertDatabaseHas('audit_logs', ['event' => 'tbo.settings_updated']);
     }
 

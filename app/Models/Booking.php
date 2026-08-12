@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
+use App\Enums\Supplier;
 use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,9 +15,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use RuntimeException;
 
 #[Fillable([
-    'reference', 'user_id', 'agency_id', 'environment', 'status', 'trace_id', 'result_index',
-    'is_lcc', 'pnr', 'booking_id', 'currency', 'total_amount', 'ancillary_total', 'quote', 'quote_raw',
-    'seats_available', 'result_type', 'pax', 'contact',
+    'reference', 'product', 'supplier', 'user_id', 'agency_id', 'environment', 'status', 'trace_id',
+    'result_index', 'is_lcc', 'pnr', 'booking_id', 'supplier_reference', 'currency', 'total_amount',
+    'ancillary_total', 'quote', 'quote_raw', 'seats_available', 'result_type', 'pax', 'contact',
 ])]
 class Booking extends Model
 {
@@ -27,6 +29,8 @@ class Booking extends Model
     protected function casts(): array
     {
         return [
+            'product' => BookingProduct::class,
+            'supplier' => Supplier::class,
             'status' => BookingStatus::class,
             'is_lcc' => 'boolean',
             'total_amount' => 'decimal:2',
@@ -39,6 +43,16 @@ class Booking extends Model
             'contact' => 'array',
         ];
     }
+
+    /**
+     * Matches the column defaults, so an unsaved row reads the same as a saved one.
+     *
+     * @var array<string, string>
+     */
+    protected $attributes = [
+        'product' => BookingProduct::Flight->value,
+        'supplier' => Supplier::TboAir->value,
+    ];
 
     /**
      * A booking's environment is stamped once at creation and can never change —

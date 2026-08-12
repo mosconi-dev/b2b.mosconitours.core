@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\Supplier;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateTboSettingsRequest;
 use App\Services\Rbac\AuditLogger;
 use App\Services\Settings\Settings;
+use App\Services\Supplier\SupplierEnvironmentResolver;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\TboAirService;
-use App\Services\TboAir\TboEnvironmentResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -18,7 +19,7 @@ class SettingController extends Controller
 {
     public function __construct(
         private readonly Settings $settings,
-        private readonly TboEnvironmentResolver $resolver,
+        private readonly SupplierEnvironmentResolver $resolver,
         private readonly TboAirService $tbo,
     ) {}
 
@@ -27,8 +28,8 @@ class SettingController extends Controller
         $base = $this->baseCacheKey();
 
         return view('admin.settings.index', [
-            'effectiveEnvironment' => $this->resolver->resolve(),
-            'globalEnvironment' => $this->settings->get(TboEnvironmentResolver::SETTING_KEY, config('tboair.default')),
+            'effectiveEnvironment' => $this->resolver->resolve(Supplier::TboAir),
+            'globalEnvironment' => $this->settings->get(Supplier::TboAir->settingKey(), config('tboair.default')),
             // Per environment: the cached TokenId and its TTL, shown as a pair — when a token is
             // cached we show its effective TTL alongside it; with no token both fields are blank.
             'environments' => [
@@ -69,9 +70,9 @@ class SettingController extends Controller
     public function update(UpdateTboSettingsRequest $request, AuditLogger $audit): RedirectResponse
     {
         $environment = $request->validated('environment');
-        $previousEnv = $this->settings->get(TboEnvironmentResolver::SETTING_KEY);
+        $previousEnv = $this->settings->get(Supplier::TboAir->settingKey());
 
-        $this->settings->set(TboEnvironmentResolver::SETTING_KEY, $environment);
+        $this->settings->set(Supplier::TboAir->settingKey(), $environment);
 
         // The base cache key is no longer editable (it caused token/key confusion); the key
         // is always the config default now, so drop any value stored under the old field.

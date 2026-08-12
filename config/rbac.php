@@ -123,9 +123,13 @@ return [
         'hotel' => [
             'label' => 'Hotels',
             'section' => 'travel_operations',
-            'route' => null, // not built yet — permission stub
+            // Still null: navSections() calls route() on any module that names one, so
+            // this stays a permission-only stub until the /hotels route exists.
+            'route' => null,
             'icon' => 'building',
-            'actions' => ['view', 'search', 'book'],
+            // cancel is the hotel equivalent of the flight money step's aftermath —
+            // it moves money back out of a confirmed booking, so it is its own right.
+            'actions' => ['view', 'search', 'book', 'cancel'],
         ],
         'booking' => [
             'label' => 'Bookings',
@@ -141,6 +145,16 @@ return [
             'route' => null,
             'icon' => 'server',
             // manage = edit the TBO environment/cache settings; live = may use the live environment
+            'actions' => ['view', 'sync', 'manage', 'live'],
+        ],
+        'supplier.tbohotel' => [
+            'label' => 'TBO Hotel',
+            'section' => 'travel_operations',
+            'group' => 'Suppliers',
+            'route' => null,
+            'icon' => 'server',
+            // sync = refresh the local hotel catalogue (countries, cities, properties);
+            // manage = edit the environment/cache settings; live = may use live.
             'actions' => ['view', 'sync', 'manage', 'live'],
         ],
         'supplier.amadeus' => [

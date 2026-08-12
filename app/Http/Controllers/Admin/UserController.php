@@ -9,7 +9,7 @@ use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\Agency;
 use App\Models\AuditLog;
 use App\Models\Role;
-use App\Models\TboAirApiLog;
+use App\Models\SupplierApiLog;
 use App\Models\User;
 use App\Services\Rbac\UserAdminService;
 use Illuminate\Http\RedirectResponse;
@@ -82,12 +82,12 @@ class UserController extends Controller
                 ->paginate(20)
                 ->withQueryString();
         } else {
-            // Outbound TBO API calls. Exclude the heavy `response` JSON from the list
+            // Outbound supplier API calls. Exclude the heavy `response` JSON from the list
             // (it's fetched lazily by show() when a row is expanded).
-            $logs = TboAirApiLog::query()
+            $logs = SupplierApiLog::query()
                 ->where('user_id', $user->id)
-                ->select(['id', 'type', 'environment', 'endpoint', 'status_code', 'successful', 'duration_ms', 'user_id', 'error', 'request', 'created_at'])
-                ->when(in_array($type, ['authenticate', 'search'], true), fn ($q) => $q->where('type', $type))
+                ->select(['id', 'supplier', 'type', 'environment', 'endpoint', 'status_code', 'successful', 'duration_ms', 'user_id', 'error', 'request', 'created_at'])
+                ->when(in_array($type, SupplierApiLog::types(), true), fn ($q) => $q->where('type', $type))
                 ->latest()
                 ->paginate(20)
                 ->withQueryString();
