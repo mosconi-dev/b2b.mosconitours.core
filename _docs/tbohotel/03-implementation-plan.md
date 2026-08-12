@@ -260,7 +260,23 @@ file written in between.
   password is masked in the log row, each status code maps to the right exception, `429` is retried,
   and the log row lands with `supplier = tbohotel`.
 
-## Phase 2 — Static catalogue and sync
+## Phase 2 — Static catalogue and sync ✅ DONE
+
+> **Shipped:** `hotel_countries` / `hotel_cities` / `hotels` / `hotel_sync_runs`, `CatalogueSyncService`,
+> `tbohotel:sync {countries|cities|hotels|details}`, the queued `SyncHotelCatalogue` job, an admin
+> catalogue page at `/admin/hotel-catalogue` (carry/drop a city, run a sync, read the last ten runs
+> and what they skipped), and `GET /hotels/suggest`.
+>
+> **Loaded for real:** 249 countries, 194 Philippine cities, and 3,364 hotels across Manila (2,701)
+> and Cebu City (663).
+>
+> **Three deviations from the plan below, all simplifications:**
+> - **No `hotel_sync_targets` table.** `hotel_cities.is_enabled` says the same thing with one column.
+> - **No `hotel_images` table.** Images are a json column on `hotels`; nothing queries them
+>   individually, and the only read anyone needs is "the first one".
+> - **`IsDetailedResponse` is not sent.** It is documented to add descriptions and images to
+>   `TBOHotelCodeList` and measurably does nothing — the response is byte-identical either way — so
+>   enrichment goes through `HotelDetails` instead, batched. See `01`§9.1.
 
 **Goal:** a local, refreshable catalogue good enough to search a city properly.
 
@@ -405,7 +421,7 @@ cancelling with the right money.
 | --- | --- | --- |
 | ~~0 — Shared foundations~~ | S–M | ✅ done |
 | ~~1 — Client & connectivity~~ | S | ✅ done — endpoint confirmed by a real call |
-| 2 — Catalogue & sync | M–L | Searchable destinations; the precondition for Search |
+| ~~2 — Catalogue & sync~~ | M–L | ✅ done — 3,364 PH hotels loaded |
 | 3 — Search | L | Agents can see live rooms and prices |
 | 4 — PreBook & booking domain | M–L | A durable, priced, guest-complete booking |
 | 5 — Book & reconciliation | L | Real vouchers, and no lost bookings |
@@ -421,7 +437,7 @@ lands, and Phase 2's sync can run in the background while Phase 3 is built.
 | --- | --- |
 | ~~**The test BaseURL in the spec and in production disagree**~~ (`01`§2) | ✅ closed — `tbohotel:ping` answered it: the spec's URL is correct, and the base stays env-overridable |
 | **QPS limits bite on chunked city searches** | Bounded concurrency, `429` backoff, per-chunk caching, and ask TBO for the actual limit |
-| **Catalogue scale** — TBO's global inventory dwarfs what we sell | Curated per-city sync (D5), not a full mirror |
+| ~~**Catalogue scale**~~ — TBO's global inventory dwarfs what we sell | ✅ handled — per-city `is_enabled` curation. Measured cost: Manila's 1,495-hotel list is 406 KB in 2 s, so the code list is cheap; only `HotelDetails` enrichment needs pacing |
 | **The 30-minute window expires mid-wizard** | 10-minute result cache, a visible countdown, and `315` handled as "search again" rather than an error |
 | **A Book times out after TBO created the booking** | `BookingReferenceId` = our reference, `processing` state, mandatory 120 s reconcile, never re-Book (D8, Phase 5) |
 | **Cancellation charges are computed by us, not returned by TBO** | Show the figure before confirming, mark the ledger entry estimated, reconcile against TBO's invoice |

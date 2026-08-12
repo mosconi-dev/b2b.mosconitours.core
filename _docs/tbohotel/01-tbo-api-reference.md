@@ -242,6 +242,38 @@ case to handle, not an error.
 `TBOHotelCodeList` (by city) is the practical catalogue loader; `hotelcodelist` (everything) is
 not, since it carries no city association.
 
+### 9.1 What these two actually return (measured 2026-08-12)
+
+The §16 parameter table is wrong about `TBOHotelCodeList`, and the difference decides how the
+catalogue is built. Observed against the test environment:
+
+| | `TBOHotelCodeList` (per city) | `HotelDetails` (per hotel) |
+| --- | --- | --- |
+| Fields | `HotelCode, HotelName, Latitude, Longitude, HotelRating, Address, CountryName, CountryCode, CityName` | adds `Description, HotelFacilities[], Attractions[], Images[], PinCode, PhoneNumber, Email, HotelWebsiteUrl, FaxNumber, Map, CheckInTime, CheckOutTime, HotelFees[], CityId` |
+| `IsDetailedResponse` | **no effect** — byte-identical either way, despite §16 promising description and images | n/a |
+| Cost | Manila (1495 hotels): **406 KB in 2.0 s** | batches: 25 → 304 KB/1.8 s, 50 → 538 KB/2.1 s, **100 → 970 KB/2.6 s** |
+
+So the catalogue is loaded in two passes, not one: the code list is cheap and complete and carries
+everything a search result needs, while descriptions and images cost one batched call per ~50 hotels
+and belong in a separate, resumable enrichment.
+
+**Five traps in these payloads, all live:**
+
+1. **`HotelRating` changes type between methods** — `"ThreeStar"` (string enum) from
+   `TBOHotelCodeList`, `3` (integer) from `HotelDetails`. Both must normalise to the same thing.
+2. **`CountryCode` comes back lowercase** (`"ph"`) here, while `CountryList` returns `"PH"`.
+3. **`CityName` is not the city you asked for.** Requesting Alcoy (`100834`) returns hotels whose
+   `CityName` is *"Cebu City"*, and `HotelDetails` reports a third value in `CityId` (`114570`).
+   TBO's city taxonomy is loose — key stored hotels on the **requested** city code, which is the
+   one Search will need, and treat the returned names as informational.
+4. **`Latitude`/`Longitude` are separate fields** in the code list, but the same data arrives as a
+   single `Map` string (`"9.68621|123.50438"`) from `HotelDetails`. §14 documents only `Map`.
+5. **`Attractions` is an array**, not the String §14 declares; `Image` (singular) is an empty
+   string beside the populated `Images` array.
+
+**A bad hotel code does not poison a batch** — `HotelDetails` with one valid and one bogus code
+answers `200` with a single record, so enrichment can skip failures without splitting the batch.
+
 ## 10. BookingDetailsBasedOnDate (§15)
 
 `{ "fromdate": "2026-08-01", "todate": "2026-08-31" }` — max **60 days** — returns a flat list of

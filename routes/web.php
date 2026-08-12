@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AgencyController;
 use App\Http\Controllers\Admin\AgencyRoleController;
 use App\Http\Controllers\Admin\AgencyUserController;
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\HotelCatalogueController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\FlightController;
+use App\Http\Controllers\HotelSuggestController;
 use App\Http\Controllers\LoadRequestController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WalletAdjustmentController;
@@ -34,6 +36,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/flights/fare-quote', [FlightController::class, 'fareQuote'])->name('flights.fare-quote')->middleware('can:flight.search');
     Route::post('/flights/fare-rule', [FlightController::class, 'fareRule'])->name('flights.fare-rule')->middleware('can:flight.search');
     Route::post('/flights/ssr', [FlightController::class, 'ssr'])->name('flights.ssr')->middleware('can:flight.search');
+
+    // Hotel location autocomplete. Lives outside the (not yet built) /hotels page
+    // because it is the catalogue talking, not the supplier.
+    Route::get('/hotels/suggest', HotelSuggestController::class)->name('hotels.suggest')
+        ->middleware('can:hotel.search');
 
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');
@@ -156,6 +163,19 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     });
 
     Route::get('audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index')->middleware('can:audit.view');
+
+    /*
+    | The hotel catalogue. TBO's Search takes hotel codes and nothing else, so this
+    | is not a cache — it is curated inventory someone has to keep current.
+    */
+    Route::prefix('hotel-catalogue')->name('hotel-catalogue.')->group(function () {
+        Route::get('/', [HotelCatalogueController::class, 'index'])->name('index')
+            ->middleware('can:supplier.tbohotel.view');
+        Route::patch('/cities/{city}', [HotelCatalogueController::class, 'toggleCity'])->name('cities.toggle')
+            ->whereNumber('city')->middleware('can:supplier.tbohotel.sync');
+        Route::post('/sync', [HotelCatalogueController::class, 'sync'])->name('sync')
+            ->middleware('can:supplier.tbohotel.sync');
+    });
 
     Route::prefix('settings')->name('settings.')->group(function () {
         Route::get('/', [SettingController::class, 'index'])->name('index')->middleware('can:setting.view');

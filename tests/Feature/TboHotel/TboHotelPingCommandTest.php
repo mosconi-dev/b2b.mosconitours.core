@@ -55,7 +55,7 @@ class TboHotelPingCommandTest extends TestCase
         ]);
 
         $this->artisan('tbohotel:ping --country=PH')
-            ->expectsOutputToContain('Cities   : 2 in PH')
+            ->expectsOutputToContain('Cities   : 4 in PH')
             ->assertSuccessful();
 
         Http::assertSentCount(2);

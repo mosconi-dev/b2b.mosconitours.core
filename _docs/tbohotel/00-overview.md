@@ -1,7 +1,7 @@
 # TBO Hotel Integration — Docs
 
 Documentation for the **TBO Holidays** hotel-supplier integration in `b2b.mosconitours.core`.
-**Nothing is built yet** — this is the investigation and the plan.
+Phases 0–2 are built; search onwards is not.
 
 ## Read in this order
 
@@ -19,10 +19,11 @@ For the sibling integration, whose architecture this one reuses, start at
 
 ## TL;DR
 
-- **Status: Phases 0 and 1 are done.** The shared seams are supplier-agnostic
+- **Status: Phases 0, 1 and 2 are done.** The shared seams are supplier-agnostic
   (`supplier_api_logs`, `SupplierEnvironmentResolver`, a `product`-bearing booking spine,
-  `Confirmed`/`Cancelling` statuses), and the hotel client talks to TBO for real —
-  `tbohotel:ping` returns 249 countries and 194 Philippine cities. **Next: Phase 2, the catalogue.**
+  `Confirmed`/`Cancelling` statuses), the hotel client talks to TBO for real, and the catalogue is
+  loaded: **249 countries, 194 Philippine cities, 3,364 hotels** across Manila and Cebu City,
+  curated per city at `/admin/hotel-catalogue`. **Next: Phase 3, search.**
 - **The base-URL question is settled:** the spec's `https://api.tbotechnology.in/HotelAPI`, not
   production's `http://api.tbotechnology.in/TBOHolidays_HotelAPI`. And the hotel API is **not
   IP-restricted**, so unlike TBO Air the read side is fully developable from a dev machine.
@@ -58,5 +59,7 @@ For the sibling integration, whose architecture this one reuses, start at
   second supplier.
 - **Tooling:** `php artisan tbohotel:ping [--country=PH]` checks connectivity and credentials, and
   prints the URL it called — it exercises both a GET (CountryList) and a POST (CityList), since a
-  base URL that answers one and not the other is a real possibility. Hotel calls appear at
-  `/api-logs?supplier=tbohotel`.
+  base URL that answers one and not the other is a real possibility.
+  `php artisan tbohotel:sync {countries|cities|hotels|details}` refreshes the catalogue, and
+  **Admin → TBO Hotel** does the same from the browser while showing what the last runs skipped.
+  Hotel calls appear at `/api-logs?supplier=tbohotel`.

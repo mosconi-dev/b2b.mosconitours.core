@@ -103,7 +103,7 @@ class TboHotelClientTest extends TestCase
 
         $countries = $this->service()->countries();
 
-        $this->assertSame(['code' => 'PH', 'name' => 'Philippines'], $countries[1]);
+        $this->assertSame(['code' => 'PH', 'name' => 'Philippines'], $countries[0]);
 
         Http::assertSent(function (Request $request): bool {
             $this->assertSame('GET', $request->method());
@@ -130,10 +130,23 @@ class TboHotelClientTest extends TestCase
             return true;
         });
 
-        // The third fixture row has an empty Code: half a record resolves to nothing,
-        // so it is dropped rather than stored.
-        $this->assertCount(2, $cities);
-        $this->assertSame('127343', $cities[0]['code']);
+        $this->assertCount(4, $cities);
+        $this->assertSame(['code' => '127116', 'name' => 'Manila'], $cities[3]);
+    }
+
+    /**
+     * Half a record resolves to nothing, so it is dropped rather than stored. Faked
+     * inline rather than kept in the fixture — the fixtures are real responses.
+     */
+    public function test_rows_missing_a_code_or_a_name_are_dropped(): void
+    {
+        Http::fake([self::BASE.'/CityList' => Http::response(['Status' => ['Code' => 200], 'CityList' => [
+            ['Code' => '127116', 'Name' => 'Manila'],
+            ['Code' => '', 'Name' => 'Nameless code'],
+            ['Code' => '999', 'Name' => ''],
+        ]])]);
+
+        $this->assertSame([['code' => '127116', 'name' => 'Manila']], $this->service()->cities('PH'));
     }
 
     public function test_every_call_is_logged_against_the_hotel_supplier(): void

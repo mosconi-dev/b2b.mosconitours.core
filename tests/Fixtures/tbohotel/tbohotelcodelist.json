@@ -1,0 +1,184 @@
+{
+    "Status": {
+        "Code": 200,
+        "Description": "Success"
+    },
+    "Hotels": [
+        {
+            "HotelCode": "1015014",
+            "HotelName": "Dive Point Alcoy Resort",
+            "Latitude": "9.68621",
+            "Longitude": "123.50438",
+            "HotelRating": "ThreeStar",
+            "Address": "National Highway Guiwang Guiwang6023 Cebu",
+            "CountryName": "Philippines",
+            "CountryCode": "ph",
+            "CityName": "Cebu City"
+        },
+        {
+            "HotelCode": "1031175",
+            "HotelName": "Parrot Paradise Resort",
+            "Latitude": "9.685056",
+            "Longitude": "123.503204",
+            "HotelRating": "ThreeStar",
+            "Address": "Triple B Road Pasol PasolJoyce Jabagat Lehmann6023 AlcoyCebu",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "1441400",
+            "HotelName": "Voda Krasna Resort & Restaurant",
+            "Latitude": "9.682962",
+            "Longitude": "123.501616",
+            "HotelRating": "ThreeStar",
+            "Address": "Daanglungsod 6023 AlcoyCebu",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "1485389",
+            "HotelName": "Meili Beach Resort",
+            "Latitude": "9.703128",
+            "Longitude": "123.509752",
+            "HotelRating": "ThreeStar",
+            "Address": "Lower Poblacion ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Cebu City"
+        },
+        {
+            "HotelCode": "1485546",
+            "HotelName": "BBB Resort and Restaurant",
+            "Latitude": "9.6803560256958",
+            "Longitude": "123.50180053710938",
+            "HotelRating": "ThreeStar",
+            "Address": "Triple B Road Pasol 6023 Cebu PasolRengie Belda6023 Alcoy",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Cebu Island"
+        },
+        {
+            "HotelCode": "1561720",
+            "HotelName": "Narrapark Resort & Hotel",
+            "Latitude": "9.703619957",
+            "Longitude": "123.49394226",
+            "HotelRating": "ThreeStar",
+            "Address": "Lalin Atabay Lalin6023 AlcoyCebu",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "1564153",
+            "HotelName": "Summer Breeze Terrace Inn and Resort",
+            "Latitude": "9.7065401077",
+            "Longitude": "123.49794006",
+            "HotelRating": "TwoStar",
+            "Address": "Poblacion Sta. Cruz Lalin Road Boljoon BoljoonAlcoyCebu",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "1651312",
+            "HotelName": "Ariella Mangrove & Eco Resort by Hiverooms",
+            "Latitude": "9.726649",
+            "Longitude": "123.508997",
+            "HotelRating": "ThreeStar",
+            "Address": "Pasol ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Cebu City"
+        },
+        {
+            "HotelCode": "1652033",
+            "HotelName": "King Arthur s Place",
+            "Latitude": "9.716971",
+            "Longitude": "123.510019",
+            "HotelRating": "TwoStar",
+            "Address": "Tingko White Beach 6023 AlcoyCebu",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "1652098",
+            "HotelName": "El Paradiso Resort",
+            "Latitude": "9.685919",
+            "Longitude": "123.503402",
+            "HotelRating": "ThreeStar",
+            "Address": "Tingko White Beach Guiwang Alcoy Cebu 6023 AlcoyCebu",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "1924625",
+            "HotelName": "Larville Pool Garden Resort And Restaurant",
+            "Latitude": "9.731484",
+            "Longitude": "123.508835",
+            "HotelRating": "ThreeStar",
+            "Address": "Pugalo Pugalo Alcoy",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "6251455",
+            "HotelName": "Kalipay Bungalows",
+            "Latitude": "9.721442",
+            "Longitude": "123.502441",
+            "HotelRating": "ThreeStar",
+            "Address": "Camperong Pasol ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "6256664",
+            "HotelName": "Alcoy Plaza Eco Park",
+            "Latitude": "9.671838",
+            "Longitude": "123.501018",
+            "HotelRating": "OneStar",
+            "Address": "Natalio Bacalso Avenue Alcoy Central Visayas 6023 ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "6535202",
+            "HotelName": "Torre De Alcoy by Hiverooms",
+            "Latitude": "9.67639",
+            "Longitude": "123.502393",
+            "HotelRating": "ThreeStar",
+            "Address": "natalio bacalso avenue ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        },
+        {
+            "HotelCode": "6635992",
+            "HotelName": "Sangi Tourist Inn - near Kawasan Badian Canyoneering",
+            "Latitude": "9.790022",
+            "Longitude": "123.35298",
+            "HotelRating": "ThreeStar",
+            "Address": "Sangi, Madridejos ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alegria"
+        },
+        {
+            "HotelCode": "6671797",
+            "HotelName": "Ariella Mangrove & Eco Resort by Hiverooms",
+            "Latitude": "9.727062",
+            "Longitude": "123.508922",
+            "HotelRating": "TwoStar",
+            "Address": "PGG5+RHF ",
+            "CountryName": "Philippines",
+            "CountryCode": "PH",
+            "CityName": "Alcoy"
+        }
+    ]
+}

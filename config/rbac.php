@@ -151,7 +151,7 @@ return [
             'label' => 'TBO Hotel',
             'section' => 'travel_operations',
             'group' => 'Suppliers',
-            'route' => null,
+            'route' => 'admin.hotel-catalogue.index',
             'icon' => 'server',
             // sync = refresh the local hotel catalogue (countries, cities, properties);
             // manage = edit the environment/cache settings; live = may use live.

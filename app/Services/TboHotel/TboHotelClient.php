@@ -72,6 +72,39 @@ class TboHotelClient
     }
 
     /**
+     * Every hotel TBO holds for one city (§16).
+     *
+     * `IsDetailedResponse` is documented to add descriptions and images and measurably
+     * does not — the response is byte-identical either way — so it is not sent.
+     *
+     * @return array<string, mixed>
+     */
+    public function hotelCodeList(string $cityCode): array
+    {
+        return $this->call('tbohotelcodelist', ['CityCode' => $cityCode], retryable: true);
+    }
+
+    /**
+     * Full detail for up to ~100 hotels at once (§14).
+     *
+     * Batched deliberately: one call per hotel would put an eight-hour crawl between
+     * us and a catalogue. A code TBO does not recognise is simply absent from the
+     * response rather than failing the batch.
+     *
+     * @param  array<int, string>  $codes
+     * @return array<string, mixed>
+     */
+    public function hotelDetails(array $codes, string $language = 'EN'): array
+    {
+        return $this->call('hoteldetails', [
+            // TBO's own spelling, from the §14.1.1 sample. The parameter table calls
+            // it "Hotel Code"; the sample is what the API answers to.
+            'Hotelcodes' => implode(',', $codes),
+            'Language' => $language,
+        ], retryable: true);
+    }
+
+    /**
      * Issue one call and return its decoded body.
      *
      * **`retryable` defaults to false.** Retrying is safe only for reads; a Book or
