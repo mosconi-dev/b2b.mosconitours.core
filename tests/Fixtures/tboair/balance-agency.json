@@ -1,0 +1,13 @@
+{
+    "Agency": {
+        "TotalAailableLimit": 125430.5,
+        "Currency": "",
+        "LocalCurrency": "PHP",
+        "LocalCurrencyROE": 55.8019665161
+    },
+    "Alerts": [],
+    "Errors": [],
+    "TokenId": "balance-token-abc123",
+    "IsSuccess": true,
+    "TrackingId": "c4a22e08-a784-408f-9ab4-2c514843ce43"
+}

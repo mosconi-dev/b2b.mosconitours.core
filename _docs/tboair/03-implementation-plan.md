@@ -136,7 +136,7 @@ see §4 of `01-tbo-api-reference.md`.
 
 ---
 
-## Phase 4 — Book & Ticket (the money step)
+## Phase 4 — Book & Ticket (the money step) — Book PROVEN, Ticket untested
 
 **Goal:** issue tickets. Branch on `IsLCC` from FareQuote.
 
@@ -147,14 +147,43 @@ change the schema or the payload shape. Settle them first; retrofitting them mid
 
 | # | Item | Action |
 | --- | --- | --- |
-| **P1** | **Identifier naming/generation.** Book documents `ResultId`/`TrackingId`; we hold `ResultIndex`/`TraceId`. Different host + route style too. | **Ask TBO** (a) are they the same identifiers renamed, and (b) does the `api/v1` booking host accept a TraceId minted by an `InternalAirService.svc` search. Cheapest question, most expensive to get wrong. |
-| **P2** | **Book echoes the whole itinerary**, and our stored quote is a lossy UI transform. | **Persist the raw FareQuote JSON** (`quote_raw` json column, or store raw + derive the DTO on read). **Schema change — decide first.** |
-| **P3** | **`Passenger` lacks ~8 mandatory Book fields**; TBO wants integer enums where we store strings. | Extend the DTO + Guest Details form (address, city, country, mobile + country code, email, `IsLeadPax`, FF nulls); add a string→enum mapping at the client boundary; constrain Title to `Mr/Miss/Mrs`. |
-| **P4** | **TBO's own agency balance is invisible.** Ticket draws down *our* TBO balance, not the internal e-wallet. | Add `Wallet/GetAvailableBalance` to config + client, check it **before** Ticket, and surface it to ops. |
+| ~~**P1**~~ | ~~Identifier naming/generation.~~ | ✅ **DONE — resolved without TBO.** The live production system stores the search's `TraceId`/`ResultIndex` and submits them to Book as `TrackingId`/`ResultId`, from the same mixed hosts our config uses. See [`04-live-reference-implementation.md`](04-live-reference-implementation.md) §1. |
+| ~~**P2**~~ | ~~Book echoes the whole itinerary, and our stored quote is a lossy UI transform.~~ | ✅ **DONE** — nullable `bookings.quote_raw` json column (migration `2026_08_10_000009`) holds the FareQuote response verbatim; `FareQuote::$raw` carries it and is kept out of `toArray()` so it never reaches the browser. |
+| ~~**P3**~~ | ~~`Passenger` lacks ~8 mandatory Book fields; TBO wants integer enums where we store strings.~~ | ✅ **DONE** — address/mobile/email collected once as contact and **fanned onto every pax row**; `isLeadPax` per passenger (exactly one, adult only); Title constrained to `Mr/Mrs/Miss`; `TboPassengerMapper` does the string→ordinal encoding. |
+| ~~**P4**~~ | ~~TBO's own agency balance is invisible.~~ | ✅ **DONE** — `agency_balance` endpoint (**URL verified live**), `AgencyBalance` DTO, `TboAirService::agencyBalance()` / `hasFundsFor()` (the pre-Ticket seam for 4.1), `tboair:balance`, and a **Check now** panel on admin Settings. |
 
 Each is detailed under "Gaps for the booking lifecycle" in `02-current-implementation.md`.
 
-### Phase 4.1 — The calls
+### Phase 4.1 — The calls (DONE)
+
+> **Shipped:** `TboBookingStatus` (TBO's ten codes; the four ambiguous ones refuse to map),
+> `BookingResult` + `TboAirService::bookingDetails()`, the two search-only fields carried to the
+> booking (`seats_available`, `result_type`), **`TboBookPayload`** (one builder — Ticket is Book plus a
+> PNR), `BookingService::book()`/`issue()` with the write lock, environment/status/PNR/supplier-funds
+> guards and GetBookingDetails reconciliation, and `POST /bookings/{booking}/book` + `/issue` behind
+> `flight.book` / `flight.issue` with a ticketing panel on the booking page (LIVE gets a red warning).
+> Covered by `BookPayloadTest`, `BookAndIssueTest`, `TicketingRoutesTest`, `SeatAvailabilityTest`,
+> `TboBookingStatusTest`.
+>
+> ✅ **Book is proven**: `MT-FBVMSJVR` → **PNR `984XIX`** on test, read back as `Successful`, wallet
+> debited. Five refusals got us there, each one a correction to TBO's documentation — the envelope,
+> the passport flags, ID sanitisation, the `Title` type, and the GetBookingDetails container. All are
+> in `01`§5 and `02`. **`Fare_BE` is validated** by that booking: the whole fare object per passenger,
+> as the live system sends it, not the per-passenger split TBO documents.
+>
+> ⚠️ **Ticket has still never been called.** Same payload plus the PNR, so the shape is proven, but
+> expect its own surprises. **Domestic round-trip two-PNR is still not implemented** — decide before
+> certification, since four of the 11 cases are returns. See `02`'s gaps.
+
+#### As originally planned
+
+> **Start from the live implementation, not the doc pages.**
+> [`04-live-reference-implementation.md`](04-live-reference-implementation.md) covers a working
+> production Book/Ticket, including §5's list of its defects — which is as valuable as the working
+> parts, because 4.1 will be tempted to mirror them.
+>
+> **One payload builder.** Ticket is the Book payload with a `PNR` field — `null` for LCC, the Book
+> response's PNR for non-LCC. Do not build two request shapes (`04`§2).
 
 - **TBO methods:** `Booking/Book` (non-LCC), `Booking/Ticket` (LCC = book+ticket; non-LCC = ticket a
   held PNR), `Booking/GetBookingDetails` (mandatory after each), `Booking/GetLastTicketDate`.
@@ -180,10 +209,18 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
     see P4.
   - Routes `POST /bookings/{booking}/book`, `/issue`, gated by `can:flight.book` / `can:flight.issue`;
     LIVE booking shows the existing red LIVE guard.
+- **Four things the live system gets wrong — build these right** (`04`§6):
+  1. **A failed Book must abort.** There, it sets a failed status and falls through to Ticket with a
+     null PNR, which silently takes the LCC path and tries to issue an unbooked itinerary.
+  2. **Call `GetBookingDetails` in the pipeline**, not only from an operator screen. It is the only
+     authoritative status read and the only way to reconcile an ambiguous outcome.
+  3. **Guard idempotency.** Nothing there stops one transaction ticketing twice.
+  4. **Never write the wallet from a stale snapshot.** Ours already debits under lock against an
+     authoritative ledger — keep it that way.
 - **Tests:** LCC vs non-LCC branching, OB-then-IB ordering, double-ticket prevention, failure →
-  reconcile via GetBookingDetails, **`InProgress`/`Pending` resolve rather than fail**, env-consistency
-  enforced across the whole chain, and **insufficient TBO balance surfaces distinctly** from
-  insufficient wallet balance.
+  reconcile via GetBookingDetails, **a failed Book never reaches Ticket**, **`InProgress`/`Pending`
+  resolve rather than fail**, env-consistency enforced across the whole chain, and **insufficient TBO
+  balance surfaces distinctly** from insufficient wallet balance.
 
 ---
 
@@ -218,6 +255,10 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
 
 **Goal:** pass TBO certification and switch to production.
 
+- ⚠️ **The test environment appears to have no LCC inventory.** A MNL→CEB search returned 40 results,
+  all Philippine Airlines, with no 5J or Z2 anywhere — so **cases 1–5 cannot be run as written**. Case 6
+  (non-LCC, 2 adults, one-way, non-stop) was used for the first real booking instead. Ask TBO how to
+  reach LCC content on test before planning the certification run.
 - Run the **11 required test cases** on the **test** environment — the exact matrix (5 LCC, 4 non-LCC,
   plus price/schedule-change and `InProgress` handling) is tabulated in §7 of
   `01-tbo-api-reference.md`. Two shape the build rather than merely exercising it: **Case 10**
@@ -249,7 +290,16 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
 
 Phases 1–3 shipped in that order, so the remaining path is simply **4.0 → 4.1 → 5 → 6**.
 
-**Start 4.0 now, in this order:** send TBO the identifier question (**P1**) — it has a turnaround time
-and nothing else waits on it — then land the `quote_raw` schema change (**P2**) while waiting, since
-every later payload depends on it. **P3** (passenger fields) and **P4** (TBO balance) are independent
-and can go in any order.
+**4.0 is complete — 4.1 is unblocked.** P1 was expected to need TBO and a turnaround; reading the
+live production system settled it instead, along with the shape of the Book/Ticket payload itself.
+
+Two questions remain genuinely open, but **neither blocks 4.1**: the **token validity** figure (12h /
+20h / 24h / 23h — see `01`§4) and whether refund is **`Booking/RefundApi` or `Queues/RefundApi`**
+(Phase 5, and unverified in the live system too). Fold them into a TBO email whenever convenient.
+
+One small fix worth picking up alongside 4.1 (`04`§7.2): **token refresh has no lock**, so concurrent
+cache misses can each fire an Authenticate. The live system wraps it in a `Cache::lock`.
+
+(The re-auth *signal* was briefly suspect — production keys on `ResponseStatus == 4`, we key on
+`ErrorCode 6` — but TBO sends both on the same response and our self-heal is confirmed working in the
+logs. Nothing to do. See `02`§4.)

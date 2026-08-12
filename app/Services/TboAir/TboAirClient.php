@@ -43,6 +43,25 @@ class TboAirClient
     }
 
     /**
+     * Our agency balance with TBO.
+     *
+     * Takes credentials rather than a TokenId — the same shape as Authenticate, and
+     * it likewise returns a fresh TokenId. So it must not run through the service's
+     * re-auth wrapper: there is no session here to expire.
+     *
+     * @return array<string, mixed>
+     */
+    public function agencyBalance(): array
+    {
+        return $this->post('balance', $this->endpoint('agency_balance'), [
+            'UserName' => $this->config['username'],
+            'Password' => $this->config['password'],
+            'BookingMode' => $this->config['auth_mode'],
+            'EndUserIp' => $this->config['ip_address'],
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
@@ -76,6 +95,42 @@ class TboAirClient
     public function ssr(array $payload): array
     {
         return $this->post('ssr', $this->endpoint('ssr'), $payload);
+    }
+
+    /**
+     * Create the PNR (non-LCC). Money step — see BookingService for the guards.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function book(array $payload): array
+    {
+        return $this->post('book', $this->endpoint('book'), $payload);
+    }
+
+    /**
+     * Issue the ticket. LCC books and issues in one; non-LCC tickets a held PNR.
+     * Takes the same payload shape as book() plus a PNR — see TboBookPayload.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function ticket(array $payload): array
+    {
+        return $this->post('ticket', $this->endpoint('ticket'), $payload);
+    }
+
+    /**
+     * Authoritative state of a booking. Keyed on PNR, not BookingId.
+     *
+     * @return array<string, mixed>
+     */
+    public function bookingDetails(string $pnr, string $token): array
+    {
+        return $this->post('bookingdetails', $this->endpoint('booking_details'), [
+            'PNR' => $pnr,
+            'TokenId' => $token,
+        ]);
     }
 
     /**

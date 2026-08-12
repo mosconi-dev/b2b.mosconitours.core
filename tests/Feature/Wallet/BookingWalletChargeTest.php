@@ -12,6 +12,7 @@ use App\Services\Wallet\WalletService;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
@@ -30,6 +31,11 @@ class BookingWalletChargeTest extends TestCase
     {
         parent::setUp();
         $this->seed(PermissionSeeder::class);
+
+        // These tests are about the money moving, not about ticketing. Without this the
+        // sync queue would run Book/Ticket inline, fail on unfaked calls, and refund the
+        // very charge each test is measuring.
+        Queue::fake();
 
         $this->agency = Agency::factory()->create(['name' => 'Acme Travel']);
     }
@@ -52,7 +58,7 @@ class BookingWalletChargeTest extends TestCase
     private function agent(): User
     {
         return $this->agencyUserWith($this->agency, [
-            'flight.view', 'flight.search', 'booking.view', 'booking.create',
+            'flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue',
         ]);
     }
 
@@ -76,9 +82,12 @@ class BookingWalletChargeTest extends TestCase
         return array_merge([
             'traceId' => 'trace-abc-123',
             'resultIndex' => str_repeat('R', 400),
-            'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+            'contact' => [
+                'email' => 'agent@example.com', 'phone' => '09170000000', 'mobileCountryCode' => '63',
+                'addressLine1' => '123 Rizal Street', 'city' => 'Makati', 'countryCode' => 'PH',
+            ],
             'passengers' => [
-                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
             ],
         ], $overrides);
     }
@@ -169,7 +178,7 @@ class BookingWalletChargeTest extends TestCase
     {
         // No agency means no wallet — they are the operator, not a customer of it.
         $this->fakeQuote();
-        $staff = $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create']);
+        $staff = $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue']);
 
         $this->actingAs($staff)->post(route('bookings.store'), $this->payload())->assertRedirect();
 
@@ -182,7 +191,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fakeQuote();
         $this->fund('10000.00');
         $agent = $this->agencyUserWith($this->agency, [
-            'flight.view', 'flight.search', 'booking.view', 'booking.create', 'wallet.view',
+            'flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue', 'wallet.view',
         ]);
 
         $this->actingAs($agent)->post(route('bookings.store'), $this->payload())->assertRedirect();
@@ -269,7 +278,7 @@ class BookingWalletChargeTest extends TestCase
     {
         // Platform-staff booking: never charged, so nothing to give back.
         $this->fakeQuote();
-        $staff = $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create']);
+        $staff = $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue']);
         $this->actingAs($staff)->post(route('bookings.store'), $this->payload())->assertRedirect();
 
         $booking = Booking::firstOrFail();

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateTboSettingsRequest;
 use App\Services\Rbac\AuditLogger;
 use App\Services\Settings\Settings;
+use App\Services\TboAir\Exceptions\TboAirException;
+use App\Services\TboAir\TboAirService;
 use App\Services\TboAir\TboEnvironmentResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,7 @@ class SettingController extends Controller
     public function __construct(
         private readonly Settings $settings,
         private readonly TboEnvironmentResolver $resolver,
+        private readonly TboAirService $tbo,
     ) {}
 
     public function index(): View
@@ -32,7 +35,35 @@ class SettingController extends Controller
                 'test' => $this->environmentCard('test', $base),
                 'live' => $this->environmentCard('live', $base),
             ],
+            // Read from cache only — never a supplier call on page render. See refreshBalance().
+            'balance' => Cache::get($this->tbo->balanceCacheKey()),
         ]);
+    }
+
+    /**
+     * Read our TBO agency balance on demand.
+     *
+     * Deliberately an explicit action rather than something the page fetches on load:
+     * the call authenticates with credentials and returns a fresh TokenId, so polling
+     * it risks churning the token a booking is mid-flight on.
+     */
+    public function refreshBalance(AuditLogger $audit): RedirectResponse
+    {
+        $env = $this->tbo->environment();
+
+        try {
+            $balance = $this->tbo->agencyBalance(fresh: true);
+        } catch (TboAirException $e) {
+            return back()->with('error', "Could not read the {$env} TBO balance: ".$e->getMessage());
+        }
+
+        $audit->log('tbo.balance_checked', null, [
+            'environment' => $env,
+            'available' => $balance->available,
+            'currency' => $balance->currency,
+        ]);
+
+        return back()->with('status', "TBO {$env} balance: {$balance->currency} ".number_format((float) $balance->available, 2));
     }
 
     public function update(UpdateTboSettingsRequest $request, AuditLogger $audit): RedirectResponse

@@ -160,6 +160,11 @@ class ItineraryMapper
             'duration' => (int) data_get($leg, 'Duration', 0),
             'baggage' => data_get($leg, 'Baggage'),
             'cabinBaggage' => data_get($leg, 'CabinBaggage'),
+            // Search-only: TBO drops NoOfSeatAvailable from the FareQuote response, but
+            // Book wants it on every segment. Captured here — the last point it exists —
+            // and carried to the booking so the Book payload can be assembled. Null on a
+            // FareQuote-sourced itinerary, which is exactly why it must be carried.
+            'seats' => ($seats = data_get($leg, 'NoOfSeatAvailable')) === null ? null : (int) $seats,
             'origin' => $this->mapPoint($leg, 'Origin', 'DepTime'),
             'destination' => $this->mapPoint($leg, 'Destination', 'ArrTime'),
         ];
@@ -173,6 +178,9 @@ class ItineraryMapper
     {
         return [
             'code' => (string) data_get($leg, "$side.Airport.AirportCode", data_get($leg, "$side.Airport.CityCode", '')),
+            // Needed to tell a domestic itinerary from an international one, which
+            // decides whether a passenger is asked for a passport or any government ID.
+            'country' => (string) data_get($leg, "$side.Airport.CountryCode", ''),
             'airport' => (string) data_get($leg, "$side.Airport.AirportName", ''),
             'terminal' => (string) data_get($leg, "$side.Airport.Terminal", ''),
             'city' => (string) data_get($leg, "$side.Airport.CityName", ''),

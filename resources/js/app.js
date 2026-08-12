@@ -236,6 +236,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     error: null,
     results: [],
     traceId: null,
+    resultType: null, // search-only, needed by Book — see seats
     currency: 'PHP',
     sort: 'price',
     filters: { stops: [], airlines: [], maxPrice: null, refundableOnly: false },
@@ -402,6 +403,7 @@ Alpine.data('flightSearch', (config = {}) => ({
 
             this.results = data.results ?? [];
             this.traceId = data.traceId ?? null;
+            this.resultType = data.resultType ?? null;
             this.currency = data.currency ?? 'PHP';
             this.resetFilters();
             this.syncUrl();
@@ -447,6 +449,11 @@ Alpine.data('flightSearch', (config = {}) => ({
             to: offer.arrival?.code || '',
             search: this.summary || '', // carried to the wizard's search-context bar
             q: encodeSearch(this.searchParams()), // exact search that produced this offer, so "Modify" restores it
+            // Per-segment seat availability, in segment order. TBO drops this from the
+            // FareQuote response but wants it back on Book, so search is the only place
+            // it can be captured — see the seats_available migration.
+            seats: (offer.trips ?? []).flatMap((t) => t.segments ?? []).map((s) => s.seats ?? '').join(','),
+            resultType: this.resultType ?? '',
         });
         window.location = `${this.bookingCreateUrl}?${params.toString()}`;
     },
@@ -823,6 +830,11 @@ Alpine.data('logoDropzone', (config = {}) => ({
 // /bookings on completion.
 Alpine.data('bookingWizard', (config = {}) => ({
     traceId: config.traceId ?? '',
+    // Both are search-only facts the Book payload needs and FareQuote does not
+    // return. They ride the query string into this page and must be declared here,
+    // or the submit below posts undefined.
+    resultType: config.resultType ?? null,
+    seats: config.seats ?? [],
     resultIndex: config.resultIndex ?? '',
     quote: config.quote ?? {},
     ssr: config.ssr ?? { baggage: [], meals: [] },
@@ -836,7 +848,9 @@ Alpine.data('bookingWizard', (config = {}) => ({
     priceGateOpen: false, // shown on load if the re-price differs from the searched fare
     detailsOpen: false, // full itinerary + fare conditions under the summary card
     passengers: [],
-    contact: { email: '', phone: '' },
+    // Address/mobile are collected once and copied onto every passenger server-side —
+    // TBO wants them per passenger, but they do not vary per passenger.
+    contact: { email: '', phone: '', mobileCountryCode: '63', addressLine1: '', addressLine2: '', city: '', countryCode: 'PH' },
     guestTab: 'contact', // active Guest-details sub-section: 'contact' or a passenger index
     submitting: false,
     error: null,
@@ -907,14 +921,24 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     buildPassengers() {
-        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', passportNo: '', passportExpiry: '', nationality: '', baggage: '', meal: '' });
+        const blank = (type) => ({ type, title: 'Mr', firstName: '', lastName: '', gender: '', dateOfBirth: '', documentNumber: '', documentExpiry: '', documentIssueCountry: '', documentIssueDate: '', nationality: '', baggage: [], meal: [], isLeadPax: false });
         const list = [];
         (this.quote?.fareBreakdown ?? []).forEach((b) => {
             const n = Number(b.count) || 0;
             for (let i = 0; i < n; i++) list.push(blank(b.passengerType || 'Adult'));
         });
         if (! list.length) list.push(blank('Adult'));
+
+        // Default the first adult to lead; the server does the same if none is set.
+        const firstAdult = list.findIndex((p) => p.type === 'Adult');
+        if (firstAdult !== -1) list[firstAdult].isLeadPax = true;
+
         return list;
+    },
+
+    /** Exactly one lead guest — selecting one clears the rest. */
+    setLeadPax(index) {
+        this.passengers.forEach((p, i) => { p.isLeadPax = i === index; });
     },
 
     get hasSsr() {
@@ -923,7 +947,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
 
     get canProceedGuests() {
         return this.passengers.every((p) => p.firstName.trim() && p.lastName.trim()) &&
-            this.contact.email.trim() && this.contact.phone.trim();
+            this.contactComplete;
     },
 
     // Guest-details sub-sections: contact first, then one per passenger.
@@ -940,11 +964,33 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 
     get contactComplete() {
-        return !! (this.contact.email.trim() && this.contact.phone.trim());
+        const c = this.contact;
+
+        // addressLine2 is the only optional field here — the rest are mandatory on
+        // TBO's Book payload, so a gap would only surface as a supplier rejection.
+        return !! (c.email.trim() && c.phone.trim() && c.mobileCountryCode.trim() &&
+            c.addressLine1.trim() && c.city.trim() && c.countryCode.trim());
+    },
+
+    /**
+     * An international itinerary always needs a passport; a domestic one needs a
+     * government ID whenever the fare asks for a document at all. Mirrors the check
+     * BookingService re-runs against a fresh quote at submit.
+     */
+    get documentRequired() {
+        return !! (this.quote?.isPassportMandatory || this.quote?.isDomestic === false);
     },
 
     passengerComplete(p) {
-        return !! (p && p.firstName.trim() && p.lastName.trim());
+        if (! p || ! p.firstName.trim() || ! p.lastName.trim()) return false;
+
+        // Always: TBO rejects a blank one at Ticket, by which point the booking has
+        // been paid for and may already hold a PNR.
+        if (! p.dateOfBirth?.trim()) return false;
+
+        return this.documentRequired
+            ? !! (p.documentNumber?.trim() && p.documentExpiry?.trim())
+            : true;
     },
 
     get currentSectionComplete() {
@@ -979,18 +1025,426 @@ Alpine.data('bookingWizard', (config = {}) => ({
         this.syncUrl();
     },
 
-    ssrPrice(list, code) {
-        if (! code || ! list) return 0;
-        const opt = list.find((o) => o.code === code);
-        return opt ? Number(opt.price) || 0 : 0;
+    /** Total price of the keys a passenger holds for one kind of add-on. */
+    ssrPrice(kind, keys) {
+        return (keys ?? []).reduce((sum, key) => {
+            const option = this.addOnOption(kind, key);
+            return sum + (option ? Number(option.price) || 0 : 0);
+        }, 0);
     },
 
     get ancillaryTotal() {
         if (! this.ssr) return 0;
-        return this.passengers.reduce(
-            (sum, p) => sum + this.ssrPrice(this.ssr.baggage, p.baggage) + this.ssrPrice(this.ssr.meals, p.meal),
-            0,
+        return this.passengers.reduce((sum, p) => sum + this.passengerAddOnTotal(p), 0);
+    },
+
+    /** What one passenger's chosen add-ons come to, across every leg. */
+    passengerAddOnTotal(p) {
+        if (! this.ssr) return 0;
+        return this.ssrPrice('baggage', this.addOnKeys(p, 'baggage'))
+            + this.ssrPrice('meal', this.addOnKeys(p, 'meal'));
+    },
+
+    /**
+     * The card's summary: one line per leg the add-on is offered on.
+     *
+     * Every leg appears, chosen or not. A leg showing "—" is the point — an agent has
+     * to be able to see at a glance that the return has no meal, which a list of only
+     * what was bought cannot show.
+     */
+    addOnLines(p, kind) {
+        const chosen = {};
+
+        this.addOnChoices(p, kind).forEach((o) => {
+            chosen[`${o.origin}|${o.destination}`] = o;
+        });
+
+        return this.addOnLegs(kind).map((leg) => {
+            const option = chosen[leg.key];
+
+            return {
+                key: leg.key,
+                route: `${leg.origin} → ${leg.destination}`,
+                // Extra baggage is *added to* the fare's allowance, so it carries a
+                // plus. Bare "5 kg" beside "30 KG included" reads as a downgrade.
+                label: option ? (kind === 'baggage' ? `+${option.label}` : option.label) : null,
+                price: option ? Number(option.price) || 0 : 0,
+            };
+        });
+    },
+
+    /** True once the passenger has chosen anything at all for this kind. */
+    addOnChosen(p, kind) {
+        return this.addOnKeys(p, kind).length > 0;
+    },
+
+    /**
+     * The allowance already in the fare.
+     *
+     * Shown on the baggage card whether or not extra was bought: the question an
+     * agent is asked is how much the passenger *has*, not how much was added.
+     */
+    get includedBaggage() {
+        return this.quote?.baggage || null;
+    },
+
+    // ----- passenger dates ---------------------------------------------------
+    // Three selects rather than a calendar, for every date on a passenger. All of them
+    // are years away from today — a birth date decades back, a passport a decade
+    // either side — and a picker makes an agent page through hundreds of months to
+    // reach one. The parts are held here while they are half-filled, because a partial
+    // date cannot be represented in the ISO string the passenger actually carries.
+
+    dateParts: {}, // "index:field" -> { d, m, y }
+
+    /**
+     * Per field: how far the year list runs from today, and which side of today the
+     * finished date has to fall on. A passport that expired is not a date-entry
+     * mistake to be tolerated — it cannot be travelled on.
+     */
+    dateFields: {
+        dateOfBirth: {
+            from: -120, to: 0, direction: 'past',
+            invalid: 'A date of birth cannot be in the future.',
+        },
+        documentExpiry: {
+            from: 0, to: 15, direction: 'future',
+            invalid: 'This document has already expired — it cannot be used to travel.',
+        },
+        documentIssueDate: {
+            from: -20, to: 0, direction: 'past',
+            invalid: 'An issue date cannot be in the future.',
+        },
+    },
+
+    dobMonths: [
+        { value: '01', name: 'January' }, { value: '02', name: 'February' },
+        { value: '03', name: 'March' }, { value: '04', name: 'April' },
+        { value: '05', name: 'May' }, { value: '06', name: 'June' },
+        { value: '07', name: 'July' }, { value: '08', name: 'August' },
+        { value: '09', name: 'September' }, { value: '10', name: 'October' },
+        { value: '11', name: 'November' }, { value: '12', name: 'December' },
+    ],
+
+    dateYears(field) {
+        const spec = this.dateFields[field];
+        const now = new Date().getFullYear();
+        const years = [];
+
+        for (let y = now + spec.from; y <= now + spec.to; y++) years.push(String(y));
+
+        // Nearest first: an expiry is a year or two out, a birth date a year or two
+        // back. Either way the useful end should not need scrolling to.
+        return spec.direction === 'future' ? years : years.reverse();
+    },
+
+    /** Days that exist in the chosen month, so 31 February is never offered. */
+    dateDays(index, field) {
+        const year = Number(this.datePart(index, field, 'y'));
+        const month = Number(this.datePart(index, field, 'm'));
+
+        // No month yet: 31 keeps every day reachable. A missing year is treated as a
+        // leap year so 29 February stays selectable until the year says otherwise.
+        const count = month ? new Date(year || 2000, month, 0).getDate() : 31;
+
+        return Array.from({ length: count }, (_, k) => String(k + 1).padStart(2, '0'));
+    },
+
+    datePart(index, field, part) {
+        const cached = this.dateParts[`${index}:${field}`];
+        if (cached && cached[part] !== undefined) return cached[part];
+
+        const iso = this.passengers[index]?.[field];
+        if (! iso) return '';
+
+        const [y, m, d] = String(iso).split('-');
+        return { y, m, d }[part] ?? '';
+    },
+
+    setDatePart(index, field, part, value) {
+        const key = `${index}:${field}`;
+
+        const parts = {
+            y: this.datePart(index, field, 'y'),
+            m: this.datePart(index, field, 'm'),
+            d: this.datePart(index, field, 'd'),
+            ...(this.dateParts[key] ?? {}),
+            [part]: value,
+        };
+
+        // Changing month or year can strand the day — 31 January to February.
+        const available = Number(parts.m)
+            ? new Date(Number(parts.y) || 2000, Number(parts.m), 0).getDate()
+            : 31;
+
+        if (Number(parts.d) > available) parts.d = '';
+
+        this.dateParts[key] = parts;
+        this.passengers[index][field] = this.composeDate(parts, field);
+    },
+
+    /** Only a complete date on the right side of today reaches the passenger. */
+    composeDate(parts, field) {
+        if (! parts.y || ! parts.m || ! parts.d) return '';
+
+        const iso = `${parts.y}-${parts.m}-${parts.d}`;
+        const when = new Date(`${iso}T00:00:00`);
+        const today = new Date(new Date().toDateString());
+
+        if (this.dateFields[field].direction === 'past' && when > today) return '';
+        if (this.dateFields[field].direction === 'future' && when < today) return '';
+
+        return iso;
+    },
+
+    /**
+     * Why the field is still empty, when the agent has clearly filled something in.
+     * Silence here reads as the form ignoring them.
+     */
+    dateError(index, field) {
+        const parts = this.dateParts[`${index}:${field}`];
+        if (! parts) return '';
+
+        const filled = ['y', 'm', 'd'].filter((k) => parts[k]);
+        if (! filled.length || this.passengers[index]?.[field]) return '';
+
+        return filled.length < 3
+            ? 'Choose a month, day and year.'
+            : this.dateFields[field].invalid;
+    },
+
+    /** The resolved options a passenger holds for this kind, in leg order. */
+    addOnChoices(p, kind) {
+        return this.addOnKeys(p, kind)
+            .map((key) => this.addOnOption(kind, key))
+            .filter(Boolean);
+    },
+
+    /** Selections are a list now; tolerate the single-code shape from before. */
+    addOnKeys(p, kind) {
+        const value = p?.[kind];
+        if (! value) return [];
+        return Array.isArray(value) ? value : [value];
+    },
+
+    addOnOption(kind, key) {
+        if (! key || ! this.ssr) return null;
+        const list = (kind === 'baggage' ? this.ssr.baggage : this.ssr.meals) ?? [];
+        return list.find((o) => o.key === key) ?? list.find((o) => o.code === key) ?? null;
+    },
+
+    // ----- the picker dialog -------------------------------------------------
+    // Holds a draft so browsing options cannot change the price; only Select commits.
+
+    // draft is a map of legKey -> option key (or '' for none on that leg), so a
+    // passenger can take a meal outbound and nothing back.
+    addOnPicker: null, // { index, kind, draft }
+
+    openAddOnPicker(index, kind) {
+        const draft = {};
+        const legs = this.addOnLegs(kind);
+
+        legs.forEach((leg) => { draft[leg.key] = ''; });
+
+        this.addOnChoices(this.passengers[index], kind).forEach((o) => {
+            draft[`${o.origin}|${o.destination}`] = o.key;
+        });
+
+        this.addOnPicker = { index, kind, draft, activeLeg: legs[0]?.key ?? null };
+    },
+
+    cancelAddOnPicker() {
+        this.addOnPicker = null;
+    },
+
+    confirmAddOnPicker() {
+        if (! this.addOnPicker) return;
+        const { index, kind, draft } = this.addOnPicker;
+
+        if (this.passengers[index]) {
+            this.passengers[index][kind] = Object.values(draft).filter(Boolean);
+        }
+
+        this.addOnPicker = null;
+    },
+
+    /**
+     * The legs this kind of add-on is offered on, in the order TBO listed them.
+     *
+     * Per kind, never shared: on a return with a layover TBO sold meals per flight
+     * (DEL→DXB, DXB→BOM, BOM→DEL) but baggage per direction (DEL→DXB, DXB→DEL) —
+     * a checked bag travels through the connection, a meal does not.
+     */
+    addOnLegs(kind) {
+        const list = (kind === 'baggage' ? this.ssr?.baggage : this.ssr?.meals) ?? [];
+        const legs = [];
+
+        list.forEach((o) => {
+            const key = `${o.origin}|${o.destination}`;
+            if (! legs.some((l) => l.key === key)) {
+                legs.push({
+                    key,
+                    origin: o.origin,
+                    destination: o.destination,
+                    label: this.legLabel(o.origin, o.destination),
+                });
+            }
+        });
+
+        return legs;
+    },
+
+    /**
+     * Name a leg against the itinerary, so a connection is obvious.
+     *
+     * Returns null when nothing matches, which is not a bug: TBO's baggage row for a
+     * connecting return is `DXB→DEL`, a route that appears in no single segment of
+     * the flight. The route itself is then the only honest label.
+     */
+    legLabel(origin, destination) {
+        const trips = this.quote?.trips ?? [];
+
+        for (const trip of trips) {
+            const segments = trip.segments ?? [];
+            if (! segments.length) continue;
+
+            const direction = trips.length > 1
+                ? (trip.direction === 'inbound' ? 'Return' : 'Outbound')
+                : null;
+
+            const at = segments.findIndex(
+                (s) => s.origin?.code === origin && s.destination?.code === destination,
+            );
+
+            if (at >= 0) {
+                if (segments.length === 1) return direction;
+                return direction
+                    ? `${direction} · flight ${at + 1} of ${segments.length}`
+                    : `Flight ${at + 1} of ${segments.length}`;
+            }
+
+            // The whole direction end to end — how baggage is sold through a connection.
+            if (segments[0].origin?.code === origin
+                && segments[segments.length - 1].destination?.code === destination) {
+                return direction ? `${direction} · all flights` : 'All flights';
+            }
+        }
+
+        return null;
+    },
+
+    get addOnPickerOptions() {
+        if (! this.addOnPicker || ! this.ssr) return [];
+        return (this.addOnPicker.kind === 'baggage' ? this.ssr.baggage : this.ssr.meals) ?? [];
+    },
+
+    /**
+     * The picker's legs, as tabs.
+     *
+     * TBO sends options per leg, so a Spicejet DEL–DXB return came back as 41 meals —
+     * the same dishes repeated across three flights at different prices. One scrolling
+     * list showed "Veg Sandwich" three times with nothing to tell them apart; a tab
+     * per leg makes the flight the agent is choosing for explicit.
+     */
+    get addOnPickerTabs() {
+        if (! this.addOnPicker) return [];
+
+        return this.addOnLegs(this.addOnPicker.kind).map((leg) => ({
+            ...leg,
+            route: `${leg.origin} → ${leg.destination}`,
+            chosen: !! this.addOnPicker.draft[leg.key],
+        }));
+    },
+
+    /** Options for the tab currently open. */
+    get addOnPickerActiveOptions() {
+        if (! this.addOnPicker?.activeLeg) return [];
+
+        return this.addOnPickerOptions.filter(
+            (o) => `${o.origin}|${o.destination}` === this.addOnPicker.activeLeg,
         );
+    },
+
+    get addOnPickerActiveLeg() {
+        return this.addOnPickerTabs.find((t) => t.key === this.addOnPicker?.activeLeg) ?? null;
+    },
+
+    /** Most of these are free; "PHP 0.00" reads like a bug next to a real price. */
+    addOnPriceLabel(price) {
+        return Number(price) > 0 ? `${this.currency} ${this.money(price)}` : 'Free';
+    },
+
+    get addOnPickerPassenger() {
+        return this.addOnPicker ? this.passengers[this.addOnPicker.index] : null;
+    },
+
+    get addOnPickerTitle() {
+        if (! this.addOnPicker) return '';
+        const who = this.addOnPickerPassenger;
+        const name = who?.firstName || `Guest ${this.addOnPicker.index + 1}`;
+        return `${this.addOnPicker.kind === 'baggage' ? 'Checked baggage' : 'Meal'} for ${name}`;
+    },
+
+    get addOnPickerSubtitle() {
+        if (! this.addOnPicker) return '';
+        return this.addOnPicker.kind === 'baggage'
+            ? 'Charged per passenger, on top of the allowance already in the fare.'
+            : 'Ordered in advance and served on board.';
+    },
+
+    get addOnPickerNoneTitle() {
+        return this.addOnPicker?.kind === 'baggage' ? 'No extra baggage' : 'No meal';
+    },
+
+    get addOnPickerNoneNote() {
+        if (this.addOnPicker?.kind !== 'baggage') return 'Nothing ordered';
+        return this.quote?.baggage ? `${this.quote.baggage} already included` : 'Cabin bag only';
+    },
+
+    /** The footer's running answer, so Select is never a leap of faith. */
+    get addOnPickerDraftLabel() {
+        if (! this.addOnPicker) return '';
+
+        const chosen = Object.values(this.addOnPicker.draft)
+            .filter(Boolean)
+            .map((key) => this.addOnOption(this.addOnPicker.kind, key))
+            .filter(Boolean);
+
+        if (! chosen.length) return this.addOnPickerNoneTitle;
+
+        const total = chosen.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+
+        return chosen.length === 1
+            ? `${chosen[0].label} · ${this.addOnPriceLabel(total)}`
+            : `${chosen.length} legs · ${this.addOnPriceLabel(total)}`;
+    },
+
+    // ----- add-on styling ----------------------------------------------------
+
+    /** A passenger's summary card. Tinted once something is actually chosen. */
+    addOnTileClass(chosen) {
+        return 'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ' +
+            (chosen
+                ? 'border-blue-300 bg-blue-50/50 hover:border-blue-400'
+                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50');
+    },
+
+    addOnIconClass(chosen) {
+        return 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ' +
+            (chosen ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400');
+    },
+
+    /** One option row inside the picker. */
+    addOnRowClass(selected) {
+        return 'flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ' +
+            (selected
+                ? 'border-blue-600 bg-blue-50/60 ring-1 ring-blue-600'
+                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50');
+    },
+
+    addOnDotClass(selected) {
+        return 'h-4 w-4 shrink-0 rounded-full border-[5px] transition ' +
+            (selected ? 'border-blue-600' : 'border-gray-300');
     },
 
     get grandTotal() {
@@ -1040,6 +1494,8 @@ Alpine.data('bookingWizard', (config = {}) => ({
             resultIndex: this.resultIndex,
             contact: this.contact,
             passengers: this.passengers,
+            seats: this.seats ?? [],
+            resultType: this.resultType,
         });
 
         this.submitting = false;

@@ -49,6 +49,7 @@ class FlightController extends Controller
                 return [
                     'results' => array_map(fn ($offer) => $offer->toArray(), $result['offers']),
                     'traceId' => $result['traceId'],
+                    'resultType' => $result['resultType'],
                     'currency' => $result['currency'],
                 ];
             });

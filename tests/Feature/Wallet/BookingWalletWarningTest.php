@@ -61,7 +61,7 @@ class BookingWalletWarningTest extends TestCase
     {
         $this->fakeQuote();
         $this->fund('9000.00');
-        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create']);
+        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $wallet = $this->actingAs($agent)
             ->get(route('bookings.create', $this->query()))
@@ -75,7 +75,7 @@ class BookingWalletWarningTest extends TestCase
     public function test_an_agency_with_no_wallet_yet_reads_as_zero_without_creating_one(): void
     {
         $this->fakeQuote();
-        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create']);
+        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $wallet = $this->actingAs($agent)
             ->get(route('bookings.create', $this->query()))
@@ -90,7 +90,7 @@ class BookingWalletWarningTest extends TestCase
     {
         // They are never charged, so a balance warning would be meaningless.
         $this->fakeQuote();
-        $staff = $this->userWith(['flight.view', 'booking.view', 'booking.create']);
+        $staff = $this->userWith(['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $response = $this->actingAs($staff)
             ->get(route('bookings.create', $this->query()))
@@ -112,7 +112,7 @@ class BookingWalletWarningTest extends TestCase
     {
         $this->fakeQuote();
         $this->fund('100.00');
-        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create']);
+        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $response = $this->actingAs($agent)
             ->get(route('bookings.create', $this->query()))
@@ -131,9 +131,9 @@ class BookingWalletWarningTest extends TestCase
         $this->fund('100.00');
 
         $canRequest = $this->agencyUserWith($this->agency, [
-            'flight.view', 'booking.view', 'booking.create', 'wallet.load.create',
+            'flight.view', 'booking.view', 'booking.create', 'flight.issue', 'wallet.load.create',
         ]);
-        $cannot = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create']);
+        $cannot = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $this->assertSame(
             route('wallet.requests.create'),
@@ -150,15 +150,18 @@ class BookingWalletWarningTest extends TestCase
         // The warning is advisory; the balance can change while the page is open.
         $this->fakeQuote();
         $this->fund('100.00');
-        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create']);
+        $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $this->actingAs($agent)
             ->postJson(route('bookings.store'), [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
-                'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+                'contact' => [
+                    'email' => 'agent@example.com', 'phone' => '09170000000', 'mobileCountryCode' => '63',
+                    'addressLine1' => '123 Rizal Street', 'city' => 'Makati', 'countryCode' => 'PH',
+                ],
                 'passengers' => [
-                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
                 ],
             ])
             ->assertStatus(422);

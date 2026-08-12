@@ -13,6 +13,42 @@
     <div class="max-w-2xl space-y-6">
         <x-admin.flash />
 
+        @can('supplier.tbo.view')
+            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 class="text-base font-semibold text-brand-900">Our balance with TBO</h2>
+                        <p class="mt-1 text-sm text-gray-500">
+                            The funds TBO deducts when a ticket is issued, on <span class="font-semibold text-brand-900">{{ $effectiveEnvironment }}</span>.
+                            This is <em>not</em> an agency e-wallet &mdash; a ticket can fail here while the booking
+                            agency's own balance is full.
+                        </p>
+                    </div>
+                    <form method="POST" action="{{ route('admin.settings.tbo.balance') }}">
+                        @csrf
+                        <button type="submit" class="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                            Check now
+                        </button>
+                    </form>
+                </div>
+
+                @if ($balance)
+                    <p class="mt-4 text-2xl font-semibold text-brand-900">
+                        {{ $balance['currency'] ?? 'PHP' }} {{ number_format((float) ($balance['available'] ?? 0), 2) }}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-400">
+                        Cached for up to {{ (int) round(config('tboair.balance_cache_ttl') / 60) }} minutes &mdash; "Check now" reads it again.
+                    </p>
+                @else
+                    <p class="mt-4 text-sm text-gray-500">Not checked yet on this environment.</p>
+                    <p class="mt-1 text-xs text-gray-400">
+                        Read on demand rather than on page load: the call returns a fresh TokenId, so polling it
+                        could churn the token an in-flight booking is using.
+                    </p>
+                @endif
+            </div>
+        @endcan
+
         <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <div class="flex items-center justify-between">
                 <h2 class="text-base font-semibold text-brand-900">TBO Air Environment</h2>

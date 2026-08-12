@@ -36,6 +36,9 @@ return [
             ],
             'endpoints' => [
                 'authentication' => env('TBOAIR_AUTH_URL', 'https://xmloutapi.tboair.com/API/V1/Authenticate/ValidateAgency'),
+                // OUR balance with TBO — the pot ticketing draws down. Not the agency
+                // e-wallet. Credential-authenticated like Authenticate, no TokenId.
+                'agency_balance' => 'https://xmloutapi.tboair.com/API/V1/Wallet/GetAvailableBalance',
                 'search' => env('TBOAIR_SEARCH_URL', 'https://api-stage.tboair.com/InternalAirService.svc/rest/Search/'),
                 'fare_rule' => 'https://api-stage.tboair.com/InternalAirService.svc/rest/FareRule/',
                 'fare_quote' => 'https://api-stage.tboair.com/InternalAirService.svc/rest/FareQuote/',
@@ -55,6 +58,7 @@ return [
             ],
             'endpoints' => [
                 'authentication' => 'https://searchapi.tboair.com/api/v1/Authenticate/validateAgency',
+                'agency_balance' => 'https://searchapi.tboair.com/api/v1/Wallet/GetAvailableBalance',
                 'search' => 'https://tbo-api.tboair.com/InternalAirService.svc/rest/Search/',
                 'fare_rule' => 'https://tbo-api.tboair.com/InternalAirService.svc/rest/FareRule/',
                 'fare_quote' => 'https://tbo-api.tboair.com/InternalAirService.svc/rest/FareQuote/',
@@ -77,6 +81,11 @@ return [
     | Authenticate expects the string "API"; Search expects the integer 5.
     |
     */
+
+    // The country we sell from. Decides which itineraries count as domestic — and so
+    // whether a passenger is asked for a passport or any government ID — and is sent
+    // to TBO as PointOfSale.
+    'point_of_sale' => env('TBOAIR_POINT_OF_SALE', 'PH'),
 
     'auth_mode' => env('TBOAIR_AUTH_MODE', 'API'),
 
@@ -103,6 +112,13 @@ return [
     // How long a user's recent-search shortcuts are kept (seconds). Per-user,
     // so the list follows them across devices until it expires.
     'recent_ttl' => (int) env('TBOAIR_RECENT_TTL', 86400), // 1 day
+
+    // How long our TBO agency balance is cached (seconds), per environment.
+    // Deliberately not short: GetAvailableBalance authenticates with credentials and
+    // returns a fresh TokenId, and TBO's published guide still claims one token per
+    // day — so polling it could churn the token a booking is mid-flight on. Read it
+    // on demand, not on every page render.
+    'balance_cache_ttl' => (int) env('TBOAIR_BALANCE_CACHE_TTL', 300), // 5 min
 
     'timeout' => (int) env('TBOAIR_TIMEOUT', 300),
 

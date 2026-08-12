@@ -37,9 +37,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');
-        Route::get('/create', [BookingController::class, 'create'])->name('create')->middleware('can:booking.create');
-        Route::post('/', [BookingController::class, 'store'])->name('store')->middleware('can:booking.create');
+        // Completing a booking now issues the ticket, so the wizard itself requires the
+        // ability to spend — better to refuse at the door than after ten minutes of
+        // passenger entry.
+        Route::get('/create', [BookingController::class, 'create'])->name('create')
+            ->middleware(['can:booking.create', 'can:flight.issue']);
+        Route::post('/', [BookingController::class, 'store'])->name('store')
+            ->middleware(['can:booking.create', 'can:flight.issue']);
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show')->whereNumber('booking')->middleware('can:booking.view');
+        // The printable document. Read-only and offline — it renders from what we
+        // already stored, so a passenger at a check-in desk never depends on TBO.
+        Route::get('/{booking}/eticket', [BookingController::class, 'eticket'])->name('eticket')
+            ->whereNumber('booking')->middleware('can:booking.view');
+        // Where the booking page follows a queued Book/Ticket to its ending.
+        Route::get('/{booking}/status', [BookingController::class, 'status'])->name('status')
+            ->whereNumber('booking')->middleware('can:booking.view');
+
+        // The money step, and the only one. There is no hold: this queues Book →
+        // Ticket as a single act, exactly as the system live today does it. Both
+        // abilities are required because it always ends in a ticket.
+        Route::post('/{booking}/fulfil', [BookingController::class, 'fulfil'])->name('fulfil')
+            ->whereNumber('booking')->middleware(['can:flight.book', 'can:flight.issue']);
     });
     /*
     | Wallet — the agency e-wallet and its load-request cycle. Every step is
@@ -146,6 +164,9 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             ->whereIn('env', ['test', 'live'])->middleware('can:supplier.tbo.manage');
         Route::post('/tbo/flush/{env}', [SettingController::class, 'flushToken'])->name('tbo.flush')
             ->whereIn('env', ['test', 'live'])->middleware('can:supplier.tbo.manage');
+        // Our balance WITH TBO — a read, so view rather than manage.
+        Route::post('/tbo/balance', [SettingController::class, 'refreshBalance'])->name('tbo.balance')
+            ->middleware('can:supplier.tbo.view');
     });
 });
 

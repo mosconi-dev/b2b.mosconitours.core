@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\BookingStatus;
+use App\Jobs\FulfilBookingJob;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\BookingService;
@@ -10,6 +11,7 @@ use App\Services\Booking\Exceptions\BookingException;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
@@ -22,6 +24,11 @@ class BookingTest extends TestCase
     {
         parent::setUp();
         $this->seed(PermissionSeeder::class);
+
+        // Completing the wizard now queues Book → Ticket. These tests are about what
+        // gets *saved*, so the job is recorded rather than run — otherwise every one of
+        // them would also be a ticketing test, against unfaked supplier calls.
+        Queue::fake();
     }
 
     private function fixture(string $name): array
@@ -40,7 +47,7 @@ class BookingTest extends TestCase
 
     private function bookingUser(): User
     {
-        return $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create']);
+        return $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue']);
     }
 
     private function payload(array $overrides = []): array
@@ -48,9 +55,16 @@ class BookingTest extends TestCase
         return array_merge([
             'traceId' => 'trace-abc-123',
             'resultIndex' => str_repeat('R', 400),
-            'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+            'contact' => [
+                'email' => 'agent@example.com',
+                'phone' => '09170000000',
+                'mobileCountryCode' => '63',
+                'addressLine1' => '123 Rizal Street',
+                'city' => 'Makati',
+                'countryCode' => 'PH',
+            ],
             'passengers' => [
-                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M'],
+                ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
             ],
         ], $overrides);
     }
@@ -115,6 +129,32 @@ class BookingTest extends TestCase
             ->assertSee("redirectUrl: '".route('flights')."'", false);
     }
 
+    /**
+     * Add-ons are a summary card per passenger that opens a picker — not a dropdown,
+     * and not a wall of tiles that becomes unreadable at six guests.
+     */
+    public function test_create_renders_addons_as_cards_with_a_picker(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk()
+            ->assertSee('Checked baggage')
+            ->assertSee('Add-ons total')
+            ->assertSee('openAddOnPicker(', escape: false)     // the card opens the dialog
+            ->assertSee('confirmAddOnPicker(', escape: false)  // Select commits the draft
+            ->assertSee('cancelAddOnPicker(', escape: false)   // Cancel discards it
+            ->assertSee('role="dialog"', escape: false)
+            ->assertSee('role="radiogroup"', escape: false)
+            // One tab per leg: TBO prices add-ons per leg, and on a connection it
+            // sells meals per flight but baggage for the whole direction.
+            ->assertSee('role="tab"', escape: false)
+            ->assertSee('addOnPickerTabs', escape: false)
+            ->assertSee('addOnPickerActiveOptions', escape: false)
+            ->assertDontSee('<option value="">No extra baggage', false); // the old select is gone
+    }
+
     public function test_create_requires_booking_create_permission(): void
     {
         $this->fakeQuote();
@@ -145,7 +185,12 @@ class BookingTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_store_creates_a_quoted_booking_from_a_fresh_quote(): void
+    /**
+     * Completing the wizard is the whole transaction, so the booking lands as
+     * `processing` with Book → Ticket already queued — not as a quote waiting for
+     * someone to press a second button.
+     */
+    public function test_store_creates_a_processing_booking_and_queues_the_ticket(): void
     {
         $this->fakeQuote();
         $user = $this->bookingUser();
@@ -155,13 +200,125 @@ class BookingTest extends TestCase
             ->assertRedirect();
 
         $booking = Booking::firstOrFail();
+        Queue::assertPushed(FulfilBookingJob::class, fn ($job): bool => $job->bookingId === $booking->id);
+
         $this->assertSame($user->id, $booking->user_id);
-        $this->assertSame(BookingStatus::Quoted, $booking->status);
+        $this->assertSame(BookingStatus::Processing, $booking->status);
         $this->assertSame('test', $booking->environment);
         $this->assertTrue($booking->is_lcc);
         $this->assertEqualsWithDelta(6400, (float) $booking->total_amount, 0.001);
         $this->assertCount(1, $booking->pax);
         $this->assertStringStartsWith('MT-', $booking->reference);
+    }
+
+    public function test_store_keeps_the_raw_fare_quote_response_verbatim(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload())
+            ->assertRedirect();
+
+        $booking = Booking::firstOrFail();
+
+        // Book echoes the priced itinerary back field-for-field, so the response is
+        // stored whole — not the UI transform, which drops most of what Book wants.
+        $this->assertSame($this->fixture('farequote.json'), $booking->quote_raw);
+
+        // Two fields the transform provably loses, to catch a "raw" that is quietly
+        // re-derived from the DTO rather than kept as it arrived.
+        $result = $booking->quote_raw['Response']['Results'];
+        $this->assertSame(6, $result['Source']);
+        $this->assertSame('PHP', $result['FareBreakdown'][0]['Currency']);
+        $this->assertArrayNotHasKey('Source', $booking->quote);
+    }
+
+    public function test_store_copies_the_contact_block_onto_every_passenger(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
+                ],
+            ]))
+            ->assertRedirect();
+
+        // TBO wants an address on each passenger, so the shared block is fanned out —
+        // including onto the child, who obviously did not type one.
+        foreach (Booking::firstOrFail()->pax as $row) {
+            $this->assertSame('123 Rizal Street', $row['addressLine1']);
+            $this->assertSame('Makati', $row['city']);
+            $this->assertSame('63', $row['mobileCountryCode']);
+            $this->assertSame('agent@example.com', $row['email']);
+            $this->assertSame('PH', $row['countryCode']);
+            // Derived from the code, never collected, so the two cannot disagree.
+            $this->assertSame('Philippines', $row['countryName']);
+        }
+    }
+
+    public function test_store_marks_exactly_one_adult_as_lead_passenger(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    // A child flagged as lead, which TBO will not accept...
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => true, 'dateOfBirth' => '2018-03-04'],
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Adult', 'title' => 'Mrs', 'firstName' => 'Maria', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '1990-08-15'],
+                ],
+            ]))
+            ->assertRedirect();
+
+        $pax = Booking::firstOrFail()->pax;
+
+        // ...so the flag moves to the first adult, and only that one carries it.
+        $this->assertSame([false, true, false], array_column($pax, 'isLeadPax'));
+    }
+
+    public function test_store_rejects_a_title_tbo_cannot_encode(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Dr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                ],
+            ]))
+            ->assertSessionHasErrors('passengers.0.title');
+    }
+
+    public function test_store_requires_the_address_tbo_asks_for(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
+            ]))
+            ->assertSessionHasErrors(['contact.addressLine1', 'contact.city', 'contact.countryCode', 'contact.mobileCountryCode']);
+    }
+
+    /**
+     * The combination that got past us on a real PR fare: not required at Book, but
+     * required at Ticket. These are independent flags, not fallbacks — chaining them
+     * with `??` stopped at the first `false` and collected no passport, and TBO then
+     * refused the Book outright.
+     */
+    public function test_store_enforces_passport_when_only_the_ticket_flag_is_set(): void
+    {
+        $this->fakeQuote('farequote-passport-at-ticket.json');
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload()) // no passport details
+            ->assertSessionHasErrors('booking');
+
+        $this->assertDatabaseCount('bookings', 0);
     }
 
     public function test_store_enforces_passport_when_the_fare_requires_it(): void
@@ -183,12 +340,71 @@ class BookingTest extends TestCase
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                    'passportNo' => 'P1234567', 'passportExpiry' => '2030-01-01', 'nationality' => 'PH',
-                ]],
+                    'documentNumber' => 'P1234567', 'documentExpiry' => '2030-01-01', 'nationality' => 'PH', 'dateOfBirth' => '1990-08-15']],
             ]))
             ->assertRedirect();
 
         $this->assertDatabaseCount('bookings', 1);
+    }
+
+    /**
+     * A blank date of birth used to reach TBO as `DateOfBirth: null` and come back as
+     * "Invalid Date of Birth of Adult" (Code 3) — at Ticket, after the wallet was
+     * charged. Booking MT-7YIS7LRE died that way on DEL→DXB.
+     */
+    public function test_store_refuses_a_passenger_without_a_date_of_birth(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->postJson(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Mike', 'lastName' => 'Alibo', 'gender' => 'M'],
+                ],
+            ]))
+            ->assertStatus(422);
+
+        $this->assertSame(0, Booking::count());
+    }
+
+    /**
+     * TBO returns that same opaque message when the date of birth does not match the
+     * passenger type, so the mismatch is caught here with words an agent can act on.
+     */
+    public function test_store_refuses_an_adult_who_is_too_young_for_the_fare(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->postJson(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Ana', 'lastName' => 'Cruz',
+                        'gender' => 'F', 'dateOfBirth' => '2020-01-01'],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'does not match the adult fare'));
+
+        $this->assertSame(0, Booking::count());
+    }
+
+    /** And the bands themselves: a child on a child fare is fine. */
+    public function test_store_accepts_a_child_whose_age_matches_the_fare(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
+                        'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz',
+                        'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
+                ],
+            ]))
+            ->assertRedirect();
+
+        $this->assertSame(1, Booking::count());
     }
 
     public function test_store_returns_a_json_redirect_for_xhr(): void
@@ -222,16 +438,42 @@ class BookingTest extends TestCase
             ->post(route('bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
-                    'baggage' => 'PBAG20', 'meal' => 'HFML',
-                ]],
+                    'baggage' => 'PBAG20', 'meal' => 'HFML', 'dateOfBirth' => '1990-08-15']],
             ]))
             ->assertRedirect();
 
         $booking = Booking::firstOrFail();
         $this->assertEqualsWithDelta(1550, (float) $booking->ancillary_total, 0.001); // 1200 + 350
         $this->assertEqualsWithDelta(7950, (float) $booking->total_amount, 0.001);     // 6400 + 1550
-        $this->assertSame('PBAG20', data_get($booking->pax, '0.ssr.baggage.code'));
-        $this->assertSame('HFML', data_get($booking->pax, '0.ssr.meal.code'));
+        // Stored as a list now — add-ons are per leg — but a single code still works.
+        $this->assertSame('PBAG20', data_get($booking->pax, '0.ssr.baggage.0.code'));
+        $this->assertSame('HFML', data_get($booking->pax, '0.ssr.meal.0.code'));
+    }
+
+    /**
+     * The whole point of per-leg add-ons: a return trip can buy a meal each way, and
+     * both are priced and stored. A single code bought one leg and silently left the
+     * other empty.
+     */
+    public function test_store_prices_an_add_on_on_every_leg_it_was_bought_for(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [[
+                    'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
+                    'dateOfBirth' => '1990-08-15',
+                    // Both legs the SSR fixture offers, keyed by code|origin|destination.
+                    'baggage' => ['PBAG20|MNL|CEB', 'PBAG32|MNL|CEB'],
+                    'meal' => [],
+                ]],
+            ]))
+            ->assertRedirect();
+
+        $booking = Booking::firstOrFail();
+        $this->assertCount(2, data_get($booking->pax, '0.ssr.baggage'));
+        $this->assertEqualsWithDelta(3200, (float) $booking->ancillary_total, 0.001); // 1200 + 2000
     }
 
     public function test_store_rejects_extra_baggage_for_an_infant(): void
@@ -240,10 +482,28 @@ class BookingTest extends TestCase
 
         $this->actingAs($this->bookingUser())
             ->post(route('bookings.store'), $this->payload([
-                'passengers' => [[
-                    'type' => 'Infant', 'title' => 'Mstr', 'firstName' => 'Baby', 'lastName' => 'Cruz',
-                    'baggage' => 'PBAG20',
-                ]],
+                // An accompanying adult, so this exercises the infant baggage guard
+                // rather than the "needs an adult" one. TBO's title enum has no
+                // Mstr — an infant boy is Mr, its only male value.
+                'passengers' => [
+                    ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
+                    ['type' => 'Infant', 'title' => 'Mr', 'firstName' => 'Baby', 'lastName' => 'Cruz', 'baggage' => 'PBAG20', 'dateOfBirth' => '2025-06-01'],
+                ],
+            ]))
+            ->assertSessionHasErrors('booking');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_store_rejects_a_booking_with_no_adult(): void
+    {
+        $this->fakeQuote();
+
+        $this->actingAs($this->bookingUser())
+            ->post(route('bookings.store'), $this->payload([
+                'passengers' => [
+                    ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
+                ],
             ]))
             ->assertSessionHasErrors('booking');
 
