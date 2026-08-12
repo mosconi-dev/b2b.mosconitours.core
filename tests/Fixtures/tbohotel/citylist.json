@@ -1,0 +1,11 @@
+{
+    "Status": {
+        "Code": 200,
+        "Description": "Success"
+    },
+    "CityList": [
+        { "Code": "127343", "Name": "Manila" },
+        { "Code": "127344", "Name": "Cebu City" },
+        { "Code": "", "Name": "Broken Row" }
+    ]
+}

@@ -29,7 +29,10 @@ class SupplierApiLog extends Model
             'authenticate', 'balance', 'search', 'farerule', 'farequote', 'ssr',
             'book', 'ticket', 'bookingdetails',
         ],
-        Supplier::TboHotel->value => [],
+        Supplier::TboHotel->value => [
+            'countrylist', 'citylist', 'hotelcodelist', 'tbohotelcodelist', 'hoteldetails',
+            'search', 'prebook', 'book', 'bookingdetail', 'cancel', 'bookingdetailsbydate',
+        ],
     ];
 
     protected $fillable = [

@@ -35,13 +35,16 @@ Live BaseURL:  {Live-URL}/HotelAPI                        (redacted in the PDF)
 Convention:    {BaseURL}/{MethodName}
 ```
 
-> ⚠️ **The test URL is a live question, not a settled fact.** The production system at
-> `b2b.philippineexplorer.com` calls `http://api.tbotechnology.in/**TBOHolidays_HotelAPI**/Search`
-> — a different path *and* plain HTTP. The spec's change log records *"Change in staging Endpoint
-> URL"* on **21 Apr 2026**, so the spec is the newer of the two. Its live host convention
-> (`…/HotelAPI/…`) does match production's `https://apiwr.tboholidays.com/HotelAPI/Search`.
-> **Resolve this with one real call before building anything on top of it** — see
-> [`03`](03-implementation-plan.md) Phase 1.
+> ✅ **Settled 2026-08-12 — the spec's URL is the right one.** Production calls
+> `http://api.tbotechnology.in/**TBOHolidays_HotelAPI**/Search`, a different path *and* plain HTTP,
+> but the spec's change log records *"Change in staging Endpoint URL"* on **21 Apr 2026** and the
+> spec wins: `php artisan tbohotel:ping --country=PH` against
+> `https://api.tbotechnology.in/HotelAPI` returned **249 countries** (GET, 1197 ms) and **194
+> Philippine cities** (POST, 1129 ms) on the `MoscaniToursTest` credentials.
+>
+> Two things came free with that call. The credentials are good, and — unlike TBO Air, where a
+> dev machine cannot authenticate at all — **the hotel API is not IP-restricted**, so the whole
+> read side can be developed and tested locally.
 
 | Method | Path | HTTP | Recommended timeout (§4) |
 | --- | --- | --- | --- |
@@ -277,10 +280,11 @@ caused by trusting a doc page (`../tboair/02-current-implementation.md`). Treat 
 
 ## 13. Open questions for TBO
 
-1. **Which test BaseURL is current** — `…/HotelAPI` (spec) or `…/TBOHolidays_HotelAPI` (production
-   today)? Is the plain-HTTP staging host still served?
+1. ~~**Which test BaseURL is current?**~~ ✅ **Answered by a real call, not by TBO** —
+   `https://api.tbotechnology.in/HotelAPI`, as the spec says. See §2.
 2. **What is the live BaseURL** on our contract? The PDF redacts it; production uses
-   `https://apiwr.tboholidays.com/HotelAPI`.
+   `https://apiwr.tboholidays.com/HotelAPI`, which is what we have configured. Worth confirming
+   before go-live rather than discovering at the first live call.
 3. **What is our QPS limit** (the `429` threshold)? Chunked city searches will hit it first.
 4. **Is there a balance/credit-limit read**, as TBO Air has? Nothing in this spec exposes one.
 5. **Which `BookingStatus` strings can actually be returned** (§17 vs the samples)?

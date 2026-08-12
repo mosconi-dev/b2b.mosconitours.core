@@ -198,7 +198,14 @@ deterministic and date-based.
 
 ---
 
-## Phase 0 — Shared foundations
+## Phase 0 — Shared foundations ✅ DONE
+
+> **Shipped** (`59371bd`): `supplier_api_logs` + a `supplier` column and filter, `App\Enums\Supplier`,
+> `SupplierEnvironmentResolver`, a `product`/`supplier`/`supplier_reference`-bearing booking spine with
+> `result_index` nullable, `BookingStatus::Confirmed` and `Cancelling`, and the `hotel.cancel` +
+> `supplier.tbohotel` RBAC modules. **One deviation:** `hotel`'s nav `route` stays `null` —
+> `PermissionRegistry::navSections()` calls `route()` on any module that names one, so pointing it at
+> a route that does not exist yet throws on every page render. Phase 3 sets it.
 
 No user-visible change. Everything after this depends on it, and retrofitting it later touches every
 file written in between.
@@ -217,7 +224,18 @@ file written in between.
   `BookingStatusTest` cases for the two new states and the illegal transitions between the flight and
   hotel branches.
 
-## Phase 1 — Client and connectivity
+## Phase 1 — Client and connectivity ✅ DONE
+
+> **Shipped:** `config/tbohotel.php` (base URL per environment + a shared method map, per-method
+> timeouts, throttle policy), `TboHotelConfig`, `TboHotelClient` (Basic Auth, per-method timeout,
+> `429` retry that is **opt-in per call** so Book and Cancel can never auto-retry), `TboHotelStatus`,
+> `TboHotelException`, `TboHotelService::countries()`/`cities()`, and `tbohotel:ping`.
+>
+> ✅ **The endpoint question is answered.** `tbohotel:ping --country=PH` against
+> `https://api.tbotechnology.in/HotelAPI` returned **249 countries** (GET, 1197 ms) and **194
+> Philippine cities** (POST, 1129 ms). The spec's URL is right and production's is stale. The
+> credentials work, and the hotel API is **not IP-restricted** — the read side is developable
+> locally, which TBO Air never was.
 
 **Goal:** prove the credentials and settle the endpoint question before anything is built on top.
 
@@ -385,8 +403,8 @@ cancelling with the right money.
 
 | Phase | Size | Ships |
 | --- | --- | --- |
-| 0 — Shared foundations | S–M | Nothing visible; unblocks everything and is disruptive to defer |
-| 1 — Client & connectivity | S | Answers the endpoint question with a real call |
+| ~~0 — Shared foundations~~ | S–M | ✅ done |
+| ~~1 — Client & connectivity~~ | S | ✅ done — endpoint confirmed by a real call |
 | 2 — Catalogue & sync | M–L | Searchable destinations; the precondition for Search |
 | 3 — Search | L | Agents can see live rooms and prices |
 | 4 — PreBook & booking domain | M–L | A durable, priced, guest-complete booking |
@@ -401,7 +419,7 @@ lands, and Phase 2's sync can run in the background while Phase 3 is built.
 
 | Risk | Mitigation |
 | --- | --- |
-| **The test BaseURL in the spec and in production disagree** (`01`§2) | Phase 1's `tbohotel:ping` settles it before anything depends on it; every endpoint is env-overridable |
+| ~~**The test BaseURL in the spec and in production disagree**~~ (`01`§2) | ✅ closed — `tbohotel:ping` answered it: the spec's URL is correct, and the base stays env-overridable |
 | **QPS limits bite on chunked city searches** | Bounded concurrency, `429` backoff, per-chunk caching, and ask TBO for the actual limit |
 | **Catalogue scale** — TBO's global inventory dwarfs what we sell | Curated per-city sync (D5), not a full mirror |
 | **The 30-minute window expires mid-wizard** | 10-minute result cache, a visible countdown, and `315` handled as "search again" rather than an error |

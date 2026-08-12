@@ -1,0 +1,6 @@
+{
+    "Status": {
+        "Code": 429,
+        "Description": "Requests have exceeded allowed QPS"
+    }
+}

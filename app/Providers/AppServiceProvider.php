@@ -11,6 +11,8 @@ use App\Services\TboAir\FlightSearchCache;
 use App\Services\TboAir\RecentSearchStore;
 use App\Services\TboAir\TboAirClient;
 use App\Services\TboAir\TboAirConfig;
+use App\Services\TboHotel\TboHotelClient;
+use App\Services\TboHotel\TboHotelConfig;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Facades\Event;
@@ -31,6 +33,14 @@ class AppServiceProvider extends ServiceProvider
             $env = $app->make(SupplierEnvironmentResolver::class)->resolve(Supplier::TboAir);
 
             return new TboAirClient(TboAirConfig::for($env));
+        });
+
+        // Same per-request resolution for hotels. No token to cache here — Basic Auth
+        // rides on every call — so the client is nothing but its environment.
+        $this->app->bind(TboHotelClient::class, function ($app) {
+            $env = $app->make(SupplierEnvironmentResolver::class)->resolve(Supplier::TboHotel);
+
+            return new TboHotelClient(TboHotelConfig::for($env));
         });
 
         $this->app->singleton(FlightSearchCache::class, fn () => new FlightSearchCache((int) config('tboair.search_cache_ttl')));

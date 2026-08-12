@@ -19,8 +19,13 @@ For the sibling integration, whose architecture this one reuses, start at
 
 ## TL;DR
 
-- **Status:** nothing built. `config/rbac.php` carries a `hotel` permission stub
-  (`view`/`search`/`book`, `route => null`) and that is the entire footprint today.
+- **Status: Phases 0 and 1 are done.** The shared seams are supplier-agnostic
+  (`supplier_api_logs`, `SupplierEnvironmentResolver`, a `product`-bearing booking spine,
+  `Confirmed`/`Cancelling` statuses), and the hotel client talks to TBO for real —
+  `tbohotel:ping` returns 249 countries and 194 Philippine cities. **Next: Phase 2, the catalogue.**
+- **The base-URL question is settled:** the spec's `https://api.tbotechnology.in/HotelAPI`, not
+  production's `http://api.tbotechnology.in/TBOHolidays_HotelAPI`. And the hotel API is **not
+  IP-restricted**, so unlike TBO Air the read side is fully developable from a dev machine.
 - **This is a different API from TBO Air, not another controller on it.** HTTP **Basic Auth** on
   every call — no token, no session, no re-auth. Success is `Status.Code == 200` in the body.
   **`PreBook`** replaces FareQuote, **`Book`** vouchers in one step (there is no hold, no Ticket), and
@@ -51,7 +56,7 @@ For the sibling integration, whose architecture this one reuses, start at
 - **Deliberately out of scope:** card payments (we book on TBO's credit limit), multi-currency, and
   **markup** — which is a cross-product concern to be designed once, not grown privately inside a
   second supplier.
-- **First deliverable:** `php artisan tbohotel:ping`. The spec's staging URL
-  (`https://api.tbotechnology.in/HotelAPI`) and production's
-  (`http://api.tbotechnology.in/TBOHolidays_HotelAPI`) disagree on both path and scheme, and the spec
-  is the newer of the two. One real call settles it before anything is built on top.
+- **Tooling:** `php artisan tbohotel:ping [--country=PH]` checks connectivity and credentials, and
+  prints the URL it called — it exercises both a GET (CountryList) and a POST (CityList), since a
+  base URL that answers one and not the other is a real possibility. Hotel calls appear at
+  `/api-logs?supplier=tbohotel`.
