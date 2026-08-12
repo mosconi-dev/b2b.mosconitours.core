@@ -129,6 +129,39 @@ booking step"*.
 No availability answers `{ "Status": { "Code": 201, … } }` with **no `HotelResult` key at all** —
 not an empty array. Parse for absence.
 
+### 4.1 What Search actually costs (measured 2026-08-12, Manila, 2-night stay, 2 adults)
+
+| Codes asked | Time | Size | Hotels with availability |
+| --- | --- | --- | --- |
+| 25 | 2.1 s | 4.4 KB | 10 |
+| 50 | 2.6 s | 10.5 KB | 24 |
+| 100 | 2.9 s | 20.9 KB | 50 |
+| 200 | 3.4 s | 33.3 KB | 77 |
+
+Two things follow, and both reverse an assumption made before measuring:
+
+1. **Cost is almost flat in chunk size.** Doubling the codes adds ~15% to the time, so the call
+   count — not the payload — is what a city search costs. There is no truncation at 200 despite
+   §6.1's "recommended 100"; we send 100 anyway, since a documented recommendation is a cheap thing
+   to respect.
+2. **`IsDetailedResponse: true` is worth it, and §18's advice is wrong for our case.** It costs
+   ~55% more bytes and *no* extra time (25 codes: 1.7 s detailed vs 2.1 s not), and it returns
+   `CancelPolicies`, `Supplements` and `DayRates` — including the `AtProperty` supplements §18
+   itself says must be shown before booking. Buying that at PreBook time only would mean showing an
+   agent a price list they cannot judge.
+
+**Roughly half of any hotel list has no availability** for a given stay, so a results page needs
+far more codes behind it than it shows.
+
+**Three more traps in the live payload:**
+
+- **`CancelPolicies[].FromDate` is `DD-MM-YYYY HH:MM:SS`**, not ISO. `"11-08-2026"` is 11 August.
+  Parsed as ISO it silently becomes November and every refund window is wrong.
+- **`BookingCode` is longer and more segmented than §7's sample** —
+  `1104180!TB!1!TB!1f5d0258-…!TB!N!TB!AFF!` against the documented `1157709!TB!1!TB!9c5b…`. Store it
+  as `text`.
+- **`BeddingGroup` is returned and documented nowhere.**
+
 ## 5. PreBook (§7)
 
 ```json

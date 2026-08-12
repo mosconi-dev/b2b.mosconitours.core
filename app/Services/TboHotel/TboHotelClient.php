@@ -177,51 +177,146 @@ class TboHotelClient
             }
 
             $httpStatus = $response->status();
-            $responseBody = $response->json();
 
-            if ($response->failed()) {
-                $error = "HTTP {$httpStatus}";
-
-                throw TboHotelException::transport(
-                    "TBO Holidays responded with HTTP {$httpStatus}.",
-                    httpStatus: $httpStatus,
-                );
-            }
-
-            $responseBody = is_array($responseBody) ? $responseBody : [];
-            $status = $this->statusOf($responseBody);
-
-            // Not every method answers with a Status envelope — hotelcodelist (§13)
-            // returns a bare `{ "HotelCodes": [...] }`. A missing envelope on a 2xx
-            // with a body is a success, not a silent failure.
-            if ($status === null) {
-                $successful = $responseBody !== [];
-
-                if (! $successful) {
-                    $error = 'Empty response';
-
-                    throw TboHotelException::transport('TBO Holidays returned an empty response.', httpStatus: $httpStatus);
-                }
-
-                return $responseBody;
-            }
-
-            $successful = $status->isSuccess();
-
-            if (! $status->isUsable()) {
-                $error = $status->name;
-
-                throw TboHotelException::fromStatus(
-                    $status,
-                    (int) Arr::get($responseBody, 'Status.Code'),
-                    Arr::get($responseBody, 'Status.Description'),
-                );
-            }
+            [$responseBody, $successful, $error] = $this->interpret($response);
 
             return $responseBody;
         } finally {
             $this->record($method, $url, $body, $responseBody, $httpStatus, $successful, $error, $startedAt);
         }
+    }
+
+    /**
+     * Turn one response into a body, or throw. Shared by the sequential path and the
+     * pool, because deciding what "worked" means is exactly where a second copy of
+     * this logic would drift.
+     *
+     * @return array{0: array<string, mixed>, 1: bool, 2: string|null} body, successful, error
+     *
+     * @throws TboHotelException
+     */
+    private function interpret(Response $response): array
+    {
+        $httpStatus = $response->status();
+
+        if ($response->failed()) {
+            throw TboHotelException::transport(
+                "TBO Holidays responded with HTTP {$httpStatus}.",
+                httpStatus: $httpStatus,
+            );
+        }
+
+        $body = $response->json();
+        $body = is_array($body) ? $body : [];
+        $status = $this->statusOf($body);
+
+        // Not every method answers with a Status envelope — hotelcodelist (§13)
+        // returns a bare `{ "HotelCodes": [...] }`. A missing envelope on a 2xx
+        // with a body is a success, not a silent failure.
+        if ($status === null) {
+            if ($body === []) {
+                throw TboHotelException::transport('TBO Holidays returned an empty response.', httpStatus: $httpStatus);
+            }
+
+            return [$body, true, null];
+        }
+
+        if (! $status->isUsable()) {
+            throw TboHotelException::fromStatus(
+                $status,
+                (int) Arr::get($body, 'Status.Code'),
+                Arr::get($body, 'Status.Description'),
+            );
+        }
+
+        return [$body, $status->isSuccess(), null];
+    }
+
+    /**
+     * Run many Search calls at once.
+     *
+     * A city is one call per hundred hotels — Manila is twenty-eight of them — and
+     * three seconds each in sequence is a minute and a half of an agent's time. The
+     * pool is bounded because TBO has never told us our QPS limit.
+     *
+     * Failures are **returned, not thrown**: one unreachable chunk should cost that
+     * chunk's hotels, not the whole search. The caller decides what to say about it.
+     *
+     * @param  array<int, array<string, mixed>>  $payloads
+     * @return array<int, array{body: array<string, mixed>|null, error: TboHotelException|null}>
+     */
+    public function searchPool(array $payloads): array
+    {
+        $url = $this->url('search');
+        $timeout = $this->timeoutFor('search');
+        $connect = (int) ($this->config['connect_timeout'] ?? 10);
+        $results = [];
+
+        foreach (array_chunk($payloads, max(1, (int) ($this->config['search_concurrency'] ?? 6)), true) as $wave) {
+            $startedAt = microtime(true);
+
+            $responses = Http::pool(function ($pool) use ($wave, $url, $timeout, $connect): array {
+                $requests = [];
+
+                foreach ($wave as $key => $payload) {
+                    $requests[] = $pool->as((string) $key)
+                        ->withBasicAuth((string) $this->config['username'], (string) $this->config['password'])
+                        ->connectTimeout($connect)
+                        ->timeout($timeout)
+                        ->withHeaders(['Accept-Encoding' => 'gzip, deflate, br'])
+                        ->asJson()
+                        ->post($url, $payload);
+                }
+
+                return $requests;
+            });
+
+            foreach ($wave as $key => $payload) {
+                $results[$key] = $this->settle($responses[$key] ?? null, $url, $payload, $startedAt);
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * One pooled response, interpreted and logged like any other call.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{body: array<string, mixed>|null, error: TboHotelException|null}
+     */
+    private function settle(mixed $response, string $url, array $payload, float $startedAt): array
+    {
+        $body = null;
+        $successful = false;
+        $error = null;
+        $httpStatus = null;
+        $failure = null;
+
+        try {
+            if ($response instanceof Throwable) {
+                throw TboHotelException::transport(
+                    'Could not reach TBO Holidays: '.$response->getMessage(),
+                    timeout: $response instanceof ConnectionException,
+                    previous: $response,
+                );
+            }
+
+            if (! $response instanceof Response) {
+                throw TboHotelException::transport('TBO Holidays returned nothing for this chunk.');
+            }
+
+            $httpStatus = $response->status();
+            [$body, $successful, $error] = $this->interpret($response);
+        } catch (TboHotelException $e) {
+            $failure = $e;
+            $error = $e->getMessage();
+            $body = null;
+        }
+
+        $this->record('search', $url, $payload, $body, $httpStatus, $successful, $error, $startedAt);
+
+        return ['body' => $body, 'error' => $failure];
     }
 
     /**

@@ -139,6 +139,21 @@ return [
     |
     */
 
+    // Hotel codes per Search call. Measured cost is nearly flat in chunk size — 25
+    // codes take 2.1s and 200 take 3.4s — so the call count is what a city search
+    // costs, not the payload. 200 works, but §6.1 recommends 100 and that is a cheap
+    // recommendation to respect.
+    'search_chunk' => (int) env('TBOHOTEL_SEARCH_CHUNK', 100),
+
+    // Chunks in flight at once. TBO has not told us our QPS limit, so this is
+    // deliberately modest; a 429 costs a retry and the whole point is to be quick.
+    'search_concurrency' => (int) env('TBOHOTEL_SEARCH_CONCURRENCY', 6),
+
+    // Sent as IsDetailedResponse. §18 recommends false for size; measured, true costs
+    // ~55% more bytes and no extra time, and it is the only way to get the cancel
+    // policies and the AtProperty supplements §18 itself requires us to display.
+    'search_detailed' => filter_var(env('TBOHOTEL_SEARCH_DETAILED', true), FILTER_VALIDATE_BOOLEAN),
+
     'search_cache_ttl' => (int) env('TBOHOTEL_SEARCH_CACHE_TTL', 600), // 10 min
 
     'booking_window' => (int) env('TBOHOTEL_BOOKING_WINDOW', 1800), // 30 min

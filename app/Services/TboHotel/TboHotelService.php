@@ -2,6 +2,10 @@
 
 namespace App\Services\TboHotel;
 
+use App\Models\Hotel;
+use App\Services\TboHotel\DTO\HotelOffer;
+use App\Services\TboHotel\DTO\SearchInput;
+use App\Services\TboHotel\DTO\SearchResult;
 use Illuminate\Support\Arr;
 
 /**
@@ -44,6 +48,112 @@ class TboHotelService
     public function cities(string $countryCode): array
     {
         return $this->rows($this->client->cityList(strtoupper(trim($countryCode))), 'CityList');
+    }
+
+    /**
+     * Availability and prices for a stay.
+     *
+     * TBO's Search takes hotel codes, so a city search is this: look the city's
+     * properties up locally, split them into chunks, and ask for all the chunks at
+     * once. Roughly half of any list has no availability on a given date, so a
+     * results page needs far more codes behind it than it shows.
+     *
+     * Ordering is by star rating and name — deterministic, so chunk boundaries are
+     * stable across repeated searches and the cache lines up. It is deliberately not
+     * a relevance order: price is unknown until TBO answers, and ranking by stars
+     * beforehand would bias every result set upmarket.
+     */
+    public function search(SearchInput $input): SearchResult
+    {
+        $codes = $this->codesFor($input);
+
+        if ($codes === []) {
+            return new SearchResult([], '', 0, 0);
+        }
+
+        $chunks = array_chunk($codes, max(1, (int) config('tbohotel.search_chunk', 100)));
+        $criteria = $input->toPayload();
+
+        $responses = $this->client->searchPool(array_map(
+            fn (array $chunk): array => $criteria + ['HotelCodes' => implode(',', $chunk)],
+            $chunks,
+        ));
+
+        $raw = [];
+        $failed = 0;
+
+        foreach ($responses as $response) {
+            if ($response['error'] !== null) {
+                // "No availability" is an answer, not a failure — a chunk of hotels
+                // that are simply full must not be reported as an outage.
+                if (! $response['error']->isNoAvailability()) {
+                    $failed++;
+                }
+
+                continue;
+            }
+
+            foreach ((array) Arr::get($response['body'], 'HotelResult', []) as $hotel) {
+                $raw[] = (array) $hotel;
+            }
+        }
+
+        return $this->assemble($raw, count($codes), count($chunks), $failed);
+    }
+
+    /**
+     * The hotel codes a search covers: one property, or a whole city's.
+     *
+     * @return array<int, string>
+     */
+    private function codesFor(SearchInput $input): array
+    {
+        if (! $input->isCitySearch()) {
+            return [$input->locationCode];
+        }
+
+        return Hotel::query()
+            ->where('city_code', $input->locationCode)
+            ->orderByDesc('rating')
+            ->orderBy('name')
+            ->pluck('code')
+            ->all();
+    }
+
+    /**
+     * Join TBO's rates to what we know about the properties.
+     *
+     * Search returns a hotel code and prices and nothing else — no name, no address,
+     * no photograph — so a result with no catalogue row behind it cannot be rendered
+     * and is dropped rather than shown as "Hotel 1104180".
+     *
+     * @param  array<int, array<string, mixed>>  $raw
+     */
+    private function assemble(array $raw, int $searched, int $chunks, int $failed): SearchResult
+    {
+        $hotels = Hotel::query()
+            ->whereIn('code', array_column($raw, 'HotelCode'))
+            ->get()
+            ->keyBy('code');
+
+        $offers = [];
+        $currency = '';
+
+        foreach ($raw as $row) {
+            $hotel = $hotels->get((string) ($row['HotelCode'] ?? ''));
+
+            if ($hotel === null) {
+                continue;
+            }
+
+            $offer = HotelOffer::fromResponse($row, $hotel);
+            $currency = $currency !== '' ? $currency : $offer->currency;
+            $offers[] = $offer;
+        }
+
+        usort($offers, fn (HotelOffer $a, HotelOffer $b): int => $a->lowestFare() <=> $b->lowestFare());
+
+        return new SearchResult($offers, $currency, $searched, $chunks, $failed);
     }
 
     /**
