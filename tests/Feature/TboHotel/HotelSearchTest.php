@@ -7,6 +7,7 @@ use App\Models\SupplierApiLog;
 use App\Services\TboHotel\CancelPolicySet;
 use App\Services\TboHotel\DTO\PaxRoom;
 use App\Services\TboHotel\DTO\SearchInput;
+use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\SupplementSet;
 use App\Services\TboHotel\TboHotelClient;
 use App\Services\TboHotel\TboHotelConfig;
@@ -164,6 +165,23 @@ class HotelSearchTest extends TestCase
         $this->assertSame(2, $result->chunks);
         $this->assertSame(2, $result->hotelsMissed());
         $this->assertNotEmpty($result->offers, 'what did come back is still shown');
+    }
+
+    /**
+     * Every chunk failing is not a partial result — it is a failed search, and an
+     * empty page that cannot say whether the city is full or the supplier is down
+     * is the worst of both.
+     */
+    public function test_every_chunk_failing_raises_the_supplier_reason(): void
+    {
+        Http::fake([self::BASE.'/Search' => Http::response(['Status' => ['Code' => 315, 'Description' => 'Session Expired']])]);
+
+        try {
+            $this->service()->search($this->input());
+            $this->fail('A wholly failed search should have thrown.');
+        } catch (TboHotelException $e) {
+            $this->assertTrue($e->isExpired());
+        }
     }
 
     /**

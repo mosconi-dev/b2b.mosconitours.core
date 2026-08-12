@@ -1516,4 +1516,199 @@ Alpine.data('bookingWizard', (config = {}) => ({
     },
 }));
 
+/**
+ * Hotel search.
+ *
+ * Simpler than flightSearch because the server does the hard part: one POST comes
+ * back with every property that has availability, already joined to the catalogue
+ * and sorted. What lives here is the form, the client-side sort/filter, and the
+ * property panel — which fetches a hotel's description and photos the first time it
+ * is opened, since most of the catalogue has never been enriched.
+ */
+Alpine.data('hotelSearch', (config = {}) => ({
+    suggestUrl: config.suggestUrl,
+    searchUrl: config.searchUrl,
+    hotelUrl: config.hotelUrl,
+    countries: config.countries || [],
+
+    // Form
+    locationLabel: '',
+    locationType: '',
+    locationCode: '',
+    suggestions: [],
+    checkIn: '',
+    checkOut: '',
+    guestNationality: 'PH',
+    rooms: [{ adults: 2, children: 0, childrenAges: [] }],
+    refundableOnly: false,
+
+    // State
+    loading: false,
+    collapsed: false,
+    error: '',
+    result: null,
+    open: null,
+    detail: {},
+
+    // Client-side view controls
+    sort: 'price',
+    onlyRefundable: false,
+    onlyBreakfast: false,
+    onlyTransfers: false,
+    minRating: 0,
+
+    init() {
+        const day = 86400000;
+        this.checkIn = new Date(Date.now() + 30 * day).toISOString().slice(0, 10);
+        this.checkOut = new Date(Date.now() + 32 * day).toISOString().slice(0, 10);
+    },
+
+    get today() {
+        return new Date().toISOString().slice(0, 10);
+    },
+
+    get summary() {
+        if (!this.result) return '';
+        const guests = this.result.guests;
+        return `${this.locationLabel} · ${this.checkIn} → ${this.checkOut} · ` +
+            `${this.result.rooms} room${this.result.rooms === 1 ? '' : 's'}, ` +
+            `${guests} guest${guests === 1 ? '' : 's'}`;
+    },
+
+    get filtered() {
+        if (!this.result) return [];
+
+        const rows = this.result.offers.filter((o) =>
+            (!this.onlyRefundable || o.hasRefundable) &&
+            (!this.onlyBreakfast || o.hasBreakfast) &&
+            (!this.onlyTransfers || o.hasTransfers) &&
+            (!this.minRating || (o.rating || 0) >= this.minRating));
+
+        const by = {
+            price: (a, b) => a.lowestFare - b.lowestFare,
+            price_desc: (a, b) => b.lowestFare - a.lowestFare,
+            rating: (a, b) => (b.rating || 0) - (a.rating || 0),
+            name: (a, b) => a.name.localeCompare(b.name),
+        };
+
+        return rows.sort(by[this.sort] || by.price);
+    },
+
+    money(amount, currency) {
+        return `${currency || ''} ${Number(amount).toLocaleString(undefined, {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        })}`.trim();
+    },
+
+    async suggest() {
+        const term = this.locationLabel.trim();
+
+        if (term.length < 2) {
+            this.suggestions = [];
+            return;
+        }
+
+        try {
+            const res = await fetch(`${this.suggestUrl}?q=${encodeURIComponent(term)}`, {
+                headers: { Accept: 'application/json' },
+            });
+            this.suggestions = (await res.json()).results || [];
+        } catch {
+            this.suggestions = [];
+        }
+    },
+
+    choose(option) {
+        this.locationLabel = option.label;
+        this.locationType = option.type;
+        this.locationCode = option.code;
+        this.suggestions = [];
+    },
+
+    addRoom() {
+        this.rooms.push({ adults: 2, children: 0, childrenAges: [] });
+    },
+
+    removeRoom(i) {
+        this.rooms.splice(i, 1);
+    },
+
+    // One age per child, in the room that child sleeps in. TBO refuses the request
+    // when the counts disagree, so the form keeps them in step rather than letting
+    // the server explain it later.
+    syncAges(room) {
+        while (room.childrenAges.length < room.children) room.childrenAges.push(8);
+        room.childrenAges.length = room.children;
+    },
+
+    async search(retry = false) {
+        if (!this.locationCode) {
+            this.error = 'Choose a destination or property from the list.';
+            return;
+        }
+
+        this.error = '';
+        this.loading = true;
+        if (!retry) this.open = null;
+
+        try {
+            const res = await fetch(this.searchUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+                },
+                body: JSON.stringify({
+                    checkIn: this.checkIn,
+                    checkOut: this.checkOut,
+                    locationType: this.locationType,
+                    locationCode: this.locationCode,
+                    guestNationality: this.guestNationality,
+                    rooms: this.rooms,
+                    refundableOnly: this.refundableOnly,
+                }),
+            });
+
+            const body = await res.json();
+
+            if (!res.ok) {
+                // 422 is our own validation; anything else is the supplier speaking.
+                this.error = body.message || Object.values(body.errors || {}).flat()[0]
+                    || 'The search could not be completed.';
+                return;
+            }
+
+            this.result = body;
+            this.collapsed = true;
+        } catch {
+            this.error = 'The search could not be completed. Please try again.';
+        } finally {
+            this.loading = false;
+        }
+    },
+
+    async toggle(offer) {
+        if (this.open === offer.hotelCode) {
+            this.open = null;
+            return;
+        }
+
+        this.open = offer.hotelCode;
+
+        if (this.detail[offer.hotelCode]) return;
+
+        try {
+            const res = await fetch(`${this.hotelUrl}/${offer.hotelCode}`, {
+                headers: { Accept: 'application/json' },
+            });
+
+            if (res.ok) this.detail[offer.hotelCode] = await res.json();
+        } catch {
+            // The rates are the point of the panel; a missing description is not
+            // worth an error message.
+        }
+    },
+}));
+
 Alpine.start();

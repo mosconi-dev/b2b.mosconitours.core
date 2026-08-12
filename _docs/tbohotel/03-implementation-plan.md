@@ -298,7 +298,24 @@ file written in between.
 - **Tests:** upsert semantics (a renamed city updates), resume after a failed city, `RoomID = 0`,
   autocomplete ranking, and that a sync never blocks on a single 429.
 
-## Phase 3 — Search
+## Phase 3 — Search ✅ DONE
+
+> **Shipped:** `SearchInput`/`PaxRoom`/`HotelOffer`/`RoomOffer`/`SearchResult`, `CancelPolicySet` and
+> `SupplementSet`, `TboHotelClient::searchPool()` (bounded concurrent chunks), `HotelSearchCache`,
+> `GET /hotels` + `POST /hotels/search` + `GET /hotels/{code}`, and the results page with sort,
+> filters and a property panel.
+>
+> **Proven live end to end:** Cebu City, 2 adults, 2 nights — 663 hotels in 7 chunks, ~5 s through
+> the HTTP endpoint, 118 properties with availability, 0 chunks failed.
+>
+> **Two plan decisions reversed by measurement** (see `01`§4.1): chunk cost is nearly flat, so the
+> whole city is searched rather than a ranked top-N — which would also have biased results upmarket,
+> since price is unknown until TBO answers. And `IsDetailedResponse: true` costs no extra time while
+> supplying the cancel policies and `AtProperty` supplements §18 requires us to display.
+>
+> **One thing added beyond the plan:** the property panel enriches a hotel on first open. Most of the
+> catalogue has never been detailed, and crawling all of it for pages nobody visits is hours of calls
+> — one call, once, when someone actually looks.
 
 **Goal:** an agent can find real rooms for a real city and stay.
 
@@ -422,7 +439,7 @@ cancelling with the right money.
 | ~~0 — Shared foundations~~ | S–M | ✅ done |
 | ~~1 — Client & connectivity~~ | S | ✅ done — endpoint confirmed by a real call |
 | ~~2 — Catalogue & sync~~ | M–L | ✅ done — 3,364 PH hotels loaded |
-| 3 — Search | L | Agents can see live rooms and prices |
+| ~~3 — Search~~ | L | ✅ done — 118 Cebu properties in ~5s |
 | 4 — PreBook & booking domain | M–L | A durable, priced, guest-complete booking |
 | 5 — Book & reconciliation | L | Real vouchers, and no lost bookings |
 | 6 — Post-booking | M | HCN, cancellation with correct money, ops reconciliation |

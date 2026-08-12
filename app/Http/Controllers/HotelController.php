@@ -1,0 +1,113 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\SearchHotelsRequest;
+use App\Models\Hotel;
+use App\Models\HotelCountry;
+use App\Services\TboHotel\CatalogueSyncService;
+use App\Services\TboHotel\Exceptions\TboHotelException;
+use App\Services\TboHotel\HotelSearchCache;
+use App\Services\TboHotel\TboHotelService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
+
+class HotelController extends Controller
+{
+    public function index(): View
+    {
+        return view('hotels', [
+            // TBO's own country list, not an ICU one: these are exactly the
+            // nationality codes it accepts, and it is already synced locally.
+            'countries' => HotelCountry::orderBy('name')->get(['code', 'name']),
+        ]);
+    }
+
+    public function search(SearchHotelsRequest $request, TboHotelService $service, HotelSearchCache $cache): JsonResponse
+    {
+        $input = $request->searchInput();
+
+        try {
+            $result = $cache->remember(
+                $request->user()->id,
+                $service->environment(),
+                $input,
+                fn () => $service->search($input),
+            );
+        } catch (TboHotelException $e) {
+            return $this->supplierError($e);
+        }
+
+        return response()->json($result->toArray() + [
+            'nights' => $input->nights(),
+            'rooms' => $input->roomCount(),
+            'guests' => $input->guests(),
+        ]);
+    }
+
+    /**
+     * Everything we know about one property, for the panel behind a result card.
+     *
+     * Enriches on the spot when the hotel has never been detailed. The catalogue's
+     * cheap pass gives a name, an address and a star rating — enough for a result
+     * card and not enough for a page someone is deciding from — and enriching the
+     * whole catalogue up front would be hours of crawling for hotels nobody opens.
+     * One call, once, the first time anyone looks.
+     */
+    public function show(Request $request, string $code, CatalogueSyncService $sync): JsonResponse
+    {
+        $hotel = Hotel::where('code', $code)->firstOrFail();
+
+        if ($hotel->detailed_at === null) {
+            try {
+                $sync->enrich([$hotel->code]);
+                $hotel->refresh();
+            } catch (TboHotelException) {
+                // The card's data is still worth showing; a missing description is
+                // not a reason to fail the panel.
+            }
+        }
+
+        return response()->json([
+            'code' => $hotel->code,
+            'name' => $hotel->name,
+            'address' => $hotel->address,
+            'rating' => $hotel->rating,
+            'description' => $hotel->description,
+            'facilities' => $hotel->facilities ?? [],
+            'attractions' => $hotel->attractions ?? [],
+            'images' => array_slice($hotel->images ?? [], 0, 12),
+            'checkInTime' => $hotel->checkin_time,
+            'checkOutTime' => $hotel->checkout_time,
+            'phone' => $hotel->phone,
+            'latitude' => $hotel->latitude,
+            'longitude' => $hotel->longitude,
+        ]);
+    }
+
+    /**
+     * Turn a supplier failure into something an agent can act on. The distinctions
+     * matter: an expired search needs re-running, a throttle needs a moment, and a
+     * timeout needs neither explained as the other.
+     */
+    private function supplierError(TboHotelException $e): JsonResponse
+    {
+        report($e);
+
+        return match (true) {
+            $e->isExpired(), $e->isRateGone() => response()->json([
+                'message' => 'These prices have expired. Search again to see current availability.',
+            ], 409),
+            $e->isThrottled() => response()->json([
+                'message' => 'Too many searches at once. Try again in a moment.',
+            ], 429),
+            $e->isTimeout() => response()->json([
+                'message' => 'The hotel provider timed out. Try again, or narrow the search to fewer dates.',
+            ], 504),
+            default => response()->json([
+                'message' => 'We could not reach the hotel provider. Please try again.',
+            ], 502),
+        };
+    }
+}

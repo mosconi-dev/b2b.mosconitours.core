@@ -137,28 +137,43 @@ class CatalogueSyncService
                     $codes = $codes->values()->all();
 
                     try {
-                        $details = $this->tbo->details($codes);
+                        $run->processed += $this->enrich($codes);
                     } catch (TboHotelException|Throwable $e) {
                         $run->recordFailure(implode(',', array_slice($codes, 0, 3)).'…', null, $e->getMessage());
-
-                        return;
-                    }
-
-                    $now = Carbon::now();
-
-                    foreach ($codes as $code) {
-                        // A code TBO did not return is stamped anyway. Without that the
-                        // next run asks for the same missing hotel for ever, and the
-                        // pass never reaches the end of the queue.
-                        Hotel::query()
-                            ->where('source', self::SOURCE)
-                            ->where('code', $code)
-                            ->update(($details[$code] ?? []) + ['detailed_at' => $now]);
-
-                        $run->processed++;
                     }
                 });
         });
+    }
+
+    /**
+     * Fetch and store detail for a batch of hotels. Returns how many were stamped.
+     *
+     * Also the seam the property panel uses to enrich one hotel the first time
+     * anyone opens it, rather than crawling the whole catalogue for pages nobody
+     * will look at.
+     *
+     * @param  array<int, string>  $codes
+     */
+    public function enrich(array $codes): int
+    {
+        if ($codes === []) {
+            return 0;
+        }
+
+        $details = $this->tbo->details($codes);
+        $now = Carbon::now();
+
+        foreach ($codes as $code) {
+            // A code TBO did not return is stamped anyway. Without that the next run
+            // asks for the same missing hotel for ever and never reaches the end of
+            // the queue.
+            Hotel::query()
+                ->where('source', self::SOURCE)
+                ->where('code', $code)
+                ->update(($details[$code] ?? []) + ['detailed_at' => $now]);
+        }
+
+        return count($codes);
     }
 
     /**

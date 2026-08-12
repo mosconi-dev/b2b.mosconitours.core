@@ -123,9 +123,7 @@ return [
         'hotel' => [
             'label' => 'Hotels',
             'section' => 'travel_operations',
-            // Still null: navSections() calls route() on any module that names one, so
-            // this stays a permission-only stub until the /hotels route exists.
-            'route' => null,
+            'route' => 'hotels',
             'icon' => 'building',
             // cancel is the hotel equivalent of the flight money step's aftermath —
             // it moves money back out of a confirmed booking, so it is its own right.

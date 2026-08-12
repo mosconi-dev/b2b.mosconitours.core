@@ -81,6 +81,7 @@ class TboHotelService
 
         $raw = [];
         $failed = 0;
+        $firstError = null;
 
         foreach ($responses as $response) {
             if ($response['error'] !== null) {
@@ -88,6 +89,7 @@ class TboHotelService
                 // that are simply full must not be reported as an outage.
                 if (! $response['error']->isNoAvailability()) {
                     $failed++;
+                    $firstError ??= $response['error'];
                 }
 
                 continue;
@@ -96,6 +98,13 @@ class TboHotelService
             foreach ((array) Arr::get($response['body'], 'HotelResult', []) as $hotel) {
                 $raw[] = (array) $hotel;
             }
+        }
+
+        // Every chunk failing is not a partial result, it is a failed search, and the
+        // agent is owed the reason. An empty page that cannot say whether the city is
+        // full or the supplier is down is the worst of both.
+        if ($firstError !== null && $failed === count($chunks)) {
+            throw $firstError;
         }
 
         return $this->assemble($raw, count($codes), count($chunks), $failed);

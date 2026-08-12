@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\FlightController;
+use App\Http\Controllers\HotelController;
 use App\Http\Controllers\HotelSuggestController;
 use App\Http\Controllers\LoadRequestController;
 use App\Http\Controllers\ProfileController;
@@ -37,10 +38,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/flights/fare-rule', [FlightController::class, 'fareRule'])->name('flights.fare-rule')->middleware('can:flight.search');
     Route::post('/flights/ssr', [FlightController::class, 'ssr'])->name('flights.ssr')->middleware('can:flight.search');
 
-    // Hotel location autocomplete. Lives outside the (not yet built) /hotels page
-    // because it is the catalogue talking, not the supplier.
+    Route::get('/hotels', [HotelController::class, 'index'])->name('hotels')->middleware('can:hotel.view');
+    // Registered before /hotels/{code} so the literal segment wins the match.
     Route::get('/hotels/suggest', HotelSuggestController::class)->name('hotels.suggest')
         ->middleware('can:hotel.search');
+    Route::post('/hotels/search', [HotelController::class, 'search'])->name('hotels.search')
+        ->middleware('can:hotel.search');
+    Route::get('/hotels/{code}', [HotelController::class, 'show'])->name('hotels.show')
+        ->whereNumber('code')->middleware('can:hotel.view');
 
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');
