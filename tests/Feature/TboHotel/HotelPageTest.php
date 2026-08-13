@@ -316,6 +316,45 @@ class HotelPageTest extends TestCase
             ->assertSee('<option value="PH">Philippines</option>', false);
     }
 
+    /**
+     * The occupancy selects, for the same reason and with a worse ending.
+     *
+     * Built by x-for they showed "1 adult" while the component still held the default
+     * of two — so the agent searched, priced, and was offered two name fields for a
+     * booking they had set to one person. Wrong on the rate and wrong on the rooming
+     * list, with nothing on screen disagreeing with itself.
+     */
+    public function test_the_occupancy_options_are_rendered_server_side(): void
+    {
+        $page = $this->actingAs($this->userWith(['hotel.view']))->get('/hotels')->assertOk();
+
+        // Adults 1–8, children 0–4, and an age for every child TBO will accept.
+        foreach ([1, 8] as $adults) {
+            $page->assertSee('<option value="'.$adults.'">'.$adults.'</option>', false);
+        }
+
+        $page->assertSee('<option value="0">0</option>', false)
+            ->assertSee('<option value="18">18</option>', false)
+            // Nothing may be left for x-for to build inside an occupancy select.
+            ->assertDontSee('x-for="n in 8"', false)
+            ->assertDontSee('x-for="n in [0,1,2,3,4]"', false)
+            ->assertDontSee('x-for="n in 19"', false);
+    }
+
+    /**
+     * The star filter has the same shape. It reads correctly today only because its
+     * default happens to be its first option — restore a search from the URL and it
+     * would say "Any" while filtering on three.
+     */
+    public function test_the_star_filter_options_are_rendered_server_side(): void
+    {
+        $this->actingAs($this->userWith(['hotel.view']))
+            ->get('/hotels')
+            ->assertOk()
+            ->assertSee('<option value="3">3+</option>', false)
+            ->assertDontSee('x-for="n in 5"', false);
+    }
+
     public function test_hotels_appears_in_the_navigation(): void
     {
         $this->actingAs($this->userWith(['hotel.view']))

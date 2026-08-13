@@ -100,11 +100,19 @@
                         <span class="w-16 text-xs font-semibold uppercase tracking-wide text-gray-500"
                               x-text="'Room ' + (i + 1)"></span>
 
+                        {{-- Options are written out here rather than built with x-for.
+                             x-model is applied before x-for has created any options, so
+                             the select has nothing to select and falls back to showing
+                             its first one — which is how this form came to display "1
+                             adult" while searching, pricing and booking for two. The
+                             nationality select was fixed the same way. --}}
                         <div>
                             <label class="block text-xs text-gray-500">Adults</label>
                             <select x-model.number="room.adults"
                                     class="mt-0.5 rounded-md border-gray-300 py-1 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                <template x-for="n in 8" :key="n"><option :value="n" x-text="n"></option></template>
+                                @for ($n = 1; $n <= 8; $n++)
+                                    <option value="{{ $n }}">{{ $n }}</option>
+                                @endfor
                             </select>
                         </div>
 
@@ -112,7 +120,9 @@
                             <label class="block text-xs text-gray-500">Children</label>
                             <select x-model.number="room.children" @change="syncAges(room)"
                                     class="mt-0.5 rounded-md border-gray-300 py-1 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                <template x-for="n in [0,1,2,3,4]" :key="n"><option :value="n" x-text="n"></option></template>
+                                @for ($n = 0; $n <= 4; $n++)
+                                    <option value="{{ $n }}">{{ $n }}</option>
+                                @endfor
                             </select>
                         </div>
 
@@ -123,7 +133,9 @@
                                 <label class="block text-xs text-gray-500" x-text="'Child ' + (a + 1) + ' age'"></label>
                                 <select x-model.number="room.childrenAges[a]"
                                         class="mt-0.5 rounded-md border-gray-300 py-1 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                    <template x-for="n in 19" :key="n"><option :value="n - 1" x-text="n - 1"></option></template>
+                                    @for ($n = 0; $n <= 18; $n++)
+                                        <option value="{{ $n }}">{{ $n }}</option>
+                                    @endfor
                                 </select>
                             </div>
                         </template>

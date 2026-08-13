@@ -94,9 +94,14 @@
 
                     <div class="border-t border-gray-100 pt-4">
                         <label class="block text-sm font-semibold text-brand-900">Minimum stars</label>
+                        {{-- Static options: x-model runs before x-for creates any, so a
+                             filter restored from the URL would show "Any" while
+                             filtering on three stars. See hotels/form.blade.php. --}}
                         <select x-model.number="minRating" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                            <option :value="0">Any</option>
-                            <template x-for="n in 5" :key="n"><option :value="n" x-text="n + '+'"></option></template>
+                            <option value="0">Any</option>
+                            @for ($n = 1; $n <= 5; $n++)
+                                <option value="{{ $n }}">{{ $n }}+</option>
+                            @endfor
                         </select>
                     </div>
 
