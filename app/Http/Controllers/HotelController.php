@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class HotelController extends Controller
@@ -117,6 +118,9 @@ class HotelController extends Controller
             'hotel' => $hotel,
             'offer' => $payload['offers'][0] ?? null,
             'currency' => $payload['currency'] ?? '',
+            // The Modify form is the shared partial, and its nationality select is
+            // rendered server-side — see hotels/form.blade.php.
+            'countries' => HotelCountry::orderBy('name')->get(['code', 'name']),
             'stay' => [
                 'checkIn' => $input->checkIn,
                 'checkOut' => $input->checkOut,
@@ -124,10 +128,36 @@ class HotelController extends Controller
                 'guestNationality' => $input->guestNationality,
                 'rooms' => $occupancy,
                 'roomsToken' => $data['rooms'],
+                // What the Modify form is pre-filled with, and what the collapsed
+                // summary reads before Alpine boots.
+                'from' => $data['from'] ?? '',
+                'label' => $data['label'] ?? '',
+                'summary' => $this->staySummary($input, $data['label'] ?? ''),
             ],
             'backUrl' => $this->backToResults($data),
             'images' => array_slice($hotel->images ?? [], 0, 6),
         ]);
+    }
+
+    /**
+     * The one-line search summary above the stepper. Rendered server-side so it reads
+     * correctly before Alpine boots, exactly as the flight wizard's does.
+     */
+    private function staySummary(SearchInput $input, string $label): string
+    {
+        $guests = $input->guests();
+        $rooms = $input->roomCount();
+
+        return sprintf(
+            '%s · %s → %s · %d %s, %d %s',
+            $label !== '' ? $label : 'Your search',
+            Carbon::parse($input->checkIn)->format('j M Y'),
+            Carbon::parse($input->checkOut)->format('j M Y'),
+            $rooms,
+            Str::plural('room', $rooms),
+            $guests,
+            Str::plural('guest', $guests),
+        );
     }
 
     /**

@@ -1583,6 +1583,11 @@ Alpine.data('hotelSearch', (config = {}) => ({
     searchUrl: config.searchUrl,
     roomsUrlFor: config.roomsUrl,
 
+    // Embedded on the rooms page, where the same form partial appears above the
+    // stepper: submitting hands the edited search to /hotels instead of rendering
+    // results in place. Mirrors flightSearch's redirectUrl.
+    redirectUrl: config.redirectUrl ?? '',
+
     // Form
     locationLabel: '',
     locationType: '',
@@ -1596,7 +1601,7 @@ Alpine.data('hotelSearch', (config = {}) => ({
 
     // State
     loading: false,
-    collapsed: false,
+    collapsed: config.embedded ?? false,
     error: '',
     result: null,
 
@@ -1819,6 +1824,20 @@ Alpine.data('hotelSearch', (config = {}) => ({
     async search(retry = false) {
         if (!this.locationCode) {
             this.error = 'Choose a destination or property from the list.';
+            return;
+        }
+
+        // Embedded: the results belong on the results page, not under this form.
+        if (this.redirectUrl) {
+            this.loading = true;
+            window.location = `${this.redirectUrl}?${new URLSearchParams({
+                checkIn: this.checkIn,
+                checkOut: this.checkOut,
+                guestNationality: this.guestNationality,
+                rooms: this.roomsToken,
+                city: this.locationType === 'city' ? this.locationCode : '',
+                label: this.locationLabel,
+            })}`;
             return;
         }
 

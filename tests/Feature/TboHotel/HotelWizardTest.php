@@ -417,8 +417,10 @@ class HotelWizardTest extends TestCase
             ->assertOk()
             ->assertSee('Fixture Suites')
             ->assertSee('Select Room')
-            ->assertSee('Back to results')
-            ->assertSee('Choose another hotel')
+            // The search stays modifiable above the stepper, as on the flight wizard,
+            // and there is exactly one way back — in the property card, not a banner.
+            ->assertSee('Modify')
+            ->assertSee('Change hotel')
             // The rates themselves, which is the point of the page.
             ->assertSee('3,790.37')
             ->assertSee('Select');
