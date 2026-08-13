@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Booking\Concerns\ChargesWallet;
 use App\Services\Booking\Concerns\TransitionsBooking;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\TboHotel\DTO\BookingDetailResult;
 use App\Services\TboHotel\DTO\Guest;
 use App\Services\TboHotel\DTO\PreBookResult;
 use App\Services\TboHotel\DTO\SearchInput;
@@ -316,6 +317,92 @@ class HotelBookingService
     }
 
     /**
+     * Ask TBO what this booking is now, and write down the answer.
+     *
+     * The one call that can correct us. Everything else we know about a confirmed stay
+     * was true at the moment it was booked: the hotel's own reference arrives days
+     * later, an invoice later still, and a cancellation made in TBO's own portal never
+     * reaches us at all. Without this the booking page is a photograph.
+     *
+     * What it will not do is overwrite the terms. §18 makes PreBook's cancellation
+     * policy and norms final for the itinerary, so what BookingDetail says about them
+     * is a later opinion about a contract already signed.
+     *
+     * @throws BookingException when the booking is not one we can ask about
+     * @throws TboHotelException when TBO cannot be reached or refuses
+     */
+    public function refresh(Booking $booking): Booking
+    {
+        $this->guardReadable($booking);
+
+        $stay = $booking->hotel;
+        $byConfirmation = filled($stay?->confirmation_number);
+
+        $detail = BookingDetailResult::fromResponse($this->tbo->bookingDetail(
+            $byConfirmation ? (string) $stay->confirmation_number : $booking->reference,
+            isConfirmationNumber: $byConfirmation,
+        ));
+
+        return DB::transaction(function () use ($booking, $stay, $detail): Booking {
+            $stay?->forceFill(array_filter([
+                'supplier_status' => $detail->status ?: null,
+                'room_statuses' => $detail->rooms ?: null,
+                // Only ever filled in, never blanked: TBO omits the hotel's reference
+                // until it issues one, and an omission must not erase what we hold.
+                'hotel_confirmation_number' => $detail->hotelConfirmationNumber,
+                'invoice_number' => $detail->invoiceNumber,
+                'confirmation_number' => $detail->confirmationNumber,
+            ], fn ($value): bool => filled($value)) + ['refreshed_at' => now()])->save();
+
+            return $this->applySupplierState($booking->fresh(), $detail);
+        });
+    }
+
+    /**
+     * Move our status to match TBO's, when TBO has committed to one.
+     *
+     * Only ever in the direction the state machine already allows, and only on an
+     * answer that is an ending. A booking TBO reports as cancelled is refunded, because
+     * whoever cancelled it — an agent in their portal, the property, TBO itself — the
+     * agency is no longer paying for a room nobody holds.
+     */
+    private function applySupplierState(Booking $booking, BookingDetailResult $detail): Booking
+    {
+        $target = match (true) {
+            $detail->isConfirmed() => BookingStatus::Confirmed,
+            $detail->isCancelled() => BookingStatus::Cancelled,
+            $detail->isFailed() => BookingStatus::Failed,
+            $detail->isCancelling() => BookingStatus::Cancelling,
+            default => null,
+        };
+
+        if ($target === null || $target === $booking->status) {
+            return $booking;
+        }
+
+        if (! $booking->status->canTransitionTo($target)) {
+            // Not an error: TBO reporting "Confirmed" for a booking we already
+            // cancelled is a stale read, not an instruction to un-cancel it.
+            Log::info('TBO Hotel reports a state we cannot move to', [
+                'booking' => $booking->reference,
+                'ours' => $booking->status->value,
+                'theirs' => $detail->status,
+            ]);
+
+            return $booking;
+        }
+
+        Log::info('Hotel booking status corrected from TBO', [
+            'booking' => $booking->reference,
+            'from' => $booking->status->value,
+            'to' => $target->value,
+            'reported' => $detail->status,
+        ]);
+
+        return $this->transitionTo($booking, $target);
+    }
+
+    /**
      * Record the booking as failed, giving the agency its money back.
      *
      * Only ever called when the supplier has said no. An unanswered Book is not a
@@ -379,6 +466,33 @@ class HotelBookingService
     /**
      * @throws BookingException
      */
+    /**
+     * A booking we can ask TBO about at all.
+     *
+     * Looser than guardBookable: reading is safe in any state, and reading a cancelled
+     * or failed booking is often the point. What it cannot cross is the environment —
+     * asking a live account about a test reference answers the wrong question, and the
+     * answer would then be written down as fact.
+     *
+     * @throws BookingException
+     */
+    private function guardReadable(Booking $booking): void
+    {
+        if ($booking->product !== BookingProduct::Hotel) {
+            throw new BookingException("Booking {$booking->reference} is not a hotel booking.");
+        }
+
+        if ($booking->environment !== $this->tbo->environment()) {
+            throw new BookingException(
+                "Booking {$booking->reference} was made on {$booking->environment} and cannot be read on {$this->tbo->environment()}."
+            );
+        }
+
+        if ($booking->status === BookingStatus::Quoted) {
+            throw new BookingException("Booking {$booking->reference} has not been sent to the hotel yet.");
+        }
+    }
+
     private function guardBookable(Booking $booking): void
     {
         if ($booking->product !== BookingProduct::Hotel) {

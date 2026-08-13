@@ -336,6 +336,42 @@
                         </ul>
                     </div>
                 @endif
+
+                {{-- What TBO says, and when it last said it.
+                     Everything above was true when the stay was booked: the hotel's own
+                     reference arrives days later, the invoice later still, and a
+                     cancellation made in TBO's portal never reaches us on its own. --}}
+                @if ($booking->status !== $statuses::Quoted && auth()->user()->can('hotel.view'))
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+                        <div class="text-xs text-gray-500">
+                            @if ($stay->refreshed_at)
+                                Hotel provider reported
+                                <span class="font-medium text-gray-700">{{ $stay->supplier_status ?: 'nothing' }}</span>
+                                {{ $stay->refreshed_at->diffForHumans() }}
+                                @if (filled($stay->room_statuses))
+                                    <span class="text-gray-400">
+                                        ·
+                                        @foreach ($stay->room_statuses as $i => $room)
+                                            Room {{ $i + 1 }} {{ strtolower($room['status'] ?: 'unknown') }}@if (! $loop->last), @endif
+                                        @endforeach
+                                    </span>
+                                @endif
+                            @else
+                                Not checked with the hotel provider since booking.
+                            @endif
+                        </div>
+
+                        <form method="POST" action="{{ route('hotels.bookings.refresh', $booking) }}"
+                              x-data="{ checking: false }" @submit="checking = true">
+                            @csrf
+                            <button type="submit" :disabled="checking"
+                                    class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50">
+                                <span x-show="! checking">Check with hotel</span>
+                                <span x-show="checking" x-cloak>Checking…</span>
+                            </button>
+                        </form>
+                    </div>
+                @endif
             </div>
         @endif
 

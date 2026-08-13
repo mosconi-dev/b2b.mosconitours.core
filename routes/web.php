@@ -58,6 +58,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('hotels.bookings.book')->whereNumber('booking')->middleware('can:hotel.book');
     Route::get('/hotels/bookings/{booking}/voucher', [HotelBookingController::class, 'voucher'])
         ->name('hotels.bookings.voucher')->whereNumber('booking')->middleware('can:booking.view');
+    // A read, but a POST: it writes down what TBO answers, and a link a browser can
+    // prefetch is not the right shape for something that corrects a booking's status.
+    Route::post('/hotels/bookings/{booking}/refresh', [HotelBookingController::class, 'refresh'])
+        ->name('hotels.bookings.refresh')->whereNumber('booking')->middleware('can:hotel.view');
     // Step 2 on its own page, the way a fare gets one on the flight side.
     Route::get('/hotels/{code}/rooms', [HotelController::class, 'rooms'])->name('hotels.rooms')
         ->whereNumber('code')->middleware('can:hotel.search');

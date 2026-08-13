@@ -193,6 +193,39 @@ class HotelBookingController extends Controller
     }
 
     /**
+     * Ask TBO what this booking is now.
+     *
+     * Synchronous on purpose, unlike the Book: BookingDetail is a read that answers in
+     * about a second, and an agent pressing it is asking a question they want answered
+     * on this page rather than eventually.
+     */
+    public function refresh(Request $request, Booking $booking, HotelBookingService $bookings): RedirectResponse
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        abort_unless($booking->product === BookingProduct::Hotel, 404);
+
+        try {
+            $booking = $bookings->refresh($booking);
+        } catch (BookingException $e) {
+            return back()->with('error', $e->getMessage());
+        } catch (TboHotelException $e) {
+            report($e);
+
+            return back()->with('error', 'We could not reach the hotel provider. Please try again in a moment.');
+        }
+
+        $reported = $booking->hotel?->supplier_status;
+
+        return back()->with('status', filled($reported)
+            ? "The hotel provider reports this booking as {$reported}."
+            : 'The hotel provider did not recognise this booking — contact support.');
+    }
+
+    /**
      * The printable voucher — what a guest hands over at the desk.
      *
      * Rendered entirely from hotel_bookings, so it prints during a TBO outage and reads

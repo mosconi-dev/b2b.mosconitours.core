@@ -4,12 +4,12 @@ namespace App\Jobs;
 
 use App\Enums\BookingStatus;
 use App\Models\Booking;
+use App\Services\TboHotel\DTO\BookingDetailResult;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\HotelBookingService;
 use App\Services\TboHotel\TboHotelService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -70,16 +70,10 @@ class ReconcileHotelBooking implements ShouldQueue
         }
 
         try {
-            $detail = Arr::get($tbo->bookingDetail($booking->reference), 'BookingDetail');
+            $detail = BookingDetailResult::fromResponse($tbo->bookingDetail($booking->reference));
         } catch (TboHotelException $e) {
             // Could not ask. That is not an answer either, so try again later.
             $this->again($booking, 'BookingDetail failed: '.$e->getMessage());
-
-            return;
-        }
-
-        if (! is_array($detail)) {
-            $this->again($booking, 'BookingDetail returned no booking.');
 
             return;
         }
@@ -90,52 +84,49 @@ class ReconcileHotelBooking implements ShouldQueue
     /**
      * Turn TBO's account of the booking into our status.
      *
-     * Only two answers are acted on. Anything else — an empty status, a state we do not
-     * recognise, a booking still being processed at their end — is treated as "not yet
+     * Only endings are acted on. Anything else — an empty status, a state we do not
+     * recognise, a cancellation still travelling at their end — is treated as "not yet
      * known" and asked again, because acting on a half-answer is how a real reservation
      * gets refunded or a failed one gets charged.
      *
-     * @param  array<string, mixed>  $detail
+     * The reading itself lives in BookingDetailResult, shared with the refresh: two
+     * interpretations of one payload would settle their disagreements by whichever ran
+     * last.
      */
-    private function resolve(Booking $booking, array $detail, HotelBookingService $bookings): void
+    private function resolve(Booking $booking, BookingDetailResult $detail, HotelBookingService $bookings): void
     {
-        $status = strtolower(trim((string) Arr::get($detail, 'BookingStatus', '')));
-        $confirmation = trim((string) Arr::get($detail, 'ConfirmationNumber', ''));
-
-        if (in_array($status, ['confirmed', 'vouchered', 'success'], true) && $confirmation !== '') {
+        if ($detail->isConfirmed()) {
             $bookings->confirm(
                 $booking,
-                $confirmation,
-                // Absent from the response entirely until TBO issues it, which it only
-                // does within thirty days of check-in.
-                trim((string) Arr::get($detail, 'HotelConfirmationNumber', '')) ?: null,
-                trim((string) Arr::get($detail, 'InvoiceNumber', '')) ?: null,
+                (string) $detail->confirmationNumber,
+                $detail->hotelConfirmationNumber,
+                $detail->invoiceNumber,
             );
 
             Log::info('Hotel booking reconciled as confirmed', [
                 'booking' => $booking->reference,
-                'confirmation' => $confirmation,
+                'confirmation' => $detail->confirmationNumber,
                 'attempt' => $this->attempt,
             ]);
 
             return;
         }
 
-        if (in_array($status, ['cancelled', 'canceled', 'failed', 'rejected'], true)) {
+        if ($detail->isCancelled() || $detail->isFailed()) {
             // Failed refunds the wallet, which is right: TBO is telling us no room was
             // ever held, so the agency is not paying for one.
-            $bookings->fail($booking, "TBO reports the booking as {$status}.");
+            $bookings->fail($booking, "TBO reports the booking as {$detail->status}.");
 
             Log::warning('Hotel booking reconciled as failed', [
                 'booking' => $booking->reference,
-                'reported' => $status,
+                'reported' => $detail->status,
                 'attempt' => $this->attempt,
             ]);
 
             return;
         }
 
-        $this->again($booking, "BookingDetail reported '{$status}' with confirmation '{$confirmation}'.");
+        $this->again($booking, "BookingDetail reported '{$detail->status}' with confirmation '{$detail->confirmationNumber}'.");
     }
 
     /**
