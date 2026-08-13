@@ -4,6 +4,7 @@ namespace Tests\Feature\TboHotel;
 
 use App\Enums\Supplier;
 use App\Models\Setting;
+use App\Services\Rbac\PermissionRegistry;
 use App\Services\Settings\Settings;
 use App\Services\Supplier\SupplierEnvironmentResolver;
 use App\Services\TboHotel\DTO\PaxRoom;
@@ -231,6 +232,33 @@ class HotelSettingsPageTest extends TestCase
 
         $this->assertNotSame($cache->key(1, 'test', $input), $cache->key(1, 'live', $input));
         $this->assertNotSame($cache->key(1, 'test', $input), $cache->key(2, 'test', $input));
+    }
+
+    /**
+     * A page reachable only by opening another page first is a page nobody finds.
+     * Admin → Settings is TBO Air's and says nothing about hotels, so the nav has to
+     * offer this one directly.
+     */
+    public function test_the_settings_page_has_its_own_navigation_entry(): void
+    {
+        $this->actingAs($this->userWith(['supplier.tbohotel.view']))
+            ->get('/admin/tbo-hotel/settings')
+            ->assertOk()
+            ->assertSee('TBO Hotel Settings')
+            ->assertSee(route('admin.tbo-hotel.settings'), false)
+            // Both doors into the module, side by side in the sidebar.
+            ->assertSee(route('admin.hotel-catalogue.index'), false);
+    }
+
+    public function test_the_navigation_entry_follows_the_module_permission(): void
+    {
+        $registry = app(PermissionRegistry::class);
+
+        $labels = fn ($user): array => collect($registry->navSections($user))
+            ->flatten(1)->pluck('label')->all();
+
+        $this->assertContains('TBO Hotel Settings', $labels($this->userWith(['supplier.tbohotel.view'])));
+        $this->assertNotContains('TBO Hotel Settings', $labels($this->userWith(['flight.view'])));
     }
 
     public function test_the_catalogue_page_links_to_the_settings_page(): void

@@ -154,6 +154,13 @@ return [
             // sync = refresh the local hotel catalogue (countries, cities, properties);
             // manage = edit the environment/cache settings; live = may use live.
             'actions' => ['view', 'sync', 'manage', 'live'],
+            // The supplier's own settings — test/live and the search cache. A second
+            // nav entry rather than a second module: same permissions, another door.
+            // Admin → Settings is TBO Air's and says nothing about hotels, so without
+            // this the page can only be found by opening the catalogue first.
+            'links' => [
+                ['label' => 'TBO Hotel Settings', 'route' => 'admin.tbo-hotel.settings', 'icon' => 'cog'],
+            ],
         ],
         'supplier.amadeus' => [
             'label' => 'Amadeus',

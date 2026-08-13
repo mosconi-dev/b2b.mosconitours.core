@@ -116,9 +116,56 @@ class PermissionRegistry
                 'permission' => $ability,
                 ...$this->navTarget($key, $module, $user),
             ];
+
+            foreach ($this->extraLinks($key, $module, $user) as $link) {
+                $sections[$module['section']][] = $link;
+            }
         }
 
         return $sections;
+    }
+
+    /**
+     * A module's further destinations, if it declares any.
+     *
+     * One module usually means one page, but not always: TBO Hotel has a catalogue
+     * and its own settings, and a page reachable only by opening another one first
+     * is a page nobody finds. Declaring them here rather than inventing a second
+     * module keeps the permission set honest — these are extra doors into the same
+     * room, not new rooms.
+     *
+     * @param  array<string, mixed>  $module
+     * @return array<int, array<string, mixed>>
+     */
+    private function extraLinks(string $key, array $module, User $user): array
+    {
+        $links = [];
+
+        foreach ($module['links'] ?? [] as $link) {
+            if (empty($link['route']) || empty($link['label'])) {
+                continue;
+            }
+
+            // Defaults to whatever gates the module itself, so a link cannot quietly
+            // be looser than the page it points at.
+            $ability = isset($link['action']) ? "{$key}.{$link['action']}" : $this->primaryAbility($key);
+
+            if (! $user->can($ability)) {
+                continue;
+            }
+
+            $links[] = [
+                'module' => $key,
+                'icon' => $link['icon'] ?? $module['icon'],
+                'group' => $module['group'],
+                'permission' => $ability,
+                'label' => $link['label'],
+                'route' => $link['route'],
+                'params' => [],
+            ];
+        }
+
+        return $links;
     }
 
     /**
