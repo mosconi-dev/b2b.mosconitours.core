@@ -385,7 +385,9 @@ class HotelWizardTest extends TestCase
             ->assertOk()
             ->assertSee('Select Hotel')
             ->assertSee('Select Room')
-            ->assertSee('View rooms')
+            // The same control the flights list uses, not a text link.
+            ->assertSee('selectHotel(offer)', false)
+            ->assertDontSee('View rooms')
             // The wizard is two steps away now — nothing here jumps straight to it.
             ->assertDontSee(route('hotels.book'), false);
     }
@@ -482,7 +484,7 @@ class HotelWizardTest extends TestCase
         $this->actingAs($this->agent(['hotel.view', 'hotel.search']))
             ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
             ->assertOk()
-            ->assertSee('You do not have permission to book hotels')
+            ->assertSee("You don't have booking permission", false)
             ->assertDontSee(route('hotels.book'), false);
     }
 }

@@ -1602,6 +1602,9 @@ Alpine.data('hotelSearch', (config = {}) => ({
     // State
     loading: false,
     collapsed: config.embedded ?? false,
+    // Which property is being opened, so its Select button can say so. The rooms page
+    // prices the hotel on the way in, which is a second or two of nothing otherwise.
+    selecting: null,
     error: '',
     result: null,
 
@@ -1772,6 +1775,11 @@ Alpine.data('hotelSearch', (config = {}) => ({
         });
 
         return `${this.roomsUrlFor.replace('__CODE__', offer.hotelCode)}?${params}`;
+    },
+
+    selectHotel(offer) {
+        this.selecting = offer.hotelCode;
+        window.location = this.roomsUrl(offer);
     },
 
     get roomsToken() {

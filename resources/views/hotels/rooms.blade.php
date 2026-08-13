@@ -174,12 +174,12 @@
                                                 'rooms' => $stay['roomsToken'],
                                                 'shownFare' => $room['totalFare'],
                                             ]) }}"
-                                           class="mt-2 inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800">
+                                           class="mt-2 inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
                                             Select
                                         </a>
                                     @else
-                                        <button type="button" disabled title="You do not have permission to book hotels"
-                                                class="mt-2 cursor-not-allowed rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-500">
+                                        <button type="button" disabled title="You don't have booking permission"
+                                                class="mt-2 cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-white">
                                             Select
                                         </button>
                                     @endcan

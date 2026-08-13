@@ -154,14 +154,20 @@
                                               x-text="offer.roomCount + (offer.roomCount === 1 ? ' rate' : ' rates')"></span>
                                     </div>
 
-                                    {{-- Step 1 → step 2. The rooms get their own page: choosing
-                                         one means reading policies and prices, and a decision
-                                         that size deserves the screen. It also makes the step
-                                         addressable, so back and forward both work. --}}
-                                    <a :href="roomsUrl(offer)"
-                                       class="mt-3 inline-block text-sm font-medium text-brand-700 hover:text-brand-900">
-                                        View rooms &rarr;
-                                    </a>
+                                    {{-- Step 1 → step 2, and the same control the flights list
+                                         uses: a Select button that shows it is working, because
+                                         the rooms page prices the property on the way in. --}}
+                                    <div class="mt-3">
+                                        <button type="button" @click="selectHotel(offer)"
+                                                :disabled="selecting === offer.hotelCode"
+                                                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                                            <svg x-show="selecting === offer.hotelCode" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                            </svg>
+                                            <span x-text="selecting === offer.hotelCode ? 'Pricing…' : 'Select'"></span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
