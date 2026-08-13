@@ -56,7 +56,7 @@ class HotelBookingController extends Controller
         }
 
         $hotel = Hotel::where('code', $quote->hotelCode ?: $data['locationCode'])->first();
-        $rooms = $this->rooms($data['rooms']);
+        $rooms = self::decodeRooms($data['rooms']);
         $shownFare = isset($data['shownFare']) ? (float) $data['shownFare'] : null;
 
         return view('hotels.book', [
@@ -135,9 +135,12 @@ class HotelBookingController extends Controller
      * already long, and lossless because the guest form has to offer exactly the right
      * number of name fields.
      *
+     * Public and static because the same token travels through step 2 as well, and two
+     * parsers for one format is one parser too many.
+     *
      * @return array<int, array{adults: int, children: int, childrenAges: array<int, int>}>
      */
-    private function rooms(string $encoded): array
+    public static function decodeRooms(string $encoded): array
     {
         $rooms = [];
 

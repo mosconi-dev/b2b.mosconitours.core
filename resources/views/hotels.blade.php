@@ -12,15 +12,13 @@
     <div x-data="hotelSearch({
             suggestUrl: '{{ route('hotels.suggest') }}',
             searchUrl: '{{ route('hotels.search') }}',
-            hotelUrl: '{{ url('hotels') }}',
-            bookUrl: '{{ route('hotels.book') }}',
+            roomsUrl: '{{ route('hotels.rooms', ['code' => '__CODE__']) }}',
          })" class="space-y-5">
 
-        {{-- Steps 1 and 2 both live on this page: picking the hotel, then the room
-             inside it. The stepper reads the component's reactive `step`, which is 2
-             once a property is open. --}}
+        {{-- This page is step 1 and only step 1. Choosing a room happens on the
+             property's own page, so the stepper here is static. --}}
         <div x-show="result" x-cloak class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <x-hotel-stepper />
+            <x-hotel-stepper :current="1" />
         </div>
 
         @include('hotels.form')
@@ -156,103 +154,14 @@
                                               x-text="offer.roomCount + (offer.roomCount === 1 ? ' rate' : ' rates')"></span>
                                     </div>
 
-                                    <button type="button" @click="toggle(offer)"
-                                            class="mt-3 text-sm font-medium text-brand-700 hover:text-brand-900">
-                                        <span x-text="open === offer.hotelCode ? 'Hide rooms' : 'View rooms'"></span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {{-- Rooms + property detail --}}
-                            <div x-show="open === offer.hotelCode" x-cloak class="border-t border-gray-100 bg-gray-50/60 p-5">
-                                {{-- The description is supplier HTML, sanitised server-side to a
-                                     short allow-list. It runs to a dozen paragraphs, and the rates
-                                     are what the agent opened this panel for, so it starts clamped. --}}
-                                <template x-if="detail[offer.hotelCode]">
-                                    <div class="mb-4"
-                                         x-data="{ expanded: false, long: (detail[offer.hotelCode].description || '').length > 400 }">
-                                        <div class="supplier-prose text-sm text-gray-600"
-                                             :class="long && !expanded ? 'max-h-24 overflow-hidden' : ''"
-                                             x-html="detail[offer.hotelCode].description"></div>
-                                        <button type="button" x-show="long" @click="expanded = !expanded"
-                                                class="mt-1 text-xs font-medium text-brand-700 hover:text-brand-900"
-                                                x-text="expanded ? 'Show less' : 'Read more'"></button>
-                                        <div class="mt-2 flex flex-wrap gap-1.5">
-                                            <template x-for="f in (detail[offer.hotelCode].facilities || []).slice(0, 12)" :key="f">
-                                                <span class="rounded bg-white px-2 py-0.5 text-xs text-gray-500 ring-1 ring-inset ring-gray-200" x-text="f"></span>
-                                            </template>
-                                        </div>
-                                    </div>
-                                </template>
-
-                                <div class="space-y-3">
-                                    <template x-for="room in offer.rooms" :key="room.bookingCode">
-                                        <div class="rounded-lg border border-gray-200 bg-white p-4">
-                                            <div class="flex flex-wrap items-start justify-between gap-4">
-                                                <div class="min-w-0">
-                                                    <template x-for="(name, n) in room.names" :key="n">
-                                                        <p class="text-sm font-medium text-brand-900" x-text="name"></p>
-                                                    </template>
-                                                    <p class="mt-1 text-xs text-gray-500">
-                                                        <span x-text="room.mealLabel"></span>
-                                                        <template x-if="room.inclusion"><span x-text="' · ' + room.inclusion"></span></template>
-                                                    </p>
-
-                                                    <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                                                        {{-- "before", not "until". TBO's value is the instant charges begin,
-                                                             and every policy it sends lands on midnight — so "until 4 Sept"
-                                                             reads as though the 4th is still free when the window shut as it
-                                                             started. "before" states the boundary without us doing arithmetic
-                                                             on a supplier's refund deadline. --}}
-                                                        <template x-if="room.freeCancellationUntil">
-                                                            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
-                                                                  x-text="'Free cancellation before ' + formatDay(room.freeCancellationUntil)"></span>
-                                                        </template>
-                                                        <template x-if="!room.isRefundable">
-                                                            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">Non-refundable</span>
-                                                        </template>
-                                                        <template x-for="p in room.promotions" :key="p">
-                                                            <span class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20" x-text="p"></span>
-                                                        </template>
-                                                    </div>
-
-                                                    {{-- Charges the guest settles at the hotel. Shown before
-                                                         booking because the spec requires it, and because a
-                                                         deposit sprung at check-in is a complaint we caused. --}}
-                                                    <template x-if="room.payableAtProperty.length">
-                                                        <div class="mt-2 rounded-md bg-amber-50 px-3 py-2">
-                                                            <p class="text-xs font-medium text-amber-800">Payable at the hotel</p>
-                                                            <template x-for="s in room.payableAtProperty" :key="s.description + s.price">
-                                                                <p class="text-xs text-amber-700">
-                                                                    <span x-text="s.description"></span> —
-                                                                    <span x-text="money(s.price, s.currency)"></span>
-                                                                </p>
-                                                            </template>
-                                                        </div>
-                                                    </template>
-                                                </div>
-
-                                                <div class="shrink-0 text-right">
-                                                    <p class="text-base font-semibold text-brand-900" x-text="money(room.totalFare, offer.currency)"></p>
-                                                    <p class="text-xs text-gray-400" x-text="'incl. tax ' + money(room.totalTax, offer.currency)"></p>
-                                                    @can('hotel.book')
-                                                        {{-- Leaves step 2. The wizard re-prices through PreBook
-                                                             before it renders, so the terms the agent accepts are
-                                                             the supplier's current ones, not this page's. --}}
-                                                        <a :href="bookUrl(offer, room)"
-                                                           class="mt-2 inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800">
-                                                            Select
-                                                        </a>
-                                                    @else
-                                                        <button type="button" disabled title="You do not have permission to book hotels"
-                                                                class="mt-2 cursor-not-allowed rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-500">
-                                                            Select
-                                                        </button>
-                                                    @endcan
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </template>
+                                    {{-- Step 1 → step 2. The rooms get their own page: choosing
+                                         one means reading policies and prices, and a decision
+                                         that size deserves the screen. It also makes the step
+                                         addressable, so back and forward both work. --}}
+                                    <a :href="roomsUrl(offer)"
+                                       class="mt-3 inline-block text-sm font-medium text-brand-700 hover:text-brand-900">
+                                        View rooms &rarr;
+                                    </a>
                                 </div>
                             </div>
                         </div>

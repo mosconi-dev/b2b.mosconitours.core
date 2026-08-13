@@ -6,12 +6,16 @@ use App\Http\Requests\SearchHotelsRequest;
 use App\Models\Hotel;
 use App\Models\HotelCountry;
 use App\Services\TboHotel\CatalogueSyncService;
+use App\Services\TboHotel\DTO\PaxRoom;
+use App\Services\TboHotel\DTO\SearchInput;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\HotelSearchCache;
 use App\Services\TboHotel\TboHotelService;
 use App\Support\SupplierHtml;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 class HotelController extends Controller
@@ -44,6 +48,119 @@ class HotelController extends Controller
             'nights' => $input->nights(),
             'rooms' => $input->roomCount(),
             'guests' => $input->guests(),
+        ]);
+    }
+
+    /**
+     * Step 2 — one property's rooms, on their own page.
+     *
+     * A page rather than a panel on the results list, mirroring how a fare gets its own
+     * page on the flight side. Choosing a room is a decision with policies and prices
+     * to read, and it deserves the screen; it also makes the step addressable, so
+     * going back to the results and forward again both work.
+     *
+     * Rates are re-fetched for this one hotel rather than carried over from the list.
+     * One code is a single call, the prices are current, and the page survives a
+     * reload — a results set held in a browser tab does none of those.
+     */
+    public function rooms(
+        Request $request,
+        string $code,
+        TboHotelService $service,
+        HotelSearchCache $cache,
+        CatalogueSyncService $sync,
+    ): View|RedirectResponse {
+        $data = $request->validate([
+            'checkIn' => ['required', 'date'],
+            'checkOut' => ['required', 'date', 'after:checkIn'],
+            'guestNationality' => ['required', 'string', 'size:2'],
+            'rooms' => ['required', 'string', 'max:255'],
+            // Where "back to results" goes, so the agent lands on the search they ran.
+            'from' => ['nullable', 'string', 'max:32'],
+            'label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $hotel = Hotel::where('code', $code)->firstOrFail();
+        $occupancy = HotelBookingController::decodeRooms($data['rooms']);
+
+        $input = new SearchInput(
+            checkIn: Carbon::parse($data['checkIn'])->toDateString(),
+            checkOut: Carbon::parse($data['checkOut'])->toDateString(),
+            rooms: array_map(fn (array $room): PaxRoom => PaxRoom::fromArray($room), $occupancy),
+            guestNationality: strtoupper($data['guestNationality']),
+            locationType: 'hotel',
+            locationCode: $code,
+        );
+
+        try {
+            $payload = $cache->remember(
+                $request->user()->id,
+                $service->environment(),
+                $input,
+                fn () => $service->search($input),
+            );
+        } catch (TboHotelException $e) {
+            return $this->roomsError($e, $data);
+        }
+
+        // The panel used to enrich on open; this page is that panel now.
+        if ($hotel->detailed_at === null) {
+            try {
+                $sync->enrich([$hotel->code]);
+                $hotel->refresh();
+            } catch (TboHotelException) {
+                // Rates are what the agent came for.
+            }
+        }
+
+        return view('hotels.rooms', [
+            'hotel' => $hotel,
+            'offer' => $payload['offers'][0] ?? null,
+            'currency' => $payload['currency'] ?? '',
+            'stay' => [
+                'checkIn' => $input->checkIn,
+                'checkOut' => $input->checkOut,
+                'nights' => $input->nights(),
+                'guestNationality' => $input->guestNationality,
+                'rooms' => $occupancy,
+                'roomsToken' => $data['rooms'],
+            ],
+            'backUrl' => $this->backToResults($data),
+            'images' => array_slice($hotel->images ?? [], 0, 6),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function roomsError(TboHotelException $e, array $data): RedirectResponse
+    {
+        report($e);
+
+        return redirect($this->backToResults($data))->with('error', $e->isExpired() || $e->isRateGone()
+            ? 'Those prices have expired. Search again to see current availability.'
+            : 'We could not reach the hotel provider. Please try again.');
+    }
+
+    /**
+     * Back to the results, carrying the search so the agent lands on the list they
+     * left rather than an empty form.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function backToResults(array $data): string
+    {
+        if (blank($data['from'] ?? null)) {
+            return route('hotels');
+        }
+
+        return route('hotels', [
+            'checkIn' => $data['checkIn'],
+            'checkOut' => $data['checkOut'],
+            'guestNationality' => $data['guestNationality'],
+            'rooms' => $data['rooms'],
+            'city' => $data['from'],
+            'label' => $data['label'] ?? '',
         ]);
     }
 

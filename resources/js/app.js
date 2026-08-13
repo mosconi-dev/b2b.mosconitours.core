@@ -1581,8 +1581,7 @@ Alpine.data('bookingWizard', (config = {}) => ({
 Alpine.data('hotelSearch', (config = {}) => ({
     suggestUrl: config.suggestUrl,
     searchUrl: config.searchUrl,
-    hotelUrl: config.hotelUrl,
-    bookUrlBase: config.bookUrl,
+    roomsUrlFor: config.roomsUrl,
 
     // Form
     locationLabel: '',
@@ -1600,8 +1599,6 @@ Alpine.data('hotelSearch', (config = {}) => ({
     collapsed: false,
     error: '',
     result: null,
-    open: null,
-    detail: {},
 
     // Client-side view controls
     sort: 'price',
@@ -1613,6 +1610,8 @@ Alpine.data('hotelSearch', (config = {}) => ({
     init() {
         this.checkIn = this.shift(this.today, 30);
         this.checkOut = this.shift(this.checkIn, 2);
+
+        this.restore();
 
         // flatpickr redraws on a bounds change but keeps whatever was selected,
         // so moving the check-in has to carry the check-out with it. Left alone,
@@ -1626,6 +1625,49 @@ Alpine.data('hotelSearch', (config = {}) => ({
             } else if (this.checkOut > this.checkOutMax) {
                 this.checkOut = this.checkOutMax;
             }
+        });
+    },
+
+    /**
+     * Come back from a property with the search intact.
+     *
+     * "Back to results" carries the criteria in the query string, so returning re-runs
+     * the search instead of dropping the agent on an empty form. Nothing is restored
+     * when the parameters are absent, which is the ordinary first visit.
+     */
+    restore() {
+        const q = new URLSearchParams(window.location.search);
+
+        if (!q.get('city') || !q.get('checkIn')) return;
+
+        this.checkIn = q.get('checkIn');
+        this.checkOut = q.get('checkOut') || this.checkOutMin;
+        this.guestNationality = q.get('guestNationality') || this.guestNationality;
+        this.locationType = 'city';
+        this.locationCode = q.get('city');
+        this.locationLabel = q.get('label') || '';
+
+        const rooms = this.decodeRooms(q.get('rooms') || '');
+        if (rooms.length) this.rooms = rooms;
+
+        // Straight back to the results the agent left, rather than to the form.
+        this.$nextTick(() => this.search());
+    },
+
+    /**
+     * The inverse of roomsToken. Ages are the truth where a count disagrees with them.
+     */
+    decodeRooms(token) {
+        return token.split(';').filter(Boolean).map((part) => {
+            const [adults, rest = '0'] = part.split('-');
+            const [children = '0', ages = ''] = String(rest).split('x');
+            const childrenAges = ages.split(',').filter((a) => a !== '').map(Number);
+
+            return {
+                adults: Math.min(8, Math.max(1, Number(adults) || 2)),
+                children: childrenAges.length || Math.min(4, Math.max(0, Number(children) || 0)),
+                childrenAges,
+            };
         });
     },
 
@@ -1647,15 +1689,6 @@ Alpine.data('hotelSearch', (config = {}) => ({
         moved.setDate(moved.getDate() + days);
 
         return this.iso(moved);
-    },
-
-    /**
-     * Which wizard step this page is on. Choosing the hotel is step 1; opening one to
-     * pick a room is step 2. The remaining three happen in the booking wizard, which
-     * shares the same stepper and the same numbering.
-     */
-    get step() {
-        return this.open ? 2 : 1;
     },
 
     get today() {
@@ -1717,26 +1750,29 @@ Alpine.data('hotelSearch', (config = {}) => ({
     },
 
     /**
-     * Step 2 → step 3. Occupancy rides along encoded as "2-0;2-1x8,10" — the wizard
-     * needs the exact rooms that were priced to build one name field per occupant, and
-     * a BookingCode does not carry them.
+     * Step 1 → step 2. Occupancy rides along encoded as "2-0;2-1x8,10": the rooms page
+     * re-prices this one hotel and needs the exact occupancy that was searched.
+     *
+     * `from` and `label` are what "back to results" reads, so leaving a property and
+     * returning lands on the search the agent ran rather than an empty form.
      */
-    bookUrl(offer, room) {
-        const rooms = this.rooms
-            .map((r) => `${r.adults}-${r.children}` + (r.childrenAges.length ? `x${r.childrenAges.join(',')}` : ''))
-            .join(';');
-
+    roomsUrl(offer) {
         const params = new URLSearchParams({
-            bookingCode: room.bookingCode,
             checkIn: this.checkIn,
             checkOut: this.checkOut,
-            locationCode: offer.hotelCode,
             guestNationality: this.guestNationality,
-            rooms,
-            shownFare: room.totalFare,
+            rooms: this.roomsToken,
+            from: this.locationType === 'city' ? this.locationCode : '',
+            label: this.locationLabel,
         });
 
-        return `${this.bookUrlBase}?${params}`;
+        return `${this.roomsUrlFor.replace('__CODE__', offer.hotelCode)}?${params}`;
+    },
+
+    get roomsToken() {
+        return this.rooms
+            .map((r) => `${r.adults}-${r.children}` + (r.childrenAges.length ? `x${r.childrenAges.join(',')}` : ''))
+            .join(';');
     },
 
     async suggest() {
@@ -1788,7 +1824,6 @@ Alpine.data('hotelSearch', (config = {}) => ({
 
         this.error = '';
         this.loading = true;
-        if (!retry) this.open = null;
 
         try {
             const res = await fetch(this.searchUrl, {
@@ -1826,36 +1861,14 @@ Alpine.data('hotelSearch', (config = {}) => ({
             this.loading = false;
         }
     },
-
-    async toggle(offer) {
-        if (this.open === offer.hotelCode) {
-            this.open = null;
-            return;
-        }
-
-        this.open = offer.hotelCode;
-
-        if (this.detail[offer.hotelCode]) return;
-
-        try {
-            const res = await fetch(`${this.hotelUrl}/${offer.hotelCode}`, {
-                headers: { Accept: 'application/json' },
-            });
-
-            if (res.ok) this.detail[offer.hotelCode] = await res.json();
-        } catch {
-            // The rates are the point of the panel; a missing description is not
-            // worth an error message.
-        }
-    },
 }));
 
 /**
  * The hotel booking wizard, steps 3–5.
  *
- * Steps 1 and 2 happened on the results page, so this opens on Guest Details. The
- * numbering is shared with the flights wizard deliberately — same stepper, same
- * positions — so an agent who has learned one has learned both.
+ * Step 1 is the results list and step 2 the property's own page, so this opens on
+ * Guest Details. The numbering is shared with the flights wizard deliberately — same
+ * stepper, same positions — so an agent who has learned one has learned both.
  */
 Alpine.data('hotelBooking', (config = {}) => ({
     storeUrl: config.storeUrl,

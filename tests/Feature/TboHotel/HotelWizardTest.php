@@ -41,6 +41,13 @@ class HotelWizardTest extends TestCase
             'source' => 'tbo', 'code' => '1012705', 'city_code' => '127116',
             'country_code' => 'PH', 'name' => 'Jen s Comfy Home', 'rating' => 3,
         ]);
+
+        // The property the search fixture actually has rates for — the rooms page runs
+        // a Search, so a hotel absent from it renders "no rooms" and proves nothing.
+        Hotel::create([
+            'source' => 'tbo', 'code' => '1022346', 'city_code' => '127116',
+            'country_code' => 'PH', 'name' => 'Fixture Suites', 'rating' => 4,
+        ]);
     }
 
     /**
@@ -368,17 +375,95 @@ class HotelWizardTest extends TestCase
     }
 
     /**
-     * The results page is where steps 1 and 2 happen, so it carries the same stepper —
-     * and the Select button is the move from 2 to 3.
+     * The results page is step 1 only. Choosing a room happens on the property's own
+     * page, so this one carries the stepper and a link onward, not a Select button.
      */
-    public function test_the_results_page_carries_the_stepper_and_the_select_link(): void
+    public function test_the_results_page_is_step_one_and_links_to_the_rooms_page(): void
     {
         $this->actingAs($this->agent())
             ->get('/hotels')
             ->assertOk()
             ->assertSee('Select Hotel')
             ->assertSee('Select Room')
-            ->assertSee(route('hotels.book'), false);
+            ->assertSee('View rooms')
+            // The wizard is two steps away now — nothing here jumps straight to it.
+            ->assertDontSee(route('hotels.book'), false);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function roomsQuery(array $overrides = []): array
+    {
+        return array_replace([
+            'checkIn' => '2026-09-11',
+            'checkOut' => '2026-09-13',
+            'guestNationality' => 'PH',
+            'rooms' => '2-0',
+            'from' => '127116',
+            'label' => 'Manila',
+        ], $overrides);
+    }
+
+    public function test_the_rooms_page_lists_the_rates_for_one_property(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertSee('Fixture Suites')
+            ->assertSee('Select Room')
+            ->assertSee('Back to results')
+            ->assertSee('Choose another hotel')
+            // The rates themselves, which is the point of the page.
+            ->assertSee('3,790.37')
+            ->assertSee('Select');
+    }
+
+    /**
+     * Leaving a property and coming back has to land on the search the agent ran, not
+     * an empty form — that is the whole point of the step being its own page.
+     */
+    public function test_back_to_results_carries_the_search(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        $response = $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk();
+
+        $back = $response->viewData('backUrl');
+
+        $this->assertStringContainsString('city=127116', $back);
+        $this->assertStringContainsString('checkIn=2026-09-11', $back);
+        $this->assertStringContainsString('rooms=2-0', $back);
+    }
+
+    public function test_the_rooms_page_says_so_when_nothing_is_left(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response(['Status' => ['Code' => 201, 'Description' => 'No Available rooms']]),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertSee('No rooms available');
+    }
+
+    public function test_an_unknown_property_is_not_found(): void
+    {
+        $this->actingAs($this->agent())
+            ->get('/hotels/9999999/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertNotFound();
     }
 
     /**
@@ -387,10 +472,15 @@ class HotelWizardTest extends TestCase
      */
     public function test_an_agent_who_cannot_book_gets_no_select_link(): void
     {
-        $this->actingAs($this->userWith(['hotel.view', 'hotel.search']))
-            ->get('/hotels')
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        $this->actingAs($this->agent(['hotel.view', 'hotel.search']))
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
             ->assertOk()
             ->assertSee('You do not have permission to book hotels')
-            ->assertDontSee('bookUrl(offer, room)', false);
+            ->assertDontSee(route('hotels.book'), false);
     }
 }

@@ -52,6 +52,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('can:hotel.book');
     Route::post('/hotels/bookings', [HotelBookingController::class, 'store'])->name('hotels.bookings.store')
         ->middleware('can:hotel.book');
+    // Step 2 on its own page, the way a fare gets one on the flight side.
+    Route::get('/hotels/{code}/rooms', [HotelController::class, 'rooms'])->name('hotels.rooms')
+        ->whereNumber('code')->middleware('can:hotel.search');
     Route::get('/hotels/{code}', [HotelController::class, 'show'])->name('hotels.show')
         ->whereNumber('code')->middleware('can:hotel.view');
 
