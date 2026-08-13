@@ -43,6 +43,10 @@ class HotelBookingController extends Controller
             'guestNationality' => ['required', 'string', 'size:2'],
             'rooms' => ['required', 'string', 'max:255'], // "2-0;2-1x8" — see rooms()
             'shownFare' => ['nullable', 'numeric', 'min:0'],
+            // The city behind the search, so "back" reaches the rooms page rather than
+            // an empty form.
+            'from' => ['nullable', 'string', 'max:32'],
+            'label' => ['nullable', 'string', 'max:120'],
         ]);
 
         try {
@@ -72,6 +76,17 @@ class HotelBookingController extends Controller
                 'rooms' => $rooms,
             ],
             'shownFare' => $shownFare,
+            // One step back is the room list for this property, not the results — the
+            // agent has already chosen the hotel, and a rate is what they are changing.
+            'backUrl' => route('hotels.rooms', [
+                'code' => $hotel?->code ?? $data['locationCode'],
+                'checkIn' => $data['checkIn'],
+                'checkOut' => $data['checkOut'],
+                'guestNationality' => strtoupper($data['guestNationality']),
+                'rooms' => $data['rooms'],
+                'from' => $data['from'] ?? '',
+                'label' => $data['label'] ?? '',
+            ]),
             // Whether to open on the price gate. Computed here rather than in the
             // browser so the figure the agent is asked to accept is the supplier's.
             'priceChanged' => $shownFare !== null && $quote->priceChanged($shownFare),

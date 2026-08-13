@@ -1945,7 +1945,7 @@ Alpine.data('hotelSearch', (config = {}) => ({
  */
 Alpine.data('hotelBooking', (config = {}) => ({
     storeUrl: config.storeUrl,
-    hotelsUrl: config.hotelsUrl,
+    backUrl: config.backUrl,
     bookingCode: config.bookingCode,
     quote: config.quote || {},
     stay: config.stay || {},

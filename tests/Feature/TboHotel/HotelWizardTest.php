@@ -125,6 +125,25 @@ class HotelWizardTest extends TestCase
             ->assertSee('Select Room');
     }
 
+    /**
+     * One step back from Guest Details is the room list for this property, not the
+     * results — the hotel is already chosen and a rate is what an agent changes.
+     */
+    public function test_the_wizard_goes_back_to_the_rooms_page(): void
+    {
+        $this->fakePreBook();
+
+        $back = $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query(['from' => '127116', 'label' => 'Manila'])))
+            ->assertOk()
+            ->viewData('backUrl');
+
+        $this->assertStringContainsString('/hotels/1012705/rooms', $back);
+        // Carrying enough for that page to price the property and to get home itself.
+        $this->assertStringContainsString('rooms=2-0', $back);
+        $this->assertStringContainsString('from=127116', $back);
+    }
+
     public function test_the_wizard_is_gated_on_booking(): void
     {
         $this->actingAs($this->userWith(['hotel.view', 'hotel.search']))

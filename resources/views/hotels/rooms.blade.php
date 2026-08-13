@@ -336,6 +336,11 @@
                                                 'guestNationality' => $stay['guestNationality'],
                                                 'rooms' => $stay['roomsToken'],
                                                 'shownFare' => $room['totalFare'],
+                                                // Carried so the wizard can offer a way
+                                                // back to this page, and this page's own
+                                                // way back to the results.
+                                                'from' => $stay['from'],
+                                                'label' => $stay['label'],
                                             ]) }}"
                                            class="mt-2 inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
                                             Select

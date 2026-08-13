@@ -11,7 +11,7 @@
 
     <div x-data="hotelBooking({
             storeUrl: '{{ route('hotels.bookings.store') }}',
-            hotelsUrl: '{{ route('hotels') }}',
+            backUrl: @js($backUrl),
             bookingCode: @js($bookingCode),
             quote: @js($quote),
             stay: @js($stay),
@@ -63,12 +63,20 @@
                                             <input type="text" x-model="g.lastName" autocomplete="off"
                                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
                                         </div>
-                                        <div class="flex items-end sm:col-span-2">
-                                            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
-                                                  x-text="g.type"></span>
-                                            <template x-if="g.isLead">
-                                                <span class="ml-1.5 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Lead</span>
-                                            </template>
+                                        {{-- Labelled like its neighbours rather than bottom-
+                                             aligned against them: with no label of its own the
+                                             column started higher and the pills sat off the line
+                                             the inputs sit on. The label also says what the pill
+                                             is, which "Adult" alone does not. --}}
+                                        <div class="sm:col-span-2">
+                                            <label class="block text-xs text-gray-500">Guest</label>
+                                            <div class="mt-1 flex h-[38px] flex-wrap items-center gap-1.5">
+                                                <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                                                      x-text="g.type"></span>
+                                                <template x-if="g.isLead">
+                                                    <span class="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Lead</span>
+                                                </template>
+                                            </div>
                                         </div>
                                     </div>
                                 </template>
@@ -96,7 +104,7 @@
                     </div>
 
                     <div class="flex items-center justify-between">
-                        <a :href="hotelsUrl" class="text-sm font-medium text-gray-500 hover:text-gray-700">Back to results</a>
+                        <a :href="backUrl" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to rooms</a>
                         <x-primary-button type="button" @click="toPayment()">Continue to payment</x-primary-button>
                     </div>
                     <p x-show="error" x-cloak class="text-right text-sm text-red-600" x-text="error"></p>
