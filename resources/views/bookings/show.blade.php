@@ -252,10 +252,15 @@
                         <ul class="mt-2 space-y-1 text-sm text-amber-900">
                             @foreach ($stay->payableAtProperty() as $supplement)
                                 <li class="flex justify-between gap-4">
-                                    <span>{{ $supplement['description'] ?? 'Additional charge' }}</span>
+                                    <span>
+                                        {{ $supplement['description'] }}
+                                        @if ($supplement['count'] > 1)
+                                            <span class="text-amber-800/70">× {{ $supplement['count'] }} rooms</span>
+                                        @endif
+                                    </span>
                                     <span class="font-medium">
-                                        {{ $supplement['currency'] ?? $booking->currency }}
-                                        {{ number_format((float) ($supplement['price'] ?? 0), 2) }}
+                                        {{ $supplement['currency'] ?: $booking->currency }}
+                                        {{ number_format((float) $supplement['total'], 2) }}
                                     </span>
                                 </li>
                             @endforeach

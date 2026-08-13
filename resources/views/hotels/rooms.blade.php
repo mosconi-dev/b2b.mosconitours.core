@@ -219,7 +219,8 @@
             @endif
 
             {{-- Rooms --}}
-            <div id="rooms" data-section="rooms">
+            <div id="rooms" data-section="rooms" class="flex flex-col gap-4">
+            <h2 class="text-base font-semibold text-brand-900">Select your room</h2>
             @if ($offer === null || empty($offer['rooms']))
                 <div class="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                     <p class="text-sm font-medium text-brand-900">No rooms available</p>
@@ -233,8 +234,14 @@
                         <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div class="min-w-0">
-                                    @foreach ($room['names'] as $name)
-                                        <p class="text-sm font-medium text-brand-900">{{ $name }}</p>
+                                    {{-- Counted, not repeated: TBO lists one name per
+                                         physical room and they are usually identical, so
+                                         three lines read as three different rooms. --}}
+                                    @foreach ($room['roomBreakdown'] as $entry)
+                                        <p class="text-sm font-medium text-brand-900">
+                                            @if ($entry['count'] > 1)<span class="text-gray-500">{{ $entry['count'] }} ×</span>@endif
+                                            {{ $entry['name'] }}
+                                        </p>
                                     @endforeach
 
                                     <p class="mt-1 text-xs text-gray-500">
@@ -287,9 +294,15 @@
                                             <p class="font-medium">Payable at the hotel</p>
                                             @foreach ($room['payableAtProperty'] as $supplement)
                                                 <p>
-                                                    {{ $supplement['description'] ?? 'Additional charge' }} —
-                                                    {{ $supplement['currency'] ?? $currency }}
-                                                    {{ number_format((float) ($supplement['price'] ?? 0), 2) }}
+                                                    {{ $supplement['description'] ?: 'Additional charge' }} —
+                                                    {{ $supplement['currency'] ?: $currency }}
+                                                    {{ number_format((float) $supplement['price'], 2) }}
+                                                    @if ($supplement['count'] > 1)
+                                                        <span class="text-amber-700/80">
+                                                            × {{ $supplement['count'] }} rooms =
+                                                            {{ $supplement['currency'] ?: $currency }} {{ number_format((float) $supplement['total'], 2) }}
+                                                        </span>
+                                                    @endif
                                                 </p>
                                             @endforeach
                                         </div>
@@ -305,9 +318,9 @@
                                     </p>
                                     {{-- What one night costs. An agent quoting a client is asked
                                          this constantly, and it is already in the response. --}}
-                                    @if ($room['nightlyRate'] !== null && $stay['nights'] > 1)
+                                    @if ($room['nightlyRate'] !== null)
                                         <p class="text-xs text-gray-500">
-                                            {{ $currency }} {{ number_format($room['nightlyRate'], 2) }} × {{ $stay['nights'] }} nights
+                                            {{ $currency }} {{ number_format($room['nightlyRate'], 2) }} per room, per night
                                         </p>
                                     @endif
 

@@ -177,8 +177,9 @@ class PreBookTest extends TestCase
 
         $room = $this->service()->preBook(self::CODE)->room;
 
-        $this->assertNotNull($room->nightlyRate());
-        $this->assertSame($room->dayRates[0], $room->nightlyRate());
+        // Derived from the total, so it reconciles with the price beside it rather
+        // than with TBO's pre-tax DayRates figure.
+        $this->assertSame(round($room->totalFare / count($room->dayRates), 2), $room->nightlyRate());
 
         $uneven = RoomOffer::fromResponse([
             'BookingCode' => 'x', 'TotalFare' => 300.0,
@@ -186,6 +187,98 @@ class PreBookTest extends TestCase
         ]);
 
         $this->assertNull($uneven->nightlyRate());
+    }
+
+    /**
+     * TBO states rooms, promotions and at-property charges once per physical room, and
+     * for a multi-room rate they are usually identical. Repeated verbatim they read as
+     * three different rooms and three different deposits.
+     */
+    /**
+     * DayRates holds one entry per room per night and excludes tax, so printing it
+     * beside a tax-inclusive total invites a multiplication that does not come out:
+     * 1,568.54 × 2 nights against 12,108.06 for three rooms. The figure shown is
+     * derived from the total instead, so it divides the number above it.
+     */
+    public function test_the_nightly_figure_reconciles_with_the_total_across_rooms(): void
+    {
+        // Two rooms, two evenly priced nights.
+        $room = RoomOffer::fromResponse([
+            'BookingCode' => 'x',
+            'Name' => ['Twin', 'Twin'],
+            'TotalFare' => 12108.06,
+            'DayRates' => [
+                [['BasePrice' => 1568.54], ['BasePrice' => 1568.54]],
+                [['BasePrice' => 1568.54], ['BasePrice' => 1568.54]],
+            ],
+        ]);
+
+        $this->assertSame(3027.02, $room->nightlyRate());
+        // Two rooms, two nights — and it multiplies back to the total.
+        $this->assertSame(12108.08, round($room->nightlyRate() * 2 * 2, 2));
+        // Deliberately not TBO's own pre-tax figure.
+        $this->assertNotSame(1568.54, $room->nightlyRate());
+    }
+
+    /**
+     * The real multi-room capture prices its two nights differently, so no per-night
+     * figure is offered at all — which is the guard doing its job on live data.
+     */
+    public function test_a_stay_with_uneven_nights_offers_no_per_night_figure(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture('prebook-multiroom'))]);
+
+        $room = $this->service()->preBook(self::CODE)->room;
+
+        $this->assertNotSame(1, count(array_unique($room->dayRates)));
+        $this->assertNull($room->nightlyRate());
+    }
+
+    public function test_repeated_per_room_data_is_counted_rather_than_listed_again(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture('prebook-multiroom'))]);
+
+        $room = $this->service()->preBook(self::CODE)->toArray();
+
+        // Two identical rooms become one line with a count.
+        $this->assertCount(2, $room['names']);
+        $this->assertCount(1, $room['roomBreakdown']);
+        $this->assertSame(2, $room['roomBreakdown'][0]['count']);
+        $this->assertSame('Fairmont, Room, 1 King Bed', $room['roomBreakdown'][0]['name']);
+
+        // And one deposit taken twice is one line, counted, with what it comes to —
+        // the guest is asked for the sum of these at the desk.
+        $this->assertCount(1, $room['payableAtProperty']);
+        $this->assertSame(2, $room['payableAtProperty'][0]['count']);
+        $this->assertSame(5000.0, $room['payableAtProperty'][0]['price']);
+        $this->assertSame(10000.0, $room['payableAtProperty'][0]['total']);
+    }
+
+    /**
+     * TBO sets Inclusion to "Room Only" on room-only rates, which rendered as
+     * "Room only · Room Only".
+     */
+    public function test_an_inclusion_that_only_repeats_the_meal_plan_is_dropped(): void
+    {
+        $echoed = RoomOffer::fromResponse([
+            'BookingCode' => 'x', 'MealType' => 'Room_Only', 'Inclusion' => 'Room Only',
+        ]);
+        $real = RoomOffer::fromResponse([
+            'BookingCode' => 'x', 'MealType' => 'Room_Only', 'Inclusion' => 'Free self parking',
+        ]);
+
+        $this->assertNull($echoed->inclusionLabel());
+        $this->assertSame('Free self parking', $real->inclusionLabel());
+    }
+
+    public function test_identical_promotions_are_not_repeated_per_room(): void
+    {
+        $room = RoomOffer::fromResponse([
+            'BookingCode' => 'x',
+            'RoomPromotion' => ['Book early and save', 'Book early and save', 'Book early and save'],
+        ]);
+
+        $this->assertSame(['Book early and save'], $room->promotions);
     }
 
     public function test_amenities_come_back_with_the_room(): void

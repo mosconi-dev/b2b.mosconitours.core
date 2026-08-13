@@ -40,6 +40,21 @@ readonly class SupplementSet
     }
 
     /**
+     * Rebuild from what was stored on a booking.
+     *
+     * hotel_bookings keeps the normalised buckets, not TBO's envelope, so reading them
+     * back needs a way in that skips the parsing. Without it the model was filtering
+     * the outer array — whose members are lists of supplements, not supplements — and
+     * quietly returning nothing.
+     *
+     * @param  array<string, mixed>  $buckets
+     */
+    public static function fromStored(?array $buckets): self
+    {
+        return new self($buckets ?? []);
+    }
+
+    /**
      * Everything the guest pays at the hotel, across all rooms.
      *
      * @return array<int, array{type: string, description: string, price: float, currency: string}>
@@ -57,6 +72,38 @@ readonly class SupplementSet
         }
 
         return $rows;
+    }
+
+    /**
+     * The at-property charges, one line per distinct charge, counted.
+     *
+     * TBO states these per room, so a three-room booking with one deposit repeats that
+     * deposit three times. Listed as three identical lines it reads as either one
+     * charge printed thrice or three unrelated fees, and the guest is about to be asked
+     * for the sum of them at the desk. So: one line, "× 3", and what it comes to.
+     *
+     * @return array<int, array{description: string, price: float, currency: string, count: int, total: float}>
+     */
+    public function payableAtPropertyGrouped(): array
+    {
+        $grouped = [];
+
+        foreach ($this->payableAtProperty() as $supplement) {
+            $key = $supplement['description'].'|'.$supplement['price'].'|'.$supplement['currency'];
+
+            $grouped[$key] ??= [
+                'description' => $supplement['description'],
+                'price' => $supplement['price'],
+                'currency' => $supplement['currency'],
+                'count' => 0,
+                'total' => 0.0,
+            ];
+
+            $grouped[$key]['count']++;
+            $grouped[$key]['total'] += $supplement['price'];
+        }
+
+        return array_values($grouped);
     }
 
     public function payableAtPropertyTotal(): float

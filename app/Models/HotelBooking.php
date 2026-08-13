@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\TboHotel\SupplementSet;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -46,14 +47,18 @@ class HotelBooking extends Model
     /**
      * What the guest settles at the property, on top of what we charged.
      *
-     * @return array<int, array<string, mixed>>
+     * Delegated rather than filtered here: the stored column holds supplements bucketed
+     * by room, so filtering it directly tests `type` against a list of supplements and
+     * always comes back empty — which is what this used to do.
+     *
+     * Grouped, because TBO states these per room: three rooms with one deposit is one
+     * charge taken three times, not three charges.
+     *
+     * @return array<int, array{description: string, price: float, currency: string, count: int, total: float}>
      */
     public function payableAtProperty(): array
     {
-        return array_values(array_filter(
-            $this->supplements ?? [],
-            fn (array $s): bool => ($s['type'] ?? '') === 'AtProperty',
-        ));
+        return SupplementSet::fromStored($this->supplements)->payableAtPropertyGrouped();
     }
 
     /**

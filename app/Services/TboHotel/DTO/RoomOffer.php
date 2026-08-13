@@ -52,14 +52,55 @@ readonly class RoomOffer
             mealType: (string) Arr::get($raw, 'MealType', ''),
             isRefundable: (bool) Arr::get($raw, 'IsRefundable', false),
             withTransfers: (bool) Arr::get($raw, 'WithTransfers', false),
-            promotions: array_values(array_filter(array_map(
+            // One per room, and almost always the same words repeated. Three
+            // identical "Book early and save" chips say nothing the first did not.
+            promotions: array_values(array_unique(array_filter(array_map(
                 fn ($p): string => trim((string) $p),
                 (array) Arr::get($raw, 'RoomPromotion', []),
-            ))),
+            )))),
             dayRates: self::dayRates(Arr::get($raw, 'DayRates')),
             cancelPolicies: CancelPolicySet::fromResponse(Arr::get($raw, 'CancelPolicies')),
             supplements: SupplementSet::fromResponse(Arr::get($raw, 'Supplements')),
         );
+    }
+
+    /**
+     * The rooms this rate buys, collapsed to name and count.
+     *
+     * `names` holds one entry per physical room and they are usually identical, so a
+     * three-room booking listed three identical lines — which reads as three different
+     * rooms rather than three of one.
+     *
+     * @return array<int, array{name: string, count: int}>
+     */
+    public function rooms(): array
+    {
+        $counts = [];
+
+        foreach ($this->names as $name) {
+            $counts[$name] = ($counts[$name] ?? 0) + 1;
+        }
+
+        return array_map(
+            fn (string $name, int $count): array => ['name' => $name, 'count' => $count],
+            array_keys($counts),
+            array_values($counts),
+        );
+    }
+
+    /**
+     * The inclusion, unless it is only repeating the meal plan.
+     *
+     * TBO sets Inclusion to "Room Only" on room-only rates, which rendered as
+     * "Room only · Room Only".
+     */
+    public function inclusionLabel(): ?string
+    {
+        if ($this->inclusion === null) {
+            return null;
+        }
+
+        return strcasecmp($this->inclusion, $this->mealLabel()) === 0 ? null : $this->inclusion;
     }
 
     /**
@@ -93,7 +134,8 @@ readonly class RoomOffer
         return [
             'bookingCode' => $this->bookingCode,
             'names' => $this->names,
-            'inclusion' => $this->inclusion,
+            'roomBreakdown' => $this->rooms(),
+            'inclusion' => $this->inclusionLabel(),
             'totalFare' => $this->totalFare,
             'totalTax' => $this->totalTax,
             'mealType' => $this->mealType,
@@ -109,23 +151,34 @@ readonly class RoomOffer
             'cancellationSchedule' => $this->cancelPolicies->schedule(),
             'nightlyRate' => $this->nightlyRate(),
             'supplements' => $this->supplements->toArray(),
-            'payableAtProperty' => $this->supplements->payableAtProperty(),
+            'payableAtProperty' => $this->supplements->payableAtPropertyGrouped(),
         ];
     }
 
     /**
-     * What one night costs, when every night costs the same.
+     * What one room costs for one night, when every night costs the same.
      *
      * Null when they differ — a weekend rate averaged into a weekday one is a number
      * the agent would have to defend and could not.
+     *
+     * Derived from the total rather than taken from DayRates, even though DayRates
+     * states it directly. TBO's figure excludes tax and the headline beside it does
+     * not, so printing the two together invites the obvious multiplication and it does
+     * not come out: 1,568.54 × 2 nights against a total of 12,108.06. DayRates is used
+     * only to decide whether the nights are evenly priced, which is the one thing it
+     * answers that the total cannot.
      */
     public function nightlyRate(): ?float
     {
-        if ($this->dayRates === []) {
+        if ($this->dayRates === [] || count(array_unique($this->dayRates)) !== 1) {
             return null;
         }
 
-        return count(array_unique($this->dayRates)) === 1 ? $this->dayRates[0] : null;
+        // DayRates carries one entry per room per night, so the room count divides out.
+        $rooms = max(1, count($this->names));
+        $nights = intdiv(count($this->dayRates), $rooms);
+
+        return $nights < 1 ? null : round($this->totalFare / ($nights * $rooms), 2);
     }
 
     /**

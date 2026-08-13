@@ -162,8 +162,13 @@
                             <ul class="mt-3 space-y-1 text-sm text-amber-900">
                                 <template x-for="(s, i) in quote.payableAtProperty" :key="i">
                                     <li class="flex justify-between gap-4">
-                                        <span x-text="s.description"></span>
-                                        <span class="font-medium" x-text="money(s.price)"></span>
+                                        <span>
+                                            <span x-text="s.description"></span>
+                                            <template x-if="s.count > 1">
+                                                <span class="text-amber-800/70" x-text="' × ' + s.count + ' rooms'"></span>
+                                            </template>
+                                        </span>
+                                        <span class="font-medium" x-text="money(s.total)"></span>
                                     </li>
                                 </template>
                             </ul>

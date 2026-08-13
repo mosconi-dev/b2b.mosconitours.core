@@ -510,8 +510,9 @@ class HotelWizardTest extends TestCase
             ->assertSee('no charge')
             ->assertSee('Cancel from 12 Aug 2026')
             ->assertSee('100% of the stay')
-            // Two nights at an even rate, so the per-night figure is safe to state.
-            ->assertSee('× 2 nights');
+            // Evenly priced nights, so a per-night figure is safe to state — and it is
+            // derived from the total so it divides the price shown above it.
+            ->assertSee('per room, per night');
     }
 
     /**
