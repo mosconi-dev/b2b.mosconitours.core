@@ -81,6 +81,10 @@ class HotelBookingController extends Controller
                 'rooms' => $rooms,
             ],
             'shownFare' => $shownFare,
+            // Finishing the wizard now takes the room, so the Payment step has to say
+            // what that means here. Read from the supplier: it is the same answer that
+            // gets stamped on the booking and later refuses a cross-environment Book.
+            'isLive' => $service->environment() === 'live',
             // One step back is the room list for this property, not the results — the
             // agent has already chosen the hotel, and a rate is what they are changing.
             'backUrl' => route('hotels.rooms', [

@@ -596,6 +596,10 @@
 
             <div x-show="error" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" x-text="error"></div>
 
+            <x-live-warning :live="$isLive">
+                Completing it charges the agency and issues a real ticket with the airline.
+            </x-live-warning>
+
             <div class="flex justify-between border-t border-gray-100 pt-4">
                 <button type="button" @click="back()" class="text-sm font-medium text-gray-600 hover:text-gray-800">&larr; Back</button>
                 <button type="button" @click="complete()" :disabled="submitting || walletShort"

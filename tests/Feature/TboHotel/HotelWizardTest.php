@@ -132,6 +132,37 @@ class HotelWizardTest extends TestCase
     }
 
     /**
+     * Finishing the wizard now takes the room, so that press is where the warning
+     * belongs — there is no later page the agent has to visit to make it real.
+     */
+    public function test_the_wizard_warns_before_a_live_room(): void
+    {
+        config(['tbohotel.default' => 'live']);
+        config([
+            'tbohotel.environments.live.credentials.username' => 'hotel-user',
+            'tbohotel.environments.live.credentials.password' => 'hotel-pass',
+            'tbohotel.environments.live.base_url' => self::BASE,
+        ]);
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query()))
+            ->assertOk()
+            ->assertSee('This is a LIVE booking.')
+            ->assertSee('takes a real room the hotel will hold');
+    }
+
+    public function test_the_wizard_does_not_cry_wolf_on_test(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query()))
+            ->assertOk()
+            ->assertDontSee('This is a LIVE booking.');
+    }
+
+    /**
      * One step back from Guest Details is the room list for this property, not the
      * results — the hotel is already chosen and a rate is what an agent changes.
      */

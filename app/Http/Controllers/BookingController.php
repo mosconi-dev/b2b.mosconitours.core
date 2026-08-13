@@ -120,6 +120,10 @@ class BookingController extends Controller
                 'from' => (string) $request->query('from', ''),
                 'to' => (string) $request->query('to', ''),
             ],
+            // Completing the wizard issues a real ticket, so the Payment step has to
+            // say so. Read from the supplier rather than from config: it is the same
+            // answer that gets stamped on the booking.
+            'isLive' => $service->environment() === 'live',
             // Lets the Payment step warn about a shortfall before the agent submits.
             // Advisory only — BookingService re-checks under lock at submit, because
             // a colleague may spend the balance while this page is open.

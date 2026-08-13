@@ -200,6 +200,11 @@
                         </div>
                     </template>
 
+                    <x-live-warning :live="$isLive">
+                        Completing it charges the agency and takes a real room the hotel will hold.
+                        Cancelling it later may carry a charge.
+                    </x-live-warning>
+
                     <div class="flex items-center justify-between">
                         <button type="button" @click="step = 3" class="text-sm font-medium text-gray-500 hover:text-gray-700">Back to guests</button>
                         {{-- This press is the whole transaction: it charges the agency

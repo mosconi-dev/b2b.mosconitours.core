@@ -207,12 +207,10 @@
                     but it never reached the hotel and no room is being held. Sending it now takes the room.
                 </p>
 
-                @if ($booking->environment === 'live')
-                    <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                        <strong>This is a LIVE booking.</strong> Sending it creates a real reservation the
-                        hotel will hold, and cancelling it later may carry a charge.
-                    </div>
-                @endif
+                <x-live-warning :live="$booking->environment === 'live'" class="mt-3">
+                    Sending it creates a real reservation the hotel will hold, and cancelling it
+                    later may carry a charge.
+                </x-live-warning>
 
                 @if ($canBook)
                     <form method="POST" action="{{ route('hotels.bookings.book', $booking) }}" class="mt-4"
@@ -240,11 +238,9 @@
                     This is a saved quote — nothing has been sent to the airline. Completing it charges
                     {{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }} and issues the ticket.
                 </p>
-                @if ($booking->environment === 'live')
-                    <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                        <strong>This is a LIVE booking.</strong> Completing it creates a real ticket and spends real money.
-                    </div>
-                @endif
+                <x-live-warning :live="$booking->environment === 'live'" class="mt-3">
+                    Completing it creates a real ticket and spends real money.
+                </x-live-warning>
                 @if ($canRetry)
                     <form method="POST" action="{{ route('bookings.fulfil', $booking) }}" class="mt-4"
                           x-data="{ submitting: false }" @submit="submitting = true">
