@@ -2230,4 +2230,53 @@ Alpine.data('hotelSections', () => ({
     },
 }));
 
+/**
+ * The property photo viewer.
+ *
+ * TBO returns dozens of images per hotel; the page shows four and keeps the rest here.
+ * No library: a lightbox is a list, an index and two arrow keys.
+ */
+Alpine.data('photoViewer', (images = []) => ({
+    images,
+    open: false,
+    index: 0,
+
+    show(i) {
+        if (this.images.length === 0) return;
+
+        this.index = this.wrap(i);
+        this.open = true;
+        // The page behind must not scroll while a full-screen viewer is over it.
+        document.body.style.overflow = 'hidden';
+    },
+
+    close() {
+        this.open = false;
+        document.body.style.overflow = '';
+    },
+
+    // Restores the page if the component is torn down while still open.
+    destroy() {
+        document.body.style.overflow = '';
+    },
+
+    next() {
+        this.index = this.wrap(this.index + 1);
+    },
+
+    prev() {
+        this.index = this.wrap(this.index - 1);
+    },
+
+    /**
+     * Wraps rather than stopping at the ends. Someone paging through a hotel's
+     * photographs is browsing, not paginating, and a dead arrow reads as broken.
+     */
+    wrap(i) {
+        const n = this.images.length;
+
+        return ((i % n) + n) % n;
+    },
+}));
+
 Alpine.start();

@@ -99,16 +99,102 @@
         <div class="flex flex-col gap-6 lg:col-span-2">
 
             {{-- Gallery first, as on any hotel page: the photographs are how an agent
-                 recognises the property before reading a rate. --}}
+                 recognises the property before reading a rate. Four here, the rest
+                 behind the viewer — TBO sends dozens and a wall of them is not a page. --}}
             @if (! empty($images))
-                <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                    <div class="grid grid-cols-4 gap-1 p-1">
-                        <img src="{{ $images[0] }}" alt="{{ $hotel->name }}"
-                             class="col-span-4 h-64 w-full rounded-lg object-cover sm:col-span-3 sm:h-72" loading="lazy">
-                        <div class="col-span-4 grid grid-cols-4 gap-1 sm:col-span-1 sm:grid-cols-1">
-                            @foreach (array_slice($images, 1, 3) as $image)
-                                <img src="{{ $image }}" alt="" class="h-20 w-full rounded-lg object-cover sm:h-[5.75rem]" loading="lazy">
-                            @endforeach
+                <div x-data="photoViewer(@js($images))">
+                    <div class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                        <div class="grid grid-cols-4 gap-1 p-1">
+                            <button type="button" @click="show(0)"
+                                    class="group col-span-4 sm:col-span-3">
+                                <img src="{{ $images[0] }}" alt="{{ $hotel->name }}"
+                                     class="h-64 w-full rounded-lg object-cover transition group-hover:brightness-95 sm:h-72" loading="lazy">
+                            </button>
+                            <div class="col-span-4 grid grid-cols-4 gap-1 sm:col-span-1 sm:grid-cols-1">
+                                @foreach (array_slice($images, 1, 3) as $i => $image)
+                                    <button type="button" @click="show({{ $i + 1 }})" class="group">
+                                        <img src="{{ $image }}" alt=""
+                                             class="h-20 w-full rounded-lg object-cover transition group-hover:brightness-95 sm:h-[5.75rem]" loading="lazy">
+                                    </button>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        @if (count($images) > 4)
+                            <button type="button" @click="show(0)"
+                                    class="absolute bottom-4 left-4 inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-sm font-semibold text-brand-900 shadow-sm ring-1 ring-black/5 transition hover:bg-white">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+                                </svg>
+                                See all {{ count($images) }} photos
+                            </button>
+                        @endif
+                    </div>
+
+                    {{-- The viewer. Fixed and above the app chrome, which is z-40 at its
+                         highest, so nothing of the page shows through it. --}}
+                    <div x-show="open" x-cloak
+                         @keydown.escape.window="close()"
+                         @keydown.arrow-right.window="next()"
+                         @keydown.arrow-left.window="prev()"
+                         {{-- No enter transition: paired with x-show it left the panel
+                              stuck at opacity-0 and display:none, which is a lightbox
+                              that does not open. A fade is not worth that. --}}
+                         class="fixed inset-0 z-50 flex flex-col bg-black/90">
+
+                        <div class="flex shrink-0 items-center justify-between px-4 py-3 text-white">
+                            <p class="text-sm font-medium">
+                                {{ $hotel->name }}
+                                <span class="ml-2 text-white/60" x-text="(index + 1) + ' / ' + images.length"></span>
+                            </p>
+                            <button type="button" @click="close()" aria-label="Close"
+                                    class="rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {{-- Clicking the backdrop closes; clicking the photograph does not,
+                             or every attempt to look closely would dismiss it. --}}
+                        <div class="flex min-h-0 flex-1 items-center justify-center px-4" @click="close()">
+                            <button type="button" @click.stop="prev()" aria-label="Previous"
+                                    class="mr-2 shrink-0 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20 sm:mr-4 sm:p-3">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                </svg>
+                            </button>
+
+                            {{-- Fills the stage and letterboxes inside it. max-h-full alone
+                                 refuses to upscale, which is correct for a thumbnail and
+                                 wrong here: TBO's gallery mixes sizes, and one 500px frame
+                                 sat as a postage stamp in the middle of the screen. Most
+                                 are near a thousand pixels, so the stretch is slight. --}}
+                            <img :src="images[index]" :alt="'Photo ' + (index + 1)" @click.stop
+                                 class="h-full w-full rounded-lg object-contain">
+
+                            <button type="button" @click.stop="next()" aria-label="Next"
+                                    class="ml-2 shrink-0 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20 sm:ml-4 sm:p-3">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {{-- Filmstrip. Rendered only while the viewer is open, so a hotel
+                             with sixty photographs does not fetch sixty thumbnails to sit
+                             behind a page nobody opened. --}}
+                        <div class="shrink-0 overflow-x-auto px-4 py-3">
+                            <div class="flex gap-2">
+                                <template x-for="(image, i) in images" :key="i">
+                                    <button type="button" @click="show(i)" class="shrink-0">
+                                        <img :src="image" alt="" loading="lazy"
+                                             class="h-14 w-20 rounded object-cover transition"
+                                             :class="i === index ? 'ring-2 ring-white' : 'opacity-50 hover:opacity-100'">
+                                    </button>
+                                </template>
+                            </div>
                         </div>
                     </div>
                 </div>

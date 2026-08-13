@@ -135,7 +135,10 @@ class HotelController extends Controller
                 'summary' => $this->staySummary($input, $data['label'] ?? ''),
             ],
             'backUrl' => $this->backToResults($data),
-            'images' => array_slice($hotel->images ?? [], 0, 6),
+            // All of them, for the viewer — the grid shows four. Capped because TBO
+            // returns well over a hundred for some properties and every one is a URL
+            // inlined into the page.
+            'images' => array_slice($hotel->images ?? [], 0, 60),
             'payableAtProperty' => $this->payableAtProperty($payload['offers'][0] ?? null),
             // Decided here so the tab strip and the page cannot disagree: a tab
             // pointing at a section that was not rendered is worse than no tab.

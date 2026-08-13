@@ -515,6 +515,54 @@ class HotelWizardTest extends TestCase
     }
 
     /**
+     * We hold dozens of photographs per property and the grid shows four; the rest are
+     * reachable rather than discarded.
+     */
+    public function test_all_photographs_reach_the_viewer(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        $images = array_map(fn (int $i): string => "https://img.test/{$i}.jpg", range(1, 12));
+        Hotel::where('code', '1022346')->update(['images' => $images, 'detailed_at' => now()]);
+
+        $response = $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertSee('See all 12 photos')
+            ->assertSee('photoViewer(', false);
+
+        $this->assertCount(12, $response->viewData('images'));
+        // The twelfth reaches the component even though the grid renders four. Matched
+        // loosely on purpose: @js double-escapes the slashes, and pinning Blade's
+        // encoding here would break the test the day it changes without the page doing.
+        $this->assertStringContainsString('12.jpg', $response->getContent());
+    }
+
+    /**
+     * Four photographs need no "see all", and a hotel with none needs no gallery.
+     */
+    public function test_a_short_gallery_offers_no_viewer_button(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        Hotel::where('code', '1022346')->update([
+            'images' => ['https://img.test/1.jpg', 'https://img.test/2.jpg'],
+            'detailed_at' => now(),
+        ]);
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertDontSee('See all');
+    }
+
+    /**
      * A property with nothing but rates gets one tab, not five dead ones.
      */
     public function test_a_bare_property_offers_only_the_tabs_it_has(): void
