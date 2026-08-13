@@ -141,6 +141,24 @@ class TboHotelClient
     }
 
     /**
+     * Cancel a reservation (§9). Takes only the confirmation number.
+     *
+     * **Never retryable**, for the mirror of Book's reason: a Cancel that times out may
+     * already have released the room, and a second attempt against a booking TBO has
+     * cancelled answers 479 — indistinguishable from a genuine refusal. An unanswered
+     * Cancel is settled by reading the booking back.
+     *
+     * The response says only that it worked. It does **not** state the charge; that
+     * comes from the PreBook policy we stored, and is settled on TBO's invoice.
+     *
+     * @return array<string, mixed>
+     */
+    public function cancel(string $confirmationNumber): array
+    {
+        return $this->call('cancel', ['ConfirmationNumber' => $confirmationNumber]);
+    }
+
+    /**
      * Read a booking back from TBO (§10) — the authoritative answer.
      *
      * Accepts either reference. `ConfirmationNumber` when Book answered; our own

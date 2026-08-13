@@ -62,6 +62,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // prefetch is not the right shape for something that corrects a booking's status.
     Route::post('/hotels/bookings/{booking}/refresh', [HotelBookingController::class, 'refresh'])
         ->name('hotels.bookings.refresh')->whereNumber('booking')->middleware('can:hotel.view');
+    // Its own right, not part of hotel.book: this moves money back out of a confirmed
+    // booking, and the charge for doing it is rarely nothing.
+    Route::post('/hotels/bookings/{booking}/cancel', [HotelBookingController::class, 'cancel'])
+        ->name('hotels.bookings.cancel')->whereNumber('booking')->middleware('can:hotel.cancel');
     // Step 2 on its own page, the way a fare gets one on the flight side.
     Route::get('/hotels/{code}/rooms', [HotelController::class, 'rooms'])->name('hotels.rooms')
         ->whereNumber('code')->middleware('can:hotel.search');

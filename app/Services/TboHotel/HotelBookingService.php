@@ -6,6 +6,7 @@ use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
 use App\Enums\Supplier;
 use App\Jobs\ReconcileHotelBooking;
+use App\Jobs\ReconcileHotelCancellation;
 use App\Models\Booking;
 use App\Models\Hotel;
 use App\Models\User;
@@ -18,6 +19,7 @@ use App\Services\TboHotel\DTO\PreBookResult;
 use App\Services\TboHotel\DTO\SearchInput;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\Wallet\WalletService;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -314,6 +316,155 @@ class HotelBookingService
                 'supplier_reference' => $confirmationNumber,
             ]);
         });
+    }
+
+    /**
+     * What cancelling this booking would cost right now.
+     *
+     * Read from the terms stored at PreBook, which §18 makes final for the itinerary.
+     * An estimate: TBO's Cancel does not state a charge and only its invoice settles
+     * one. Shown to the agent before they commit, and written down afterwards, so a
+     * disputed line has a figure and a moment attached to it.
+     */
+    public function cancellationCharge(Booking $booking, ?CarbonInterface $at = null): float
+    {
+        $stay = $booking->hotel;
+
+        return CancelPolicySet::fromStored($stay?->cancel_policies)->chargeAt(
+            $at ?? now(),
+            (float) $booking->total_amount,
+            max(1, (int) ($stay?->rooms_count ?? 1)),
+        );
+    }
+
+    /**
+     * Release the room, and settle the money.
+     *
+     * The charge is computed **before** the call, from the terms in force at the moment
+     * the agent asked — not afterwards, when the ladder may have stepped up between the
+     * press and the answer. What TBO then gives back is the whole charge, with the
+     * cancellation fee posted as its own debit: two lines that read like what happened,
+     * rather than one net figure nobody can reconstruct.
+     *
+     * @throws BookingException when the booking cannot be cancelled, or TBO refuses
+     * @throws TboHotelException when TBO cannot be reached
+     */
+    public function cancel(Booking $booking): Booking
+    {
+        $lock = Cache::lock("booking:{$booking->getKey()}:write", 180);
+
+        if (! $lock->get()) {
+            throw new BookingException("Booking {$booking->reference} is already being processed.");
+        }
+
+        try {
+            return $this->attemptCancel($booking->fresh());
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function attemptCancel(Booking $booking): Booking
+    {
+        $this->guardCancellable($booking);
+
+        $charge = $this->cancellationCharge($booking);
+        $confirmation = (string) $booking->hotel?->confirmation_number;
+
+        try {
+            $this->tbo->cancel($confirmation);
+        } catch (TboHotelException $e) {
+            return $this->handleCancelFailure($booking, $e);
+        }
+
+        return $this->settleCancellation($booking, $charge);
+    }
+
+    /**
+     * Write the cancellation down and move the money.
+     *
+     * The refund is the full charge — the state machine does that on the way into
+     * Cancelled — and the fee is taken back out immediately after, in that order, so
+     * the wallet never dips below what the agency actually has.
+     */
+    private function settleCancellation(Booking $booking, float $charge): Booking
+    {
+        return DB::transaction(function () use ($booking, $charge): Booking {
+            $booking->hotel?->forceFill([
+                'cancellation_charge' => $charge,
+                'cancelled_at' => now(),
+                'supplier_status' => 'Cancelled',
+            ])->save();
+
+            $refunded = $booking->walletCharge() !== null;
+            $booking = $this->transitionTo($booking, BookingStatus::Cancelled);
+
+            // Only when there was something to refund in the first place. A booker with
+            // no agency was never debited, and taking a fee off them would be the first
+            // money this booking ever moved.
+            if ($charge > 0 && $refunded && $booking->agency !== null) {
+                $this->wallets->debit(
+                    $this->wallets->for($booking->agency),
+                    number_format($charge, 2, '.', ''),
+                    null,
+                    $booking,
+                    "Cancellation charge for booking {$booking->reference} (estimated)",
+                );
+            }
+
+            Log::info('Hotel booking cancelled', [
+                'booking' => $booking->reference,
+                'charge' => $charge,
+                'refunded' => $refunded,
+            ]);
+
+            return $booking->fresh();
+        });
+    }
+
+    /**
+     * A Cancel that failed: refused, or never answered.
+     *
+     * `479` is a refusal and the booking is still good — the guest still has a room, so
+     * saying otherwise would refund an agency for a stay that is going ahead. Silence
+     * is the dangerous one: the room may already be released, so the booking moves to
+     * `cancelling` and is settled by reading it back, exactly as an unanswered Book is.
+     */
+    private function handleCancelFailure(Booking $booking, TboHotelException $e): Booking
+    {
+        if ($e->status() === null) {
+            Log::warning('TBO Hotel cancel unresolved; reconciling', [
+                'booking' => $booking->reference,
+                'reason' => $e->getMessage(),
+            ]);
+
+            $booking = $this->transitionTo($booking, BookingStatus::Cancelling);
+
+            ReconcileHotelCancellation::dispatch($booking->getKey())
+                ->delay(now()->addSeconds((int) config('tbohotel.reconcile_delay', 120)));
+
+            return $booking->fresh();
+        }
+
+        report($e);
+
+        throw new BookingException($e->getMessage());
+    }
+
+    /**
+     * @throws BookingException
+     */
+    private function guardCancellable(Booking $booking): void
+    {
+        $this->guardReadable($booking);
+
+        if (blank($booking->hotel?->confirmation_number)) {
+            throw new BookingException("Booking {$booking->reference} has no confirmation number to cancel.");
+        }
+
+        if ($booking->status !== BookingStatus::Confirmed) {
+            throw new BookingException("Booking {$booking->reference} is {$booking->status->value} and cannot be cancelled.");
+        }
     }
 
     /**

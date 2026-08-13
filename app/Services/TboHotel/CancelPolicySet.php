@@ -2,6 +2,7 @@
 
 namespace App\Services\TboHotel;
 
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 
 /**
@@ -46,6 +47,36 @@ readonly class CancelPolicySet
         }
 
         return new self($buckets);
+    }
+
+    /**
+     * Rebuild from the bucketed shape we stored at PreBook time.
+     *
+     * The terms §18 makes final live in `hotel_bookings.cancel_policies`, already
+     * bucketed and already date-corrected. Reading them back through fromResponse()
+     * would try to parse DD-MM-YYYY dates that are ISO by then.
+     *
+     * @param  array<string, mixed>|null  $buckets
+     */
+    public static function fromStored(?array $buckets): self
+    {
+        $clean = [];
+
+        foreach ((array) $buckets as $key => $policies) {
+            foreach ((array) $policies as $policy) {
+                if (! is_array($policy)) {
+                    continue;
+                }
+
+                $clean[(string) $key][] = [
+                    'from' => filled($policy['from'] ?? null) ? (string) $policy['from'] : null,
+                    'chargeType' => (string) ($policy['chargeType'] ?? ''),
+                    'charge' => (float) ($policy['charge'] ?? 0),
+                ];
+            }
+        }
+
+        return new self($clean);
     }
 
     /**
@@ -124,6 +155,66 @@ readonly class CancelPolicySet
         usort($rows, fn (array $a, array $b): int => [$a['room'], $a['from']] <=> [$b['room'], $b['from']]);
 
         return $rows;
+    }
+
+    /**
+     * What cancelling costs at a given moment.
+     *
+     * The ladder is read the way it is written: the applicable rung is the last one
+     * whose date has already passed. Before the first rung there is nothing to pay,
+     * which is what a free-cancellation window is.
+     *
+     * **An estimate, and labelled as one wherever it is shown.** TBO's Cancel response
+     * does not state the charge and its invoice is the only settlement, so this is our
+     * reading of the terms rather than a figure they have agreed to. Two places it can
+     * legitimately differ: a percentage on a per-room policy is applied to that room's
+     * even share of a total TBO only ever gave us combined, and a rate whose policy we
+     * never received is treated as free rather than guessed at.
+     *
+     * Never more than was paid — a cancellation cannot cost more than the stay.
+     */
+    public function chargeAt(CarbonInterface $at, float $totalFare, int $rooms = 1): float
+    {
+        // Per-room policies win when TBO sent them; the 'all' bucket is the fallback it
+        // sends instead, not as well. Adding both would charge the same stay twice.
+        $numbered = array_diff_key($this->buckets, [self::ALL_ROOMS => null]);
+        $buckets = $numbered !== [] ? $numbered : array_intersect_key($this->buckets, [self::ALL_ROOMS => null]);
+
+        if ($buckets === []) {
+            return 0.0;
+        }
+
+        $share = $numbered !== [] ? $totalFare / max(1, $rooms) : $totalFare;
+        $charge = 0.0;
+
+        foreach ($buckets as $policies) {
+            $charge += $this->rungAt($policies, $at, $share);
+        }
+
+        return round(min($charge, $totalFare), 2);
+    }
+
+    /**
+     * The applicable rung of one bucket's ladder, as an amount.
+     *
+     * @param  array<int, array{from: string|null, chargeType: string, charge: float}>  $policies
+     */
+    private function rungAt(array $policies, CarbonInterface $at, float $share): float
+    {
+        $due = 0.0;
+
+        foreach ($policies as $policy) {
+            if ($policy['from'] === null || Carbon::parse($policy['from'])->greaterThan($at)) {
+                continue;
+            }
+
+            // Sorted oldest first, so the last one that has started is the live one.
+            $due = strcasecmp($policy['chargeType'], 'Percentage') === 0
+                ? $share * ($policy['charge'] / 100)
+                : $policy['charge'];
+        }
+
+        return max(0.0, $due);
     }
 
     public function isEmpty(): bool

@@ -177,6 +177,19 @@ class TboHotelService
     }
 
     /**
+     * Release a reservation. Raw for the same reason Book is: the caller has to tell a
+     * refusal (479) from silence, and the two mean opposite things for the money.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws TboHotelException
+     */
+    public function cancel(string $confirmationNumber): array
+    {
+        return $this->client->cancel($confirmationNumber);
+    }
+
+    /**
      * The hotel codes a search covers: one property, or a whole city's.
      *
      * @return array<int, string>

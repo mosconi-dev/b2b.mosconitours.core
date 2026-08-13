@@ -193,6 +193,45 @@ class HotelBookingController extends Controller
     }
 
     /**
+     * Release the room.
+     *
+     * Synchronous, like the refresh and unlike the Book: Cancel answers in about a
+     * second, and an agent who has just been shown what it will cost is entitled to
+     * find out on this page whether it worked.
+     */
+    public function cancel(Request $request, Booking $booking, HotelBookingService $bookings): RedirectResponse
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        abort_unless($booking->product === BookingProduct::Hotel, 404);
+
+        try {
+            $booking = $bookings->cancel($booking);
+        } catch (BookingException $e) {
+            return back()->with('error', $e->getMessage());
+        } catch (TboHotelException $e) {
+            report($e);
+
+            return back()->with('error', 'We could not reach the hotel provider. Please try again in a moment.');
+        }
+
+        if ($booking->status === BookingStatus::Cancelling) {
+            return back()->with('status',
+                "The hotel provider has not confirmed the cancellation of {$booking->reference} yet. We are checking, and the page will show the outcome."
+            );
+        }
+
+        $charge = (float) ($booking->hotel?->cancellation_charge ?? 0);
+
+        return back()->with('status', $charge > 0
+            ? "Booking {$booking->reference} cancelled. An estimated cancellation charge of {$booking->currency} ".number_format($charge, 2).' has been applied.'
+            : "Booking {$booking->reference} cancelled at no charge.");
+    }
+
+    /**
      * Ask TBO what this booking is now.
      *
      * Synchronous on purpose, unlike the Book: BookingDetail is a read that answers in

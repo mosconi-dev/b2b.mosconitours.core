@@ -16,6 +16,7 @@ use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\TboAirService;
+use App\Services\TboHotel\HotelBookingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,14 +39,22 @@ class BookingController extends Controller
         return view('bookings.index', compact('bookings'));
     }
 
-    public function show(Request $request, Booking $booking): View
+    public function show(Request $request, Booking $booking, HotelBookingService $hotels): View
     {
         abort_unless(
             $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
             403,
         );
 
-        return view('bookings.show', compact('booking'));
+        return view('bookings.show', [
+            'booking' => $booking,
+            // What cancelling would cost if the agent pressed it now. Computed here so
+            // the figure they are shown is the one the service would charge, rather
+            // than a second reading of the same policy done in a template.
+            'cancellationCharge' => $booking->isHotel() && $booking->status === BookingStatus::Confirmed
+                ? $hotels->cancellationCharge($booking)
+                : null,
+        ]);
     }
 
     /**
