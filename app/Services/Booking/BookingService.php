@@ -6,9 +6,9 @@ use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
 use App\Enums\Supplier;
 use App\Enums\TboBookingStatus;
-use App\Exceptions\WalletException;
 use App\Models\Booking;
 use App\Models\User;
+use App\Services\Booking\Concerns\ChargesWallet;
 use App\Services\Booking\DTO\Passenger;
 use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\BookingResult;
@@ -21,7 +21,6 @@ use App\Support\Countries;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Owns the booking lifecycle: creates a durable, retry-safe record from a fresh
@@ -30,6 +29,8 @@ use Illuminate\Support\Str;
  */
 class BookingService
 {
+    use ChargesWallet;
+
     public function __construct(
         private readonly TboAirService $tbo,
         private readonly WalletService $wallets,
@@ -471,25 +472,6 @@ class BookingService
      * same path as every other booking failure (including the JSON response the
      * wizard expects) instead of rendering as an unrelated wallet error.
      */
-    private function chargeWallet(Booking $booking, User $user, string $total): void
-    {
-        if ($user->agency === null || bccomp($total, '0', 2) <= 0) {
-            return;
-        }
-
-        try {
-            $this->wallets->debit(
-                $this->wallets->for($user->agency),
-                $total,
-                $user,
-                $booking,
-                "Booking {$booking->reference}",
-            );
-        } catch (WalletException $e) {
-            throw new BookingException($e->getMessage());
-        }
-    }
-
     /**
      * Guarantee exactly one lead passenger.
      *
@@ -669,10 +651,5 @@ class BookingService
             $booking,
             "Refund for booking {$booking->reference}",
         );
-    }
-
-    private function reference(): string
-    {
-        return 'MT-'.strtoupper(Str::random(8));
     }
 }

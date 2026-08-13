@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use RuntimeException;
@@ -73,6 +74,25 @@ class Booking extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The hotel detail, on hotel bookings only.
+     *
+     * A one-to-one rather than columns on this table: a flight booking has no use for
+     * check-in dates or cancellation policies, and a nullable column per hotel field
+     * would make the shared spine mostly empty.
+     *
+     * @return HasOne<HotelBooking, $this>
+     */
+    public function hotel(): HasOne
+    {
+        return $this->hasOne(HotelBooking::class);
+    }
+
+    public function isHotel(): bool
+    {
+        return $this->product === BookingProduct::Hotel;
     }
 
     /**
