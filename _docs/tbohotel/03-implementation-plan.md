@@ -403,6 +403,10 @@ file written in between.
 **Goal:** the operational half — knowing what TBO thinks, getting the hotel's own reference, and
 cancelling with the right money.
 
+**Closed at two of four.** Refresh and Cancel shipped; HCN retrieval and the drift report were
+weighed and deferred, with the reasoning below. The list below is the original scope, left intact so
+the deferrals can be read against what they were.
+
 - **Refresh** — `BookingDetail` by confirmation number from the booking page (`can:hotel.view`),
   persisting status, HCN, invoice number and per-room `Status` (the 24 Apr 2026 addition).
 - **HCN retrieval** — `FetchHotelConfirmationNumber`, scheduled from the SLA table in `01`§8.1:
@@ -421,6 +425,47 @@ cancelling with the right money.
   refund arithmetic across fixed and percentage policies and across the policy date boundary, a
   refused cancel, and the drift report.
 
+> **Shipped** (`35181b1`, `371bfec`, `21893d8`): **Refresh** — `BookingDetailResult` (one reading of
+> the payload, shared with the reconcile job, which had its own), `HotelBookingService::refresh()`,
+> `supplier_status` / `room_statuses` / `refreshed_at`, a *Check with hotel* button. It will not
+> rewrite the §18 terms, will not let an omission erase a reference we hold, and will not act on a
+> half-answer — a stale `Confirmed` cannot un-cancel a cancelled booking, though the disagreement is
+> still written down. **Cancel** — `TboHotelClient::cancel()`, `CancelPolicySet::chargeAt()`,
+> `HotelBookingService::cancel()` behind `can:hotel.cancel`, with the charge shown before the agent
+> commits and the money moved as two lines (full refund, then the fee) rather than one net figure.
+> `479` leaves the booking standing; silence parks it in `Cancelling` for `ReconcileHotelCancellation`,
+> which reads the booking back and **never cancels twice**. Also fixed: a failed *hotel* booking was
+> being told the airline had not issued its ticket.
+
+### Deferred, and why (13 Aug 2026)
+
+Both were scoped above and are deliberately not built. Recorded here so neither is later mistaken
+for an oversight.
+
+- **HCN retrieval (`FetchHotelConfirmationNumber`).** The spec's own word is *"encouraged"* — clients
+  are encouraged to fetch the HCN through BookingDetail rather than read it off TBO's emails. It sits
+  in the same section as the one call the spec marks **mandatory** (BookingDetail 120 s after a failed
+  Book, which *is* built), and the contrast is deliberate on TBO's part. The SLA table exists to spare
+  an ops person a manual step at volume; there is no volume yet, no ops person doing that step, and
+  TBO issues no HCN at all beyond 30 days out — every booking made so far has been further out than
+  that, and the field has not appeared in a single captured response. The *Check with hotel* button
+  already records an HCN whenever anyone opens a near-term booking. Revisit when live volume exists,
+  or when a guest is turned away at a desk for want of the property's own reference.
+- **Ops drift report (`tbohotel:bookings`).** Its first half — bookings TBO has that we do not — is
+  close to impossible by construction here: the local row is written *before* the Book, and
+  `book_sent_at` is stamped before the request. That failure belongs to systems that book first and
+  record after. Its second half — we say confirmed, TBO says cancelled — is real, but the two
+  reconcile jobs settle anything ambiguous and the refresh corrects any single booking on demand.
+  What the report adds is catching drift when nobody is looking, which needs both volume and people
+  cancelling in TBO's own portal.
+
+> **The real gap this left, and it is not the report.** When `ReconcileHotelBooking` exhausts its
+> attempts it logs an error and leaves the booking `processing` for good. Nothing surfaces that to a
+> human. A stranded booking is an agency charged for a room nobody has confirmed — the exact failure
+> this phase exists to prevent — and today it is discoverable only by reading `laravel.log`. The fix
+> is a list of bookings the automation gave up on, not a 60-day supplier sweep. Worth an hour, once
+> there are bookings to strand.
+
 **Measured against TEST while closing Phase 5** (booking `D2IEVF`, cancelled afterwards; the whole
 response is `tests/Fixtures/tbohotel/bookingdetail-cancelled.json`):
 
@@ -431,9 +476,11 @@ response is `tests/Fixtures/tbohotel/bookingdetail-cancelled.json`):
   Confirms the plan above: the charge has to be computed from the stored PreBook policy and posted
   as an *estimated* ledger line.
 - **BookingDetail double-encodes its text**: `Member’s exclusive price` arrives as
-  `Memberâ€™s exclusive price` (UTF-8 bytes read back as CP1252). Search and PreBook are clean, so
-  nothing displays it today — but Phase 6 is the first thing to render BookingDetail text, and it
-  needs a repair pass on the way in or the mojibake ships to the booking page.
+  `Memberâ€™s exclusive price` (UTF-8 bytes read back as CP1252). Search and PreBook are clean.
+  Phase 6a kept this true by storing only what it needs — status, the two references, per-room
+  status — none of which is free text. The one exception is the room *name* inside `room_statuses`,
+  which is stored but never rendered; the page prints the room's index and its status. **The first
+  code to display any BookingDetail text needs a repair pass first**, or the mojibake ships.
 
 ## Phase 7 — Go-live
 
