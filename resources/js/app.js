@@ -1777,6 +1777,16 @@ Alpine.data('hotelSearch', (config = {}) => ({
         return `${this.roomsUrlFor.replace('__CODE__', offer.hotelCode)}?${params}`;
     },
 
+    /**
+     * "12 Sep" — the card's date ends, where the flight card puts a departure time.
+     */
+    dayMonth(date) {
+        if (!date) return '';
+        const d = new Date(`${date}T00:00:00`);
+
+        return isNaN(d) ? date : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    },
+
     selectHotel(offer) {
         this.selecting = offer.hotelCode;
         window.location = this.roomsUrl(offer);
