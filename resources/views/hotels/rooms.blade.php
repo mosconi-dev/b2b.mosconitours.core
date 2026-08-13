@@ -96,7 +96,7 @@
     <x-admin.flash />
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
-        <div class="space-y-6 lg:col-span-2">
+        <div class="flex flex-col gap-6 lg:col-span-2">
 
             {{-- Gallery first, as on any hotel page: the photographs are how an agent
                  recognises the property before reading a rate. --}}
@@ -301,7 +301,7 @@
         {{-- top comes from the header's measured height (see hotelSections), because a
              fixed offset is wrong the day the header gains a line. --}}
         <aside class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky"
-               style="top: var(--hotel-header, 12rem)">
+               style="top: calc(var(--hotel-header, 12rem) + var(--hotel-gap))">
             <h2 class="text-sm font-semibold text-brand-900">Your stay</h2>
             <dl class="mt-3 space-y-2 text-sm">
                 <div class="flex justify-between gap-4">
