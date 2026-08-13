@@ -106,14 +106,25 @@ readonly class SupplementSet
         return $flat;
     }
 
+    /**
+     * TBO mixes prose ("Deposit Fee per night") with machine tokens
+     * ("mandatory_tax", "mandatory_fee", "resort_fee") in the same field, and these
+     * end up in front of an agent explaining what a guest owes at the desk.
+     *
+     * The tokens are rewritten by shape rather than by name: a list of known ones
+     * needs extending every time TBO invents a fee, and the one it misses is shown
+     * raw. Prose is left exactly as written.
+     */
     private static function label(string $description): string
     {
         $description = trim($description);
 
-        return match (strtolower($description)) {
-            'mandatory_tax' => 'Mandatory tax',
-            '' => 'Additional charge',
-            default => $description,
-        };
+        if ($description === '') {
+            return 'Additional charge';
+        }
+
+        return preg_match('/^[a-z0-9]+(_[a-z0-9]+)+$/', $description) === 1
+            ? ucfirst(str_replace('_', ' ', $description))
+            : $description;
     }
 }

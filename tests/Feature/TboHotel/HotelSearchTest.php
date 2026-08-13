@@ -92,9 +92,12 @@ class HotelSearchTest extends TestCase
     }
 
     /**
-     * §18 recommends false; measured, true costs no extra time and is the only way
-     * to get the cancel policies and AtProperty supplements it also requires us to
-     * show. The measurement wins.
+     * §18 recommends false, to cut "response size and time". Measured over 100 codes
+     * it costs +55% size and no measurable time (2.87 s vs 2.92 s, ranges overlapping),
+     * and CancelPolicies comes back only with true — without it a result card cannot
+     * say whether a rate is refundable, and the only alternative is PreBook per rate.
+     *
+     * Supplements arrive either way, so they are not part of this justification.
      */
     public function test_it_asks_for_the_detailed_response(): void
     {
@@ -295,12 +298,40 @@ class HotelSearchTest extends TestCase
         $this->assertSame(500.0, $supplements->payableAtPropertyTotal());
     }
 
+    /**
+     * Rewritten by shape, not by name: TBO invents fees, and a known-tokens list
+     * shows the next one raw. "mandatory_fee" reached the page that way.
+     */
     public function test_machine_descriptions_are_made_readable(): void
     {
+        $tokens = [
+            'mandatory_tax' => 'Mandatory tax',
+            'mandatory_fee' => 'Mandatory fee',
+            'resort_fee' => 'Resort fee',
+            'city_tax_per_person' => 'City tax per person',
+        ];
+
+        foreach ($tokens as $raw => $expected) {
+            $supplements = SupplementSet::fromResponse([
+                ['Type' => 'AtProperty', 'Description' => $raw, 'Price' => 20, 'Currency' => 'PHP'],
+            ]);
+
+            $this->assertSame($expected, $supplements->payableAtProperty()[0]['description']);
+        }
+    }
+
+    /**
+     * Prose is left alone — capitalisation and wording are the supplier's, and
+     * "Deposit Fee per night" must not come out as "Deposit fee per night".
+     */
+    public function test_written_descriptions_are_left_as_written(): void
+    {
         $supplements = SupplementSet::fromResponse([
-            ['Type' => 'AtProperty', 'Description' => 'mandatory_tax', 'Price' => 20, 'Currency' => 'PHP'],
+            ['Type' => 'AtProperty', 'Description' => 'Deposit Fee per night ', 'Price' => 20, 'Currency' => 'PHP'],
+            ['Type' => 'AtProperty', 'Description' => '', 'Price' => 5, 'Currency' => 'PHP'],
         ]);
 
-        $this->assertSame('Mandatory tax', $supplements->payableAtProperty()[0]['description']);
+        $this->assertSame('Deposit Fee per night', $supplements->payableAtProperty()[0]['description']);
+        $this->assertSame('Additional charge', $supplements->payableAtProperty()[1]['description']);
     }
 }

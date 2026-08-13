@@ -13,7 +13,6 @@
             suggestUrl: '{{ route('hotels.suggest') }}',
             searchUrl: '{{ route('hotels.search') }}',
             hotelUrl: '{{ url('hotels') }}',
-            countries: @js($countries),
          })" class="space-y-5">
 
         @include('hotels.form')
@@ -40,7 +39,9 @@
             </svg>
             <p class="text-sm text-amber-800">
                 <span class="font-medium">This is not the whole city.</span>
-                About <span x-text="result.hotelsMissed"></span> properties could not be checked just now.
+                {{-- x-show renders its children straight away, unlike the x-if below, so
+                     this evaluates once against a null result before the first search. --}}
+                About <span x-text="result?.hotelsMissed"></span> properties could not be checked just now.
                 <button type="button" @click="search(true)" class="font-medium underline">Search again</button>
                 to include them.
             </p>
@@ -50,8 +51,10 @@
         <template x-if="result && !loading">
             <div class="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
 
-                {{-- Filters --}}
-                <aside class="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm lg:col-span-3">
+                {{-- Filters. Sticky under the 4rem top bar, and below it in the stack —
+                     the grid's lg:items-start is what stops the column stretching to the
+                     results' full height, which would leave nothing to scroll against. --}}
+                <aside class="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-20 lg:z-10 lg:col-span-3 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
                     <div>
                         <p class="text-sm font-semibold text-brand-900">Sort</p>
                         <select x-model="sort" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
@@ -93,7 +96,10 @@
                 </aside>
 
                 {{-- Cards --}}
-                <div class="space-y-4 lg:col-span-9">
+                {{-- gap, not space-y: x-if and x-for leave their <template> tags in the
+                     DOM, so space-y's sibling rule gives the first card a top margin and
+                     drops the whole column 16px below the filters beside it. --}}
+                <div class="flex flex-col gap-4 lg:col-span-9">
                     <template x-if="!filtered.length">
                         <div class="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                             <p class="text-sm font-medium text-brand-900">No rooms match</p>
@@ -151,9 +157,18 @@
 
                             {{-- Rooms + property detail --}}
                             <div x-show="open === offer.hotelCode" x-cloak class="border-t border-gray-100 bg-gray-50/60 p-5">
+                                {{-- The description is supplier HTML, sanitised server-side to a
+                                     short allow-list. It runs to a dozen paragraphs, and the rates
+                                     are what the agent opened this panel for, so it starts clamped. --}}
                                 <template x-if="detail[offer.hotelCode]">
-                                    <div class="mb-4">
-                                        <p class="text-sm text-gray-600" x-text="detail[offer.hotelCode].description"></p>
+                                    <div class="mb-4"
+                                         x-data="{ expanded: false, long: (detail[offer.hotelCode].description || '').length > 400 }">
+                                        <div class="supplier-prose text-sm text-gray-600"
+                                             :class="long && !expanded ? 'max-h-24 overflow-hidden' : ''"
+                                             x-html="detail[offer.hotelCode].description"></div>
+                                        <button type="button" x-show="long" @click="expanded = !expanded"
+                                                class="mt-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+                                                x-text="expanded ? 'Show less' : 'Read more'"></button>
                                         <div class="mt-2 flex flex-wrap gap-1.5">
                                             <template x-for="f in (detail[offer.hotelCode].facilities || []).slice(0, 12)" :key="f">
                                                 <span class="rounded bg-white px-2 py-0.5 text-xs text-gray-500 ring-1 ring-inset ring-gray-200" x-text="f"></span>
@@ -178,7 +193,7 @@
                                                     <div class="mt-2 flex flex-wrap items-center gap-1.5">
                                                         <template x-if="room.freeCancellationUntil">
                                                             <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
-                                                                  x-text="'Free cancellation until ' + room.freeCancellationUntil.slice(0, 10)"></span>
+                                                                  x-text="'Free cancellation until ' + formatDay(room.freeCancellationUntil)"></span>
                                                         </template>
                                                         <template x-if="!room.isRefundable">
                                                             <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">Non-refundable</span>

@@ -16,11 +16,13 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
     // Usage: x-flatpickr="{ model: 'segment.departure' }"
     //        x-flatpickr="{ model: 'returnDate', min: 'segment.departure' }"
     // `model` is the Alpine property this picker reads/writes (replaces x-model
-    // so we can keep flatpickr's display in sync). `min` is an optional reactive
-    // path whose value becomes this picker's minimum (departure -> return).
+    // so we can keep flatpickr's display in sync). `min` and `max` are optional
+    // reactive paths whose values bound this picker (departure -> return, or
+    // check-in -> the last night of a capped stay).
     const cfg = expression ? evaluate(expression) : {};
     const modelPath = cfg.model ?? null;
     const minPath = cfg.min ?? null;
+    const maxPath = cfg.max ?? null;
     const placeholderPath = cfg.placeholder ?? null;
 
     // Static bounds. Travel dates are always ahead of today, so that stays the
@@ -46,6 +48,16 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
 
     if (fp.altInput && el.placeholder) {
         fp.altInput.placeholder = el.placeholder;
+    }
+
+    // altInput is a visible copy; flatpickr hides the original. An id has to
+    // travel with it, or the <label for> above points at a hidden field and
+    // clicking the label opens nothing.
+    const id = el.id;
+
+    if (fp.altInput && id) {
+        el.removeAttribute('id');
+        fp.altInput.id = id;
     }
 
     // Reactive placeholder. The field the user actually sees is flatpickr's
@@ -82,7 +94,22 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
         });
     }
 
-    cleanup(() => fp.destroy());
+    // Reactive maximum, same idea at the other end. Note that flatpickr only
+    // redraws on a bounds change — it will not clear a selection that has just
+    // fallen outside them, so a component with moving bounds has to keep its own
+    // model honest rather than assume the picker did it.
+    if (maxPath) {
+        const readMax = evaluateLater(maxPath);
+        effect(() => {
+            readMax((value) => fp.set('maxDate', value || maxDate));
+        });
+    }
+
+    cleanup(() => {
+        fp.destroy();
+
+        if (id) el.id = id;
+    });
 });
 
 const CABIN_LABELS = {
@@ -178,6 +205,32 @@ function formatDate(iso) {
     if (! iso) return '';
     const d = new Date(iso);
     return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * A calendar day a person can read: "2026-09-04" -> "4 Sept 2026".
+ *
+ * Day-first with a named month, because an all-numeric date means two different
+ * days either side of the Pacific and the ones shown here are deadlines. Accepts a
+ * date or a datetime, and keeps the time when there is one — a refund window that
+ * shuts at 2pm must not be shown as if it lasted all day.
+ */
+function formatDay(value) {
+    if (! value) return '';
+
+    // Two parsing traps. "2026-09-04 00:00:00" is not a form every browser accepts,
+    // and a bare "2026-09-04" is defined as UTC midnight — which is mid-morning in
+    // Manila, so it would report a time on a date that never carried one.
+    const text = String(value).trim().replace(' ', 'T');
+    const d = new Date(text.length === 10 ? `${text}T00:00:00` : text);
+
+    if (isNaN(d)) return String(value);
+
+    const day = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    return d.getHours() || d.getMinutes()
+        ? `${day}, ${formatTime(d)}`
+        : day;
 }
 
 function formatDuration(mins) {
@@ -1529,7 +1582,6 @@ Alpine.data('hotelSearch', (config = {}) => ({
     suggestUrl: config.suggestUrl,
     searchUrl: config.searchUrl,
     hotelUrl: config.hotelUrl,
-    countries: config.countries || [],
 
     // Form
     locationLabel: '',
@@ -1558,19 +1610,73 @@ Alpine.data('hotelSearch', (config = {}) => ({
     minRating: 0,
 
     init() {
-        const day = 86400000;
-        this.checkIn = new Date(Date.now() + 30 * day).toISOString().slice(0, 10);
-        this.checkOut = new Date(Date.now() + 32 * day).toISOString().slice(0, 10);
+        this.checkIn = this.shift(this.today, 30);
+        this.checkOut = this.shift(this.checkIn, 2);
+
+        // flatpickr redraws on a bounds change but keeps whatever was selected,
+        // so moving the check-in has to carry the check-out with it. Left alone,
+        // the agent sees a calendar that greys out the date its own field still
+        // shows, and the server rejects the pair a round trip later.
+        this.$watch('checkIn', () => {
+            if (!this.checkIn) return;
+
+            if (!this.checkOut || this.checkOut <= this.checkIn) {
+                this.checkOut = this.checkOutMin;
+            } else if (this.checkOut > this.checkOutMax) {
+                this.checkOut = this.checkOutMax;
+            }
+        });
+    },
+
+    /**
+     * The local calendar date. toISOString() is UTC, so anywhere east of
+     * Greenwich it hands back yesterday for most of the working day — in Manila
+     * "today" would be wrong until 8am, and with it every default and minimum.
+     */
+    iso(date) {
+        return [
+            date.getFullYear(),
+            String(date.getMonth() + 1).padStart(2, '0'),
+            String(date.getDate()).padStart(2, '0'),
+        ].join('-');
+    },
+
+    shift(date, days) {
+        const moved = new Date(`${date}T00:00:00`);
+        moved.setDate(moved.getDate() + days);
+
+        return this.iso(moved);
     },
 
     get today() {
-        return new Date().toISOString().slice(0, 10);
+        return this.iso(new Date());
     },
+
+    // A stay is at least one night, and TBO prices per night up to the thirty
+    // the server enforces — beyond that it is a series of bookings.
+    get checkOutMin() {
+        return this.shift(this.checkIn || this.today, 1);
+    },
+
+    get checkOutMax() {
+        return this.shift(this.checkIn || this.today, 30);
+    },
+
+    get nights() {
+        if (!this.checkIn || !this.checkOut) return 0;
+
+        const from = new Date(`${this.checkIn}T00:00:00`);
+        const to = new Date(`${this.checkOut}T00:00:00`);
+
+        return Math.max(0, Math.round((to - from) / 86400000));
+    },
+
+    formatDay,
 
     get summary() {
         if (!this.result) return '';
         const guests = this.result.guests;
-        return `${this.locationLabel} · ${this.checkIn} → ${this.checkOut} · ` +
+        return `${this.locationLabel} · ${formatDay(this.checkIn)} → ${formatDay(this.checkOut)} · ` +
             `${this.result.rooms} room${this.result.rooms === 1 ? '' : 's'}, ` +
             `${guests} guest${guests === 1 ? '' : 's'}`;
     },

@@ -5,9 +5,14 @@ namespace Tests\Feature\TboHotel;
 use App\Models\Hotel;
 use App\Models\HotelCity;
 use App\Models\HotelCountry;
+use App\Services\TboHotel\DTO\PaxRoom;
+use App\Services\TboHotel\DTO\SearchInput;
+use App\Services\TboHotel\HotelSearchCache;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
@@ -199,6 +204,116 @@ class HotelPageTest extends TestCase
             ->getJson('/hotels/1022346')
             ->assertOk()
             ->assertJsonPath('name', 'Hotel 1022346');
+    }
+
+    /**
+     * A repeated search must come out of the cache intact.
+     *
+     * The default test store neither serializes nor enforces `serializable_classes`,
+     * so it will happily hand back an object the real one refuses. This configures a
+     * store that behaves like production: values are serialized, and no class is
+     * allowed back out. Caching a SearchResult under those rules returns
+     * __PHP_Incomplete_Class and the second search dies on the first method call.
+     */
+    public function test_a_repeated_search_is_served_from_cache_intact(): void
+    {
+        config([
+            'cache.serializable_classes' => false,
+            'cache.stores.array.serialize' => true,
+        ]);
+        Cache::purge('array');
+
+        Http::fake([self::BASE.'/Search' => Http::response($this->fixture('search'))]);
+
+        $user = $this->userWith(['hotel.view', 'hotel.search']);
+        $payload = $this->payload();
+
+        $first = $this->actingAs($user)->postJson('/hotels/search', $payload)->assertOk();
+        $second = $this->actingAs($user)->postJson('/hotels/search', $payload)->assertOk();
+
+        $this->assertSame($first->json(), $second->json());
+        $this->assertJsonPathsAreUsable($second);
+
+        // One round trip for two searches: the second was answered from cache.
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * A cached search that comes back as something unusable — an object graph left by
+     * an older build, refused on the way out — is recomputed rather than served.
+     */
+    public function test_an_unreadable_cache_entry_is_recomputed(): void
+    {
+        Http::fake([self::BASE.'/Search' => Http::response($this->fixture('search'))]);
+
+        $user = $this->userWith(['hotel.view', 'hotel.search']);
+        $payload = $this->payload();
+
+        $input = new SearchInput(
+            checkIn: $payload['checkIn'],
+            checkOut: $payload['checkOut'],
+            rooms: [new PaxRoom(2, 0, [])],
+            guestNationality: 'PH',
+            locationType: 'city',
+            locationCode: '127116',
+        );
+
+        Cache::put(
+            app(HotelSearchCache::class)->key($user->id, 'test', $input),
+            'not an array at all',
+            600,
+        );
+
+        $this->actingAs($user)
+            ->postJson('/hotels/search', $this->payload())
+            ->assertOk()
+            ->assertJsonCount(3, 'offers');
+    }
+
+    private function assertJsonPathsAreUsable(TestResponse $response): void
+    {
+        $response->assertJsonPath('currency', 'PHP')
+            ->assertJsonPath('partial', false)
+            ->assertJsonCount(3, 'offers');
+
+        $this->assertIsArray($response->json('offers.0'));
+        $this->assertArrayHasKey('lowestFare', $response->json('offers.0'));
+    }
+
+    /**
+     * The panel renders the description as HTML, so the endpoint is the boundary
+     * that has to make it safe — and it cleans on the way out, which means rows
+     * already sitting in the catalogue are covered without a re-crawl.
+     */
+    public function test_the_description_is_sanitised_on_the_way_out(): void
+    {
+        Hotel::where('code', '1022346')->update([
+            'description' => '<p><strong>Overview:</strong> Nice.</p><script>alert(1)</script>',
+            'detailed_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->userWith(['hotel.view']))
+            ->getJson('/hotels/1022346')
+            ->assertOk();
+
+        $description = $response->json('description');
+
+        $this->assertStringContainsString('<strong>Overview:</strong>', $description);
+        $this->assertStringNotContainsString('alert', $description);
+    }
+
+    /**
+     * The nationality options are rendered server-side on purpose. Built by an x-for
+     * template they do not exist yet when x-model runs, so the select falls back to
+     * its first entry and the agent reads "Afghanistan" off a search priced for the
+     * Philippines — the one field §18 says we cannot get wrong quietly.
+     */
+    public function test_the_nationality_options_are_rendered_server_side(): void
+    {
+        $this->actingAs($this->userWith(['hotel.view']))
+            ->get('/hotels')
+            ->assertOk()
+            ->assertSee('<option value="PH">Philippines</option>', false);
     }
 
     public function test_hotels_appears_in_the_navigation(): void

@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\Cache;
  *
  * A partial result is never cached: it would freeze a transient failure in place for
  * ten minutes and make retrying pointless.
+ *
+ * What is stored is the rendered payload, not the SearchResult itself. `cache.serializable_classes`
+ * is false — the framework refuses to unserialize any object out of the cache, so a
+ * stored object graph comes back as __PHP_Incomplete_Class and blows up on first use.
+ * The array is also an order of magnitude smaller: every offer carries an Eloquent
+ * Hotel, and a serialized city ran to several megabytes.
  */
 class HotelSearchCache
 {
@@ -29,22 +35,27 @@ class HotelSearchCache
 
     /**
      * @param  Closure(): SearchResult  $callback
+     * @return array<string, mixed>
      */
-    public function remember(int $userId, string $environment, SearchInput $input, Closure $callback): mixed
+    public function remember(int $userId, string $environment, SearchInput $input, Closure $callback): array
     {
         $key = $this->key($userId, $environment, $input);
+        $cached = Cache::get($key);
 
-        if ($cached = Cache::get($key)) {
+        // Anything that is not an array is something we can no longer read — an
+        // object left by an older build, refused on the way out. Recompute rather
+        // than hand the caller a husk.
+        if (is_array($cached)) {
             return $cached;
         }
 
         $result = $callback();
 
         if (! $result->isPartial()) {
-            Cache::put($key, $result, $this->ttl);
+            Cache::put($key, $result->toArray(), $this->ttl);
         }
 
-        return $result;
+        return $result->toArray();
     }
 
     public function forget(int $userId, string $environment, SearchInput $input): void

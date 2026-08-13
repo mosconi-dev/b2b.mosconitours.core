@@ -9,6 +9,7 @@ use App\Services\TboHotel\CatalogueSyncService;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\HotelSearchCache;
 use App\Services\TboHotel\TboHotelService;
+use App\Support\SupplierHtml;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -29,7 +30,7 @@ class HotelController extends Controller
         $input = $request->searchInput();
 
         try {
-            $result = $cache->remember(
+            $payload = $cache->remember(
                 $request->user()->id,
                 $service->environment(),
                 $input,
@@ -39,7 +40,7 @@ class HotelController extends Controller
             return $this->supplierError($e);
         }
 
-        return response()->json($result->toArray() + [
+        return response()->json($payload + [
             'nights' => $input->nights(),
             'rooms' => $input->roomCount(),
             'guests' => $input->guests(),
@@ -74,7 +75,10 @@ class HotelController extends Controller
             'name' => $hotel->name,
             'address' => $hotel->address,
             'rating' => $hotel->rating,
-            'description' => $hotel->description,
+            // TBO's descriptions are HTML. Cleaned here, on the way out, rather than
+            // at sync time: the catalogue keeps what the supplier actually said, and
+            // rows already stored are covered without a re-crawl.
+            'description' => SupplierHtml::clean($hotel->description),
             'facilities' => $hotel->facilities ?? [],
             'attractions' => $hotel->attractions ?? [],
             'images' => array_slice($hotel->images ?? [], 0, 12),

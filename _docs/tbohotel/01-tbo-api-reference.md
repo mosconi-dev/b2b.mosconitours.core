@@ -104,7 +104,8 @@ signal — HTTP 200 is returned with failures inside.
 - `Filters.MealType` vocabulary is **`All` / `WithMeal` / `RoomOnly`** — a *different* set from the
   `MealType` returned per room. Do not reuse one enum for both.
 - **`IsDetailedResponse`**: §18 recommends **`false`** ("decrease the overall response size and
-  time"). `true` adds `DayRates` and detailed `CancelPolicies`.
+  time"). `true` adds `DayRates` and `CancelPolicies` — and `CancelPolicies` is the only way to know
+  at list time whether a rate is refundable. Measured in §4.1: +55% bytes, no measurable time.
 
 **Response** — `HotelResult[]`, each `{ HotelCode, Currency, Rooms[] }`. Per room:
 
@@ -144,11 +145,29 @@ Two things follow, and both reverse an assumption made before measuring:
    count — not the payload — is what a city search costs. There is no truncation at 200 despite
    §6.1's "recommended 100"; we send 100 anyway, since a documented recommendation is a cheap thing
    to respect.
-2. **`IsDetailedResponse: true` is worth it, and §18's advice is wrong for our case.** It costs
-   ~55% more bytes and *no* extra time (25 codes: 1.7 s detailed vs 2.1 s not), and it returns
-   `CancelPolicies`, `Supplements` and `DayRates` — including the `AtProperty` supplements §18
-   itself says must be shown before booking. Buying that at PreBook time only would mean showing an
-   agent a price list they cannot judge.
+2. **`IsDetailedResponse: true` is worth it on the list search, though §18's advice is sound in
+   general.** Measured properly — 100 codes, four rounds, order alternated to cancel drift:
+
+   | | median | bytes | `CancelPolicies` | `Supplements` |
+   | --- | --- | --- | --- | --- |
+   | `false` | 2.87 s | 13,292 | **0 / 30 rooms** | 21 / 30 rooms |
+   | `true` | 2.92 s | 20,669 | **30 / 30 rooms** | 21 / 30 rooms |
+
+   §18 is right about size: `true` is **+55% bytes**. It is wrong about time at this scale — 51 ms
+   apart with the ranges overlapping heavily (false 2.29–3.05 s, true 2.37–3.99 s), so the cost is
+   payload, not latency, and latency is what a 28-chunk city search is actually spending.
+
+   The deciding fact is `CancelPolicies`, which **only** comes back with `true`. It is what makes a
+   result card say "Refundable", "Non-refundable" or "Free cancellation until 4 Sept 2026", and what
+   the refundable filter reads. Without it the only way to learn whether a rate is refundable is
+   PreBook, one call per rate — impossible for a list. The extra bytes are server-to-server and
+   never reach the browser.
+
+   **Correction to an earlier claim here:** `Supplements` — including `AtProperty` — come back
+   *either way*, 21/30 rooms in both. They are not a reason to send `true`. Neither is `DayRates`,
+   which is detailed-only but which nothing currently renders.
+
+   Configurable at `tbohotel.search_detailed` if the trade ever changes.
 
 **Roughly half of any hotel list has no availability** for a given stay, so a results page needs
 far more codes behind it than it shows.

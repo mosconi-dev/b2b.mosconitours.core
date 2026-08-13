@@ -32,27 +32,55 @@
                 </ul>
             </div>
 
-            {{-- Dates --}}
+            {{-- Dates. Same calendar as the flight form: a native date input renders
+                 and validates differently in every browser, and reads the agent's
+                 locale rather than ours. --}}
             <div class="lg:col-span-2">
                 <x-input-label for="hotel-checkin" value="Check-in" />
-                <input id="hotel-checkin" type="date" x-model="checkIn" :min="today"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm">
+                <div class="relative mt-1">
+                    <span class="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center text-gray-400">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                    </span>
+                    <input id="hotel-checkin" type="text" readonly autocomplete="off"
+                           x-flatpickr="{ model: 'checkIn' }" placeholder="Pick check-in"
+                           class="block w-full cursor-pointer rounded-md border-gray-300 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+                </div>
             </div>
             <div class="lg:col-span-2">
-                <x-input-label for="hotel-checkout" value="Check-out" />
-                <input id="hotel-checkout" type="date" x-model="checkOut" :min="checkIn || today"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm">
+                <div class="flex items-baseline justify-between gap-2">
+                    <x-input-label for="hotel-checkout" value="Check-out" />
+                    <span x-show="nights" x-cloak class="text-xs text-gray-400"
+                          x-text="nights + (nights === 1 ? ' night' : ' nights')"></span>
+                </div>
+                <div class="relative mt-1">
+                    <span class="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center text-gray-400">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                    </span>
+                    <input id="hotel-checkout" type="text" readonly autocomplete="off"
+                           x-flatpickr="{ model: 'checkOut', min: 'checkOutMin', max: 'checkOutMax' }" placeholder="Pick check-out"
+                           class="block w-full cursor-pointer rounded-md border-gray-300 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+                </div>
             </div>
 
             {{-- Nationality. Never defaulted silently: it changes the price, and TBO
-                 is explicit that getting it wrong is our problem, not theirs. --}}
+                 is explicit that getting it wrong is our problem, not theirs — so the
+                 field has to show the code the search actually sends.
+
+                 The options are rendered here rather than by an x-for template: with
+                 the template, x-model runs before the options exist, the select falls
+                 back to its first entry, and the agent reads "Afghanistan" off a search
+                 priced for somewhere else. --}}
             <div class="lg:col-span-3">
                 <x-input-label for="hotel-nationality" value="Lead guest nationality" />
                 <select id="hotel-nationality" x-model="guestNationality"
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm">
-                    <template x-for="c in countries" :key="c.code">
-                        <option :value="c.code" x-text="c.name"></option>
-                    </template>
+                    @foreach ($countries as $country)
+                        <option value="{{ $country->code }}">{{ $country->name }}</option>
+                    @endforeach
                 </select>
             </div>
         </div>

@@ -310,8 +310,9 @@ file written in between.
 >
 > **Two plan decisions reversed by measurement** (see `01`§4.1): chunk cost is nearly flat, so the
 > whole city is searched rather than a ranked top-N — which would also have biased results upmarket,
-> since price is unknown until TBO answers. And `IsDetailedResponse: true` costs no extra time while
-> supplying the cancel policies and `AtProperty` supplements §18 requires us to display.
+> since price is unknown until TBO answers. And `IsDetailedResponse: true` costs +55% bytes but no
+> measurable time, and is the only way to know at list time whether a rate is refundable.
+> (`Supplements` come back either way — an earlier version of this note claimed otherwise.)
 >
 > **One thing added beyond the plan:** the property panel enriches a hotel on first open. Most of the
 > catalogue has never been detailed, and crawling all of it for pages nobody visits is hours of calls

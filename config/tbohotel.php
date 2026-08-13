@@ -149,9 +149,12 @@ return [
     // deliberately modest; a 429 costs a retry and the whole point is to be quick.
     'search_concurrency' => (int) env('TBOHOTEL_SEARCH_CONCURRENCY', 6),
 
-    // Sent as IsDetailedResponse. §18 recommends false for size; measured, true costs
-    // ~55% more bytes and no extra time, and it is the only way to get the cancel
-    // policies and the AtProperty supplements §18 itself requires us to display.
+    // Sent as IsDetailedResponse. §18 recommends false to cut "response size and time";
+    // measured over 100 codes, true costs +55% bytes and no measurable time. It is kept
+    // on because CancelPolicies comes back only with true, and without it a result card
+    // cannot say whether a rate is refundable — the only alternative being one PreBook
+    // per rate. Set TBOHOTEL_SEARCH_DETAILED=false to follow the vendor instead, at the
+    // cost of the refundable badges and filter.
     'search_detailed' => filter_var(env('TBOHOTEL_SEARCH_DETAILED', true), FILTER_VALIDATE_BOOLEAN),
 
     'search_cache_ttl' => (int) env('TBOHOTEL_SEARCH_CACHE_TTL', 600), // 10 min
