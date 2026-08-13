@@ -191,9 +191,14 @@
                                                     </p>
 
                                                     <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                                                        {{-- "before", not "until". TBO's value is the instant charges begin,
+                                                             and every policy it sends lands on midnight — so "until 4 Sept"
+                                                             reads as though the 4th is still free when the window shut as it
+                                                             started. "before" states the boundary without us doing arithmetic
+                                                             on a supplier's refund deadline. --}}
                                                         <template x-if="room.freeCancellationUntil">
                                                             <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
-                                                                  x-text="'Free cancellation until ' + formatDay(room.freeCancellationUntil)"></span>
+                                                                  x-text="'Free cancellation before ' + formatDay(room.freeCancellationUntil)"></span>
                                                         </template>
                                                         <template x-if="!room.isRefundable">
                                                             <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">Non-refundable</span>

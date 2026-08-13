@@ -158,7 +158,7 @@ Two things follow, and both reverse an assumption made before measuring:
    payload, not latency, and latency is what a 28-chunk city search is actually spending.
 
    The deciding fact is `CancelPolicies`, which **only** comes back with `true`. It is what makes a
-   result card say "Refundable", "Non-refundable" or "Free cancellation until 4 Sept 2026", and what
+   result card say "Refundable", "Non-refundable" or "Free cancellation before 4 Sept 2026", and what
    the refundable filter reads. Without it the only way to learn whether a rate is refundable is
    PreBook, one call per rate — impossible for a list. The extra bytes are server-to-server and
    never reach the browser.

@@ -61,6 +61,10 @@ readonly class CancelPolicySet
     /**
      * The moment free cancellation ends — the first policy that charges anything.
      *
+     * An exclusive bound: cancelling *at* this instant is already chargeable. Since
+     * TBO lands these on midnight, the page says "free cancellation before 4 Sept"
+     * rather than "until", which would read as though the 4th were still free.
+     *
      * Null when that moment has already passed, which is the common case: TBO
      * describes a non-refundable rate as a zero charge until today and 100% after,
      * so a naive reading advertises "free cancellation until" a date in the past.
