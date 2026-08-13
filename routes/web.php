@@ -203,6 +203,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             ->middleware('can:supplier.tbohotel.view');
         Route::patch('/cities/{city}', [HotelCatalogueController::class, 'toggleCity'])->name('cities.toggle')
             ->whereNumber('city')->middleware('can:supplier.tbohotel.sync');
+        // Many at once, or every city a filter matches. One country is 194 rows at 25
+        // to a page, and carrying a dozen destinations one click at a time is how a
+        // catalogue stays at two cities.
+        Route::post('/cities/carry', [HotelCatalogueController::class, 'carryCities'])->name('cities.carry')
+            ->middleware('can:supplier.tbohotel.sync');
         Route::post('/sync', [HotelCatalogueController::class, 'sync'])->name('sync')
             ->middleware('can:supplier.tbohotel.sync');
     });

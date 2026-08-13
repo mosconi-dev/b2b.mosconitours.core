@@ -24,10 +24,16 @@ class HotelSuggestController extends Controller
             return response()->json(['results' => []]);
         }
 
-        // Cities first, and only enabled ones: offering a city we hold no hotels for
-        // is offering a search that returns nothing.
+        // Cities first, and only ones we can actually search: offering a city we hold
+        // no hotels for is offering a search that returns nothing, and "no availability"
+        // reads to an agent as no rooms rather than as us never having looked.
+        //
+        // Carried and empty is a real state, not a hypothetical — carrying a city and
+        // syncing its properties are two deliberate steps, and the bulk carry makes the
+        // gap between them wide enough to sell in.
         $cities = HotelCity::query()
             ->enabled()
+            ->where('hotels_count', '>', 0)
             ->where('name', 'like', "{$term}%")
             ->orderByDesc('hotels_count')
             ->limit(6)

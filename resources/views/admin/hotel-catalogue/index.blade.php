@@ -80,8 +80,21 @@
         </div>
     @endcan
 
-    {{-- Cities --}}
-    <div class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    {{-- Cities.
+
+         Selection lives in Alpine rather than in a form wrapping the table: each row
+         already carries its own toggle form, and a form inside a form is not markup a
+         browser will honour. --}}
+    <div class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+         x-data="{
+             selected: [],
+             pageIds: @js($cities->pluck('id')->all()),
+             confirmingAll: false,
+             get allOnPage() { return this.pageIds.length > 0 && this.pageIds.every(id => this.selected.includes(id)); },
+             togglePage() {
+                 this.selected = this.allOnPage ? [] : [...this.pageIds];
+             },
+         }">
         <div class="flex flex-wrap items-end justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <h2 class="text-sm font-semibold text-brand-900">Cities</h2>
 
@@ -103,10 +116,96 @@
             </form>
         </div>
 
+        @can('supplier.tbohotel.sync')
+            @php
+                // Carried on every bulk action so "all matching" resolves the same set
+                // the page was drawn from.
+                $scope = ['q' => $filters['q'], 'country' => $filters['country'], 'only' => $filters['only']];
+            @endphp
+
+            <div class="border-b border-gray-100 bg-gray-50/70 px-5 py-3">
+                {{-- Ticked rows. --}}
+                <div x-show="selected.length" x-cloak class="flex flex-wrap items-center gap-3">
+                    <span class="text-sm text-gray-600">
+                        <span class="font-semibold text-brand-900" x-text="selected.length"></span> selected
+                    </span>
+
+                    @foreach ([1 => 'Carry', 0 => 'Stop carrying'] as $carry => $label)
+                        <form method="POST" action="{{ route('admin.hotel-catalogue.cities.carry') }}">
+                            @csrf
+                            <input type="hidden" name="carry" value="{{ $carry }}">
+                            @foreach ($scope as $key => $value)
+                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                            @endforeach
+                            <template x-for="id in selected" :key="id">
+                                <input type="hidden" name="cities[]" :value="id">
+                            </template>
+                            <button type="submit" @class([
+                                'rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition',
+                                'bg-emerald-600 text-white hover:bg-emerald-700' => $carry === 1,
+                                'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50' => $carry === 0,
+                            ])>{{ $label }} selected</button>
+                        </form>
+                    @endforeach
+
+                    <button type="button" @click="selected = []"
+                            class="text-xs font-medium text-gray-500 hover:text-gray-700">Clear</button>
+                </div>
+
+                {{-- Everything the filter matches, which is the point: one country is
+                     eight pages, and carrying a dozen cities a click at a time is how a
+                     catalogue stays at two. --}}
+                <div x-show="! selected.length" class="flex flex-wrap items-center gap-3">
+                    <span class="text-sm text-gray-500">
+                        Tick cities to carry them, or take the whole filter:
+                    </span>
+
+                    <template x-if="! confirmingAll">
+                        <button type="button" @click="confirmingAll = true"
+                                class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">
+                            Carry all {{ number_format($matching) }} matching
+                        </button>
+                    </template>
+
+                    <template x-if="confirmingAll">
+                        <span class="flex flex-wrap items-center gap-3">
+                            <span class="text-sm font-medium text-brand-900">
+                                Carry {{ number_format($matching) }}
+                                {{ \Illuminate\Support\Str::plural('city', $matching) }}?
+                                <span class="text-gray-500">Searching stays per-city, but every one needs its
+                                properties pulled and enriched.</span>
+                            </span>
+                            <form method="POST" action="{{ route('admin.hotel-catalogue.cities.carry') }}">
+                                @csrf
+                                <input type="hidden" name="carry" value="1">
+                                <input type="hidden" name="all" value="1">
+                                @foreach ($scope as $key => $value)
+                                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                @endforeach
+                                <button type="submit"
+                                        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700">
+                                    Yes, carry them
+                                </button>
+                            </form>
+                            <button type="button" @click="confirmingAll = false"
+                                    class="text-xs font-medium text-gray-500 hover:text-gray-700">Cancel</button>
+                        </span>
+                    </template>
+                </div>
+            </div>
+        @endcan
+
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-100 text-sm">
                 <thead>
                     <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        @can('supplier.tbohotel.sync')
+                            <th class="w-10 py-3 pl-5 pr-0">
+                                <input type="checkbox" :checked="allOnPage" @change="togglePage()"
+                                       title="Select every city on this page"
+                                       class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                            </th>
+                        @endcan
                         <th class="px-5 py-3">City</th>
                         <th class="px-5 py-3">Code</th>
                         <th class="px-5 py-3">Country</th>
@@ -117,7 +216,14 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($cities as $city)
-                        <tr class="transition hover:bg-gray-50">
+                        <tr class="transition hover:bg-gray-50" :class="selected.includes({{ $city->id }}) && 'bg-brand-50/50'">
+                            @can('supplier.tbohotel.sync')
+                                <td class="w-10 py-3 pl-5 pr-0">
+                                    <input type="checkbox" value="{{ $city->id }}" x-model.number="selected"
+                                           aria-label="Select {{ $city->name }}"
+                                           class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                </td>
+                            @endcan
                             <td class="px-5 py-3 font-medium text-brand-900">{{ $city->name }}</td>
                             <td class="px-5 py-3 font-mono text-xs text-gray-400">{{ $city->code }}</td>
                             <td class="px-5 py-3 text-gray-600">{{ $city->country_code }}</td>
@@ -145,7 +251,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-5 py-12 text-center">
+                            <td colspan="7" class="px-5 py-12 text-center">
                                 <p class="text-sm font-medium text-brand-900">No cities yet</p>
                                 <p class="mt-1 text-sm text-gray-500">Sync countries, then a country's cities, then choose which to carry.</p>
                             </td>
