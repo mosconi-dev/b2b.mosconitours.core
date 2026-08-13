@@ -157,7 +157,11 @@ class HotelController extends Controller
             'overview' => filled($hotel->description) ? 'Overview' : null,
             'rooms' => $hasRooms ? 'Rooms' : null,
             'facilities' => ! empty($hotel->facilities) ? 'Facilities' : null,
-            'location' => filled($hotel->address) || $hotel->latitude ? 'Location' : null,
+            'location' => filled($hotel->address) || $hotel->latitude
+                || ! empty($hotel->attractions) || filled($hotel->phone)
+                || filled($hotel->email) || filled($hotel->website)
+                    ? 'Location'
+                    : null,
             'policies' => filled($hotel->checkin_time) || filled($hotel->checkout_time)
                 || $this->payableAtProperty($offer) !== []
                     ? 'Policies'

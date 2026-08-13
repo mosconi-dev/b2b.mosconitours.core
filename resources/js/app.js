@@ -2048,6 +2048,19 @@ Alpine.data('hotelBooking', (config = {}) => ({
     },
 
     /**
+     * TBO states a charge either as an amount or as a percentage of the stay, and the
+     * two must not be printed the same way — "PHP 100" and "100%" are very different
+     * answers to "what does cancelling cost".
+     */
+    cancellationCharge(policy) {
+        if (!policy.charge) return 'no charge';
+
+        return policy.chargeType === 'Percentage'
+            ? `${policy.charge}% of the stay`
+            : this.money(policy.charge);
+    },
+
+    /**
      * Checked here only to save a round trip. The server checks the same things again,
      * and its answer is the one that counts.
      */

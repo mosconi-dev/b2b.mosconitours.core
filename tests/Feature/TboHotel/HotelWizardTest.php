@@ -463,6 +463,58 @@ class HotelWizardTest extends TestCase
     }
 
     /**
+     * Everything the catalogue already holds and the page used to throw away.
+     */
+    public function test_the_page_shows_what_is_nearby_and_how_to_reach_the_property(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        Hotel::where('code', '1022346')->update([
+            'attractions' => ['Ninoy Aquino Intl. Airport (MNL)', 'Manila Bay'],
+            'phone' => '+63 2 1234 5678',
+            'email' => 'front.desk@example.test',
+            'website' => 'https://example.test',
+            'detailed_at' => now(),
+        ]);
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertSee('Ninoy Aquino Intl. Airport (MNL)')
+            ->assertSee('Manila Bay')
+            ->assertSee('+63 2 1234 5678')
+            ->assertSee('front.desk@example.test')
+            // Actionable, not just printed.
+            ->assertSee('tel:+63 2 1234 5678', false)
+            ->assertSee('mailto:front.desk@example.test', false);
+    }
+
+    /**
+     * The fixture rate is free until 11 Aug and 100% after 12 Aug. Showing only the
+     * first date tells an agent when the window shuts and not what it costs to miss it.
+     */
+    public function test_each_rate_states_what_cancelling_costs_after_the_free_window(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertSee('Cancel from 11 Aug 2026')
+            ->assertSee('no charge')
+            ->assertSee('Cancel from 12 Aug 2026')
+            ->assertSee('100% of the stay')
+            // Two nights at an even rate, so the per-night figure is safe to state.
+            ->assertSee('× 2 nights');
+    }
+
+    /**
      * A property with nothing but rates gets one tab, not five dead ones.
      */
     public function test_a_bare_property_offers_only_the_tabs_it_has(): void

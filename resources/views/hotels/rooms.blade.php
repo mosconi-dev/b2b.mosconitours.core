@@ -114,8 +114,12 @@
                 </div>
             @endif
 
+            {{-- Each section is gated on the same $sections the tab strip is built
+                 from, so a tab and its target cannot disagree about whether it exists.
+                 They already did once: Location grew attractions and a phone number,
+                 the tab knew and the section did not. --}}
             {{-- Sanitised server-side; TBO writes it as HTML. --}}
-            @if (filled($hotel->description))
+            @if (isset($sections['overview']))
                 <div id="overview" data-section="overview" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" x-data="{ expanded: false }">
                     <h2 class="text-base font-semibold text-brand-900">Overview</h2>
                     <div class="supplier-prose mt-3 text-sm text-gray-600"
@@ -166,6 +170,29 @@
                                         @endforeach
                                     </div>
 
+                                    {{-- The other half of "free until": what it costs after. That
+                                         is the half that loses money, and it was sitting unused in
+                                         the response. --}}
+                                    @if (! empty($room['cancellationSchedule']))
+                                        <ul class="mt-2 space-y-0.5 text-xs text-gray-500">
+                                            @foreach ($room['cancellationSchedule'] as $policy)
+                                                <li>
+                                                    @if ($policy['room'])<span class="text-gray-400">Room {{ $policy['room'] }} ·</span>@endif
+                                                    Cancel from {{ \Illuminate\Support\Carbon::parse($policy['from'])->format('j M Y') }}:
+                                                    <span class="font-medium text-brand-900">
+                                                        @if ((float) $policy['charge'] <= 0)
+                                                            no charge
+                                                        @elseif ($policy['chargeType'] === 'Percentage')
+                                                            {{ rtrim(rtrim(number_format((float) $policy['charge'], 2), '0'), '.') }}% of the stay
+                                                        @else
+                                                            {{ $currency }} {{ number_format((float) $policy['charge'], 2) }}
+                                                        @endif
+                                                    </span>
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+
                                     {{-- What the guest settles at the desk. Shown before booking
                                          because §18 requires it, and because a deposit sprung at
                                          check-in is a complaint we caused. --}}
@@ -190,6 +217,13 @@
                                     <p class="text-xs text-gray-400">
                                         incl. tax {{ $currency }} {{ number_format((float) $room['totalTax'], 2) }}
                                     </p>
+                                    {{-- What one night costs. An agent quoting a client is asked
+                                         this constantly, and it is already in the response. --}}
+                                    @if ($room['nightlyRate'] !== null && $stay['nights'] > 1)
+                                        <p class="text-xs text-gray-500">
+                                            {{ $currency }} {{ number_format($room['nightlyRate'], 2) }} × {{ $stay['nights'] }} nights
+                                        </p>
+                                    @endif
 
                                     @can('hotel.book')
                                         {{-- Leaves step 2. The wizard re-prices through PreBook
@@ -221,7 +255,7 @@
             @endif
             </div>
 
-            @if (! empty($hotel->facilities))
+            @if (isset($sections['facilities']))
                 <div id="facilities" data-section="facilities" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Facilities</h2>
                     <div class="mt-3 flex flex-wrap gap-1.5">
@@ -235,7 +269,7 @@
             {{-- Where it is. No embedded map: a tile provider is an external request on
                  every card view, and the address plus a link out answers the question
                  an agent actually has. --}}
-            @if (filled($hotel->address) || $hotel->latitude)
+            @if (isset($sections['location']))
                 <div id="location" data-section="location" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Location</h2>
                     @if (filled($hotel->address))
@@ -252,13 +286,58 @@
                             Open in Google Maps
                         </a>
                     @endif
+
+                    {{-- What a client asks about before they ask about the room. Held since
+                         the catalogue was built and never shown until now. --}}
+                    @if (! empty($hotel->attractions))
+                        <div class="mt-5 border-t border-gray-100 pt-4">
+                            <p class="text-sm font-medium text-brand-900">What's nearby</p>
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                @foreach (array_slice($hotel->attractions, 0, 18) as $attraction)
+                                    <span class="rounded bg-gray-50 px-2 py-0.5 text-xs text-gray-600 ring-1 ring-inset ring-gray-200">{{ $attraction }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- The property's own line. An agent chasing a late arrival or a special
+                         request has to phone the hotel, and nothing else here gives them the
+                         number. --}}
+                    @if (filled($hotel->phone) || filled($hotel->email) || filled($hotel->website))
+                        <div class="mt-5 border-t border-gray-100 pt-4">
+                            <p class="text-sm font-medium text-brand-900">Contact the property</p>
+                            <dl class="mt-2 space-y-1 text-sm">
+                                @if (filled($hotel->phone))
+                                    <div class="flex gap-2">
+                                        <dt class="w-16 shrink-0 text-gray-500">Phone</dt>
+                                        <dd><a href="tel:{{ $hotel->phone }}" class="text-blue-600 hover:text-blue-700">{{ $hotel->phone }}</a></dd>
+                                    </div>
+                                @endif
+                                @if (filled($hotel->email))
+                                    <div class="flex gap-2">
+                                        <dt class="w-16 shrink-0 text-gray-500">Email</dt>
+                                        <dd class="min-w-0 break-all"><a href="mailto:{{ $hotel->email }}" class="text-blue-600 hover:text-blue-700">{{ $hotel->email }}</a></dd>
+                                    </div>
+                                @endif
+                                @if (filled($hotel->website))
+                                    <div class="flex gap-2">
+                                        <dt class="w-16 shrink-0 text-gray-500">Website</dt>
+                                        <dd class="min-w-0 break-all">
+                                            <a href="{{ $hotel->website }}" target="_blank" rel="noopener noreferrer"
+                                               class="text-blue-600 hover:text-blue-700">{{ $hotel->website }}</a>
+                                        </dd>
+                                    </div>
+                                @endif
+                            </dl>
+                        </div>
+                    @endif
                 </div>
             @endif
 
             {{-- What the property expects of the guest. Cancellation is deliberately not
                  repeated here: it differs per rate, and a single figure on this page
                  would contradict the rates above it. --}}
-            @if (filled($hotel->checkin_time) || filled($hotel->checkout_time) || $payableAtProperty !== [])
+            @if (isset($sections['policies']))
                 <div id="policies" data-section="policies" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Policies</h2>
 

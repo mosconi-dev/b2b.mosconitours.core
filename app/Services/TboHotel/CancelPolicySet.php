@@ -86,6 +86,46 @@ readonly class CancelPolicySet
         return $earliest !== null && Carbon::parse($earliest)->isFuture() ? $earliest : null;
     }
 
+    /**
+     * The whole schedule as one flat list, oldest first, for showing an agent what
+     * cancelling costs and from when.
+     *
+     * `freeUntil()` answers only half the question — it says when the free window shuts
+     * and nothing about what the rate costs afterwards, which is the half that loses
+     * money. This is the other half.
+     *
+     * A row carries its room number only when the rooms genuinely differ; TBO omits
+     * Index unless they do, and labelling every row "Room 1" on a one-room stay is
+     * noise. Entries with no date are dropped: a charge that starts at no stated time
+     * cannot be acted on.
+     *
+     * @return array<int, array{room: int|null, from: string, chargeType: string, charge: float}>
+     */
+    public function schedule(): array
+    {
+        $perRoom = count($this->buckets) > 1;
+        $rows = [];
+
+        foreach ($this->buckets as $key => $policies) {
+            foreach ($policies as $policy) {
+                if ($policy['from'] === null) {
+                    continue;
+                }
+
+                $rows[] = [
+                    'room' => $perRoom && $key !== self::ALL_ROOMS ? (int) $key : null,
+                    'from' => $policy['from'],
+                    'chargeType' => $policy['chargeType'],
+                    'charge' => $policy['charge'],
+                ];
+            }
+        }
+
+        usort($rows, fn (array $a, array $b): int => [$a['room'], $a['from']] <=> [$b['room'], $b['from']]);
+
+        return $rows;
+    }
+
     public function isEmpty(): bool
     {
         return $this->buckets === [];

@@ -137,12 +137,15 @@
                             <p class="mt-1 text-sm text-gray-600">This rate is non-refundable.</p>
                         </template>
 
-                        <template x-if="quote.cancelPolicies && quote.cancelPolicies.length">
+                        {{-- The schedule, not the bucketed policies: those are keyed by
+                             room and iterating them renders one empty row per bucket. --}}
+                        <template x-if="quote.cancellationSchedule && quote.cancellationSchedule.length">
                             <ul class="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs text-gray-500">
-                                <template x-for="(p, i) in quote.cancelPolicies" :key="i">
+                                <template x-for="(p, i) in quote.cancellationSchedule" :key="i">
                                     <li>
+                                        <template x-if="p.room"><span x-text="'Room ' + p.room + ' · '"></span></template>
                                         From <span class="font-medium text-brand-900" x-text="formatDay(p.from)"></span>:
-                                        <span x-text="p.charge > 0 ? money(p.charge) + (p.type === 'Percentage' ? '%' : '') : 'no charge'"></span>
+                                        <span x-text="cancellationCharge(p)"></span>
                                     </li>
                                 </template>
                             </ul>

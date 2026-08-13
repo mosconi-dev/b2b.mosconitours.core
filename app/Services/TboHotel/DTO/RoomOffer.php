@@ -104,9 +104,28 @@ readonly class RoomOffer
             'dayRates' => $this->dayRates,
             'freeCancellationUntil' => $this->cancelPolicies->freeUntil(),
             'cancelPolicies' => $this->cancelPolicies->toArray(),
+            // Flat and display-ready. cancelPolicies above is bucketed by room, which
+            // is the wrong shape to iterate in a template — doing so renders nothing.
+            'cancellationSchedule' => $this->cancelPolicies->schedule(),
+            'nightlyRate' => $this->nightlyRate(),
             'supplements' => $this->supplements->toArray(),
             'payableAtProperty' => $this->supplements->payableAtProperty(),
         ];
+    }
+
+    /**
+     * What one night costs, when every night costs the same.
+     *
+     * Null when they differ — a weekend rate averaged into a weekday one is a number
+     * the agent would have to defend and could not.
+     */
+    public function nightlyRate(): ?float
+    {
+        if ($this->dayRates === []) {
+            return null;
+        }
+
+        return count(array_unique($this->dayRates)) === 1 ? $this->dayRates[0] : null;
     }
 
     /**

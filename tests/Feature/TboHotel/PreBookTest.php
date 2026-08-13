@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\TboHotel;
 
+use App\Services\TboHotel\CancelPolicySet;
+use App\Services\TboHotel\DTO\RoomOffer;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\TboHotelClient;
 use App\Services\TboHotel\TboHotelConfig;
@@ -124,6 +126,66 @@ class PreBookTest extends TestCase
         // Decoding must not become an injection route.
         $this->assertStringNotContainsString('alert', $conditions[2]);
         $this->assertStringContainsString('Cash only', $conditions[2]);
+    }
+
+    /**
+     * freeUntil() says when the free window shuts and nothing about what the rate costs
+     * after — the half that loses money. The schedule is that half, and it has to be
+     * flat: cancelPolicies is bucketed by room, so a template iterating it renders one
+     * empty row per bucket instead of the policies.
+     */
+    public function test_the_cancellation_schedule_is_flat_and_dated(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture('prebook'))]);
+
+        $schedule = $this->service()->preBook(self::CODE)->toArray()['cancellationSchedule'];
+
+        $this->assertNotEmpty($schedule);
+        $this->assertSame(['room', 'from', 'chargeType', 'charge'], array_keys($schedule[0]));
+        // One room, so no row is labelled with one.
+        $this->assertNull($schedule[0]['room']);
+
+        // Oldest first, and every row dated — an undated charge cannot be acted on.
+        $dates = array_column($schedule, 'from');
+        $sorted = $dates;
+        sort($sorted);
+        $this->assertSame($sorted, $dates);
+        $this->assertNotContains(null, $dates);
+    }
+
+    /**
+     * Where TBO does distinguish rooms, the rows say which — and only then.
+     */
+    public function test_a_schedule_names_the_room_only_when_rooms_differ(): void
+    {
+        $set = CancelPolicySet::fromResponse([
+            ['Index' => 1, 'FromDate' => '01-09-2026 00:00:00', 'ChargeType' => 'Fixed', 'CancellationCharge' => 0],
+            ['Index' => 2, 'FromDate' => '02-09-2026 00:00:00', 'ChargeType' => 'Percentage', 'CancellationCharge' => 50],
+        ]);
+
+        $this->assertSame([1, 2], array_column($set->schedule(), 'room'));
+        $this->assertSame(['Fixed', 'Percentage'], array_column($set->schedule(), 'chargeType'));
+    }
+
+    /**
+     * A weekend rate averaged into a weekday one is a figure the agent would have to
+     * defend and could not, so an uneven stay reports no per-night price at all.
+     */
+    public function test_a_nightly_rate_is_offered_only_when_every_night_costs_the_same(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture('prebook'))]);
+
+        $room = $this->service()->preBook(self::CODE)->room;
+
+        $this->assertNotNull($room->nightlyRate());
+        $this->assertSame($room->dayRates[0], $room->nightlyRate());
+
+        $uneven = RoomOffer::fromResponse([
+            'BookingCode' => 'x', 'TotalFare' => 300.0,
+            'DayRates' => [[['BasePrice' => 100.0], ['BasePrice' => 200.0]]],
+        ]);
+
+        $this->assertNull($uneven->nightlyRate());
     }
 
     public function test_amenities_come_back_with_the_room(): void
