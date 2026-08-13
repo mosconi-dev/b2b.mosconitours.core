@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\AgencyRoleController;
 use App\Http\Controllers\Admin\AgencyUserController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\HotelCatalogueController;
+use App\Http\Controllers\Admin\HotelSettingController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingController;
@@ -180,6 +181,19 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             ->whereNumber('city')->middleware('can:supplier.tbohotel.sync');
         Route::post('/sync', [HotelCatalogueController::class, 'sync'])->name('sync')
             ->middleware('can:supplier.tbohotel.sync');
+    });
+
+    /*
+    | TBO Hotel's own settings. Separate from admin/settings, which is TBO Air's and
+    | is mostly token management — hotels have no token to manage.
+    */
+    Route::prefix('tbo-hotel')->name('tbo-hotel.')->group(function () {
+        Route::get('settings', [HotelSettingController::class, 'index'])->name('settings')
+            ->middleware('can:supplier.tbohotel.view');
+        Route::put('settings', [HotelSettingController::class, 'update'])->name('settings.update')
+            ->middleware('can:supplier.tbohotel.manage');
+        Route::post('cache/flush', [HotelSettingController::class, 'flushCache'])->name('cache.flush')
+            ->middleware('can:supplier.tbohotel.manage');
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {

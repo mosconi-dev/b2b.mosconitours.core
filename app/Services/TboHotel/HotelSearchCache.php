@@ -2,6 +2,7 @@
 
 namespace App\Services\TboHotel;
 
+use App\Services\Settings\Settings;
 use App\Services\TboHotel\DTO\SearchInput;
 use App\Services\TboHotel\DTO\SearchResult;
 use Closure;
@@ -26,11 +27,36 @@ use Illuminate\Support\Facades\Cache;
  */
 class HotelSearchCache
 {
-    public function __construct(private readonly int $ttl) {}
+    /** Bumping this orphans every cached search at once. See flush(). */
+    private const GENERATION = 'tbohotel.search_cache_generation';
+
+    public function __construct(private readonly int $ttl, private readonly Settings $settings) {}
 
     public function key(int $userId, string $environment, SearchInput $input): string
     {
-        return "hotel_search:{$environment}:{$userId}:{$input->fingerprint()}";
+        return "hotel_search:{$environment}:g{$this->generation()}:{$userId}:{$input->fingerprint()}";
+    }
+
+    /**
+     * Drop every cached search, for everyone.
+     *
+     * By moving the generation rather than deleting rows. There is no portable way to
+     * enumerate keys by prefix — the database store cannot, tags are unsupported on it,
+     * and Cache::flush() would take the RBAC and settings caches with it. Orphaned
+     * entries are unreachable immediately and expire on their own inside the TTL.
+     */
+    public function flush(): int
+    {
+        $next = $this->generation() + 1;
+
+        $this->settings->set(self::GENERATION, $next);
+
+        return $next;
+    }
+
+    public function generation(): int
+    {
+        return (int) $this->settings->get(self::GENERATION, 0);
     }
 
     /**

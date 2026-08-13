@@ -10,6 +10,8 @@
         </x-page-heading>
     </x-slot>
 
+    @include('admin.tbo-hotel._tabs')
+
     <x-admin.flash />
 
     {{-- Totals --}}

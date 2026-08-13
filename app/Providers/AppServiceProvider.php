@@ -48,7 +48,10 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(RecentSearchStore::class, fn () => new RecentSearchStore((int) config('tboair.recent_ttl')));
 
-        $this->app->singleton(HotelSearchCache::class, fn () => new HotelSearchCache((int) config('tbohotel.search_cache_ttl')));
+        $this->app->singleton(HotelSearchCache::class, fn ($app) => new HotelSearchCache(
+            (int) config('tbohotel.search_cache_ttl'),
+            $app->make(Settings::class),
+        ));
 
         // One registry instance per request so its normalized module cache is shared.
         $this->app->singleton(PermissionRegistry::class);
