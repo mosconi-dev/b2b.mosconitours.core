@@ -15,12 +15,6 @@
             roomsUrl: '{{ route('hotels.rooms', ['code' => '__CODE__']) }}',
          })" class="space-y-5">
 
-        {{-- This page is step 1 and only step 1. Choosing a room happens on the
-             property's own page, so the stepper here is static. --}}
-        <div x-show="result" x-cloak class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <x-hotel-stepper :current="1" />
-        </div>
-
         @include('hotels.form')
 
         {{-- Collapsed summary once a search has run --}}
@@ -55,7 +49,14 @@
 
         {{-- Results --}}
         <template x-if="result && !loading">
-            <div class="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
+            <div>
+                {{-- Booking progress — Select Hotel is the current step here, and it is
+                     only ever this one: the room is chosen on the property's own page. --}}
+                <div class="mb-6 rounded-xl border border-gray-200 bg-white px-4 py-5 shadow-sm">
+                    <x-hotel-stepper :current="1" />
+                </div>
+
+                <div class="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
 
                 {{-- Filters. Sticky under the 4rem top bar, and below it in the stack —
                      the grid's lg:items-start is what stops the column stretching to the
@@ -192,6 +193,7 @@
                             </div>
                         </div>
                     </template>
+                    </div>
                 </div>
             </div>
         </template>
