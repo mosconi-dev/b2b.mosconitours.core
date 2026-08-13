@@ -2124,8 +2124,8 @@ Alpine.data('hotelSections', () => ({
     active: '',
     sections: [],
 
-    // Roughly the app bar plus this sticky header: the line below which content is
-    // actually readable rather than hidden behind them.
+    // The line below which content is actually readable rather than hidden behind the
+    // app bar and this header. Measured, not guessed — see measure().
     line: 190,
 
     // Set while a click is being honoured. A tab the reader just pressed must stay lit
@@ -2138,9 +2138,16 @@ Alpine.data('hotelSections', () => ({
 
         if (this.sections.length === 0) return;
 
+        this.measure();
         this.sync();
+
         this.onScroll = () => requestAnimationFrame(() => this.sync());
         window.addEventListener('scroll', this.onScroll, { passive: true });
+
+        // A narrower window can rewrap the header, and everything below is positioned
+        // off its height.
+        this.onResize = () => requestAnimationFrame(() => this.measure());
+        window.addEventListener('resize', this.onResize, { passive: true });
 
         // A real gesture, unlike the scroll events smooth-scrolling emits, so this is
         // what tells us the reader has taken over again.
@@ -2151,7 +2158,23 @@ Alpine.data('hotelSections', () => ({
 
     destroy() {
         window.removeEventListener('scroll', this.onScroll);
+        window.removeEventListener('resize', this.onResize);
         this.gestures.forEach((event) => window.removeEventListener(event, this.release));
+    },
+
+    /**
+     * Publish where the pinned header ends.
+     *
+     * The sidebar sticks below it and the sections scroll clear of it, so both need its
+     * real height. Hard-coding the offset is wrong the day the header gains a line —
+     * which is exactly how the sidebar came to pin 112px inside it.
+     */
+    measure() {
+        const APP_BAR = 64; // the layout's sticky top bar
+        const bottom = APP_BAR + this.$el.offsetHeight;
+
+        document.documentElement.style.setProperty('--hotel-header', `${bottom}px`);
+        this.line = bottom + 24;
     },
 
     /**

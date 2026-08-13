@@ -80,10 +80,12 @@
 
         {{-- Jump links. Only the sections this property actually has: a tab pointing at
              an empty page is worse than a missing tab. --}}
-        <nav class="flex gap-1 overflow-x-auto border-t border-gray-100 px-2">
+        {{-- overflow-y-hidden is not redundant: setting overflow-x alone makes the other
+             axis compute to auto, which showed a scrollbar for one stray pixel. --}}
+        <nav class="flex gap-1 overflow-x-auto overflow-y-hidden border-t border-gray-100 px-2">
             @foreach ($sections as $id => $label)
                 <a href="#{{ $id }}" @click.prevent="goTo('{{ $id }}')"
-                   class="-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition"
+                   class="shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition"
                    :class="active === '{{ $id }}' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'">
                     {{ $label }}
                 </a>
@@ -114,7 +116,7 @@
 
             {{-- Sanitised server-side; TBO writes it as HTML. --}}
             @if (filled($hotel->description))
-                <div id="overview" data-section="overview" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm" x-data="{ expanded: false }">
+                <div id="overview" data-section="overview" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" x-data="{ expanded: false }">
                     <h2 class="text-base font-semibold text-brand-900">Overview</h2>
                     <div class="supplier-prose mt-3 text-sm text-gray-600"
                          :class="expanded ? '' : 'max-h-40 overflow-hidden'">
@@ -127,7 +129,7 @@
             @endif
 
             {{-- Rooms --}}
-            <div id="rooms" data-section="rooms" class="scroll-mt-44">
+            <div id="rooms" data-section="rooms">
             @if ($offer === null || empty($offer['rooms']))
                 <div class="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                     <p class="text-sm font-medium text-brand-900">No rooms available</p>
@@ -220,7 +222,7 @@
             </div>
 
             @if (! empty($hotel->facilities))
-                <div id="facilities" data-section="facilities" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div id="facilities" data-section="facilities" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Facilities</h2>
                     <div class="mt-3 flex flex-wrap gap-1.5">
                         @foreach (array_slice($hotel->facilities, 0, 24) as $facility)
@@ -234,7 +236,7 @@
                  every card view, and the address plus a link out answers the question
                  an agent actually has. --}}
             @if (filled($hotel->address) || $hotel->latitude)
-                <div id="location" data-section="location" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div id="location" data-section="location" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Location</h2>
                     @if (filled($hotel->address))
                         <p class="mt-2 text-sm text-gray-600">{{ $hotel->address }}</p>
@@ -257,7 +259,7 @@
                  repeated here: it differs per rate, and a single figure on this page
                  would contradict the rates above it. --}}
             @if (filled($hotel->checkin_time) || filled($hotel->checkout_time) || $payableAtProperty !== [])
-                <div id="policies" data-section="policies" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div id="policies" data-section="policies" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Policies</h2>
 
                     <dl class="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
@@ -296,7 +298,10 @@
         </div>
 
         {{-- The stay --}}
-        <aside class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-20">
+        {{-- top comes from the header's measured height (see hotelSections), because a
+             fixed offset is wrong the day the header gains a line. --}}
+        <aside class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky"
+               style="top: var(--hotel-header, 12rem)">
             <h2 class="text-sm font-semibold text-brand-900">Your stay</h2>
             <dl class="mt-3 space-y-2 text-sm">
                 <div class="flex justify-between gap-4">

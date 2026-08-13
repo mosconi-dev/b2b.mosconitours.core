@@ -48,6 +48,13 @@ textarea::placeholder {
     margin-bottom: 0.25em;
 }
 
+/* Jump-link targets on the hotel page clear the two stacked sticky headers. The
+   custom property is written by the hotelSections component from the header's real
+   height; the fallback is what a first paint uses before Alpine boots. */
+[data-section] {
+    scroll-margin-top: calc(var(--hotel-header, 12rem) + 0.5rem);
+}
+
 /* Slim, subtle scrollbar for the navy sidebar */
 .sidebar-scroll {
     scrollbar-width: thin;
