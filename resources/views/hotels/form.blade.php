@@ -93,7 +93,8 @@
                         class="text-sm font-medium text-brand-700 hover:text-brand-900">+ Add room</button>
             </div>
 
-            <div class="mt-3 space-y-3">
+            {{-- gap, not space-y: the x-for template is a hidden sibling. --}}
+            <div class="mt-3 flex flex-col gap-3">
                 <template x-for="(room, i) in rooms" :key="i">
                     <div class="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-3">
                         <span class="w-16 text-xs font-semibold uppercase tracking-wide text-gray-500"

@@ -19,7 +19,7 @@
             priceChanged: @js($priceChanged),
             wallet: @js($wallet),
             contactEmail: @js(auth()->user()->email),
-         })" class="space-y-6">
+         })" class="flex flex-col gap-6">
 
         <x-admin.flash />
 
@@ -29,10 +29,14 @@
         </div>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
-            <div class="space-y-6 lg:col-span-2">
+            <div class="flex flex-col gap-6 lg:col-span-2">
 
+                {{-- gap, not space-y, throughout: x-for and x-if leave their <template>
+                     tags in the DOM and x-show only hides, so the sibling rule hands the
+                     first visible child a margin for something that is not there. It put
+                     the first room card 16px below the summary card beside it. --}}
                 {{-- ============ Step 3 · Guest Details ============ --}}
-                <section x-show="step === 3" x-cloak class="space-y-4">
+                <section x-show="step === 3" x-cloak class="flex flex-col gap-4">
                     <template x-for="(room, r) in rooms" :key="r">
                         <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                             <div class="flex items-baseline justify-between">
@@ -41,7 +45,7 @@
                                 <span class="text-xs text-gray-400" x-text="occupancyLabel(room)"></span>
                             </div>
 
-                            <div class="mt-4 space-y-3">
+                            <div class="mt-4 flex flex-col gap-3">
                                 <template x-for="g in guestsIn(r)" :key="g.key">
                                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-12">
                                         <div class="sm:col-span-2">
@@ -111,7 +115,7 @@
                 </section>
 
                 {{-- ============ Step 4 · Payment ============ --}}
-                <section x-show="step === 4" x-cloak class="space-y-4">
+                <section x-show="step === 4" x-cloak class="flex flex-col gap-4">
 
                     {{-- The re-price gate. Only rendered when PreBook actually moved the
                          price, and it must be accepted explicitly: booking silently at a
@@ -148,7 +152,7 @@
                         {{-- The schedule, not the bucketed policies: those are keyed by
                              room and iterating them renders one empty row per bucket. --}}
                         <template x-if="quote.cancellationSchedule && quote.cancellationSchedule.length">
-                            <ul class="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs text-gray-500">
+                            <ul class="mt-3 flex flex-col gap-1 border-t border-gray-100 pt-3 text-xs text-gray-500">
                                 <template x-for="(p, i) in quote.cancellationSchedule" :key="i">
                                     <li>
                                         <template x-if="p.room"><span x-text="'Room ' + p.room + ' · '"></span></template>
@@ -167,7 +171,7 @@
                         <div class="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
                             <h2 class="text-sm font-semibold text-amber-900">Payable at the hotel</h2>
                             <p class="mt-1 text-xs text-amber-800">Not included in the amount below — the guest settles this on arrival.</p>
-                            <ul class="mt-3 space-y-1 text-sm text-amber-900">
+                            <ul class="mt-3 flex flex-col gap-1 text-sm text-amber-900">
                                 <template x-for="(s, i) in quote.payableAtProperty" :key="i">
                                     <li class="flex justify-between gap-4">
                                         <span>
@@ -188,7 +192,7 @@
                             <h2 class="text-sm font-semibold text-brand-900">Hotel conditions</h2>
                             {{-- Several of these are HTML, sanitised server-side. Rendered as
                                  blocks rather than list items because some are lists themselves. --}}
-                            <div class="mt-2 space-y-2 text-xs text-gray-600">
+                            <div class="mt-2 flex flex-col gap-2 text-xs text-gray-600">
                                 <template x-for="(c, i) in quote.rateConditions" :key="i">
                                     <div class="supplier-prose" x-html="c"></div>
                                 </template>
@@ -208,7 +212,7 @@
             </div>
 
             {{-- Summary, always visible --}}
-            <aside class="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-20">
+            <aside class="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-[calc(4rem+var(--hotel-gap))]">
                 <div>
                     <p class="text-sm font-semibold text-brand-900">{{ $hotel?->name ?? 'Hotel' }}</p>
                     @if ($hotel?->address)
