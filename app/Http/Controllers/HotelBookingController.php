@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BookingProduct;
+use App\Enums\BookingStatus;
 use App\Http\Requests\StoreHotelBookingRequest;
+use App\Jobs\BookHotelJob;
+use App\Models\Booking;
 use App\Models\Hotel;
 use App\Models\User;
 use App\Models\Wallet;
@@ -133,6 +137,51 @@ class HotelBookingController extends Controller
         return redirect()
             ->route('bookings.show', $booking)
             ->with('status', "Booking {$booking->reference} created.");
+    }
+
+    /**
+     * Send the booking to TBO.
+     *
+     * The wallet was debited when the booking was created, so this is not a payment —
+     * it is the moment the room is actually taken. Queued because a Book is allowed 120
+     * seconds and the page should not hold that long; the booking page follows it.
+     */
+    public function book(Request $request, Booking $booking): RedirectResponse
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        abort_unless($booking->product === BookingProduct::Hotel, 404);
+
+        if ($booking->status !== BookingStatus::Quoted) {
+            return back()->with('error', "Booking {$booking->reference} is {$booking->status->value} and cannot be sent again.");
+        }
+
+        BookHotelJob::dispatch($booking->getKey());
+
+        return back()->with('status', "Confirming {$booking->reference} with the hotel now.");
+    }
+
+    /**
+     * The printable voucher — what a guest hands over at the desk.
+     *
+     * Rendered entirely from hotel_bookings, so it prints during a TBO outage and reads
+     * the same years later whatever has happened to the property since. There is
+     * nothing to print before TBO has confirmed: until then it is a quote.
+     */
+    public function voucher(Request $request, Booking $booking): View
+    {
+        abort_unless(
+            $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
+            403,
+        );
+
+        abort_unless($booking->product === BookingProduct::Hotel, 404);
+        abort_if(blank($booking->hotel?->confirmation_number), 404);
+
+        return view('hotels.voucher', ['booking' => $booking, 'stay' => $booking->hotel]);
     }
 
     private function storeError(Request $request, string $message, int $status): RedirectResponse|JsonResponse

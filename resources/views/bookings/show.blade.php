@@ -14,8 +14,17 @@
         <div class="flex items-center justify-between gap-4">
             <a href="{{ route('bookings.index') }}" class="text-sm font-medium text-gray-500 hover:text-gray-700">&larr; Back to bookings</a>
 
-            {{-- Nothing to print until the airline has given us a PNR. --}}
-            @if (filled($booking->pnr))
+            {{-- Nothing to print until the supplier has confirmed. Before that a
+                 booking is only a priced quote on our side. --}}
+            @if ($booking->isHotel() && filled($booking->hotel?->confirmation_number))
+                <a href="{{ route('hotels.bookings.voucher', $booking) }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5z" />
+                    </svg>
+                    Print voucher
+                </a>
+            @elseif (! $booking->isHotel() && filled($booking->pnr))
                 <a href="{{ route('bookings.eticket', $booking) }}" target="_blank"
                    class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -84,7 +93,36 @@
             $canRetry = auth()->user()->can('flight.book') && auth()->user()->can('flight.issue');
         @endphp
 
-        @if ($booking->status === $statuses::Processing)
+        @if ($booking->status === $statuses::Processing && $booking->isHotel())
+            {{-- Sending, or awaiting reconciliation after an unanswered Book. Either way
+                 the agent is told it is unresolved rather than shown a false ending. --}}
+            <div class="rounded-xl border border-sky-200 bg-sky-50 p-6 shadow-sm"
+                 x-data="{
+                     poll() {
+                         fetch('{{ route('bookings.status', $booking) }}', { headers: { Accept: 'application/json' } })
+                             .then(r => r.ok ? r.json() : null)
+                             .then(d => d && !d.inFlight ? window.location.reload() : setTimeout(() => this.poll(), 5000))
+                             .catch(() => setTimeout(() => this.poll(), 10000));
+                     },
+                 }"
+                 x-init="setTimeout(() => poll(), 5000)">
+                <div class="flex items-start gap-3">
+                    <svg class="mt-0.5 h-5 w-5 shrink-0 animate-spin text-sky-600" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <div>
+                        <h2 class="text-base font-semibold text-sky-900">Confirming with the hotel</h2>
+                        <p class="mt-1 text-sm text-sky-800">
+                            This page updates itself when the hotel answers, and keeps going if you leave.
+                            If the supplier did not answer at all we check again after two minutes rather
+                            than guess — the room may already be held, so nothing is cancelled or refunded
+                            on a hunch.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        @elseif ($booking->status === $statuses::Processing)
             {{-- Follows the queue to its ending. Book and Ticket together have taken
                  over a minute against the real supplier, so this can sit a while. --}}
             <div class="rounded-xl border border-sky-200 bg-sky-50 p-6 shadow-sm"
@@ -149,15 +187,48 @@
                 </p>
             </div>
         @elseif ($booking->status === $statuses::Quoted && $booking->isHotel())
-            {{-- A hotel quote is finished on our side and not yet sent to TBO. There is
-                 no ticket to issue and no airline to call, so the flight panel below
-                 must not be offered here — its button runs Book → Ticket against TBO
-                 Air. Vouchering arrives in the next phase. --}}
+            {{-- Saved and paid for on our side, not yet sent. The flight panel below must
+                 never be offered here: its button runs Book → Ticket against TBO Air. --}}
+            @php $canBook = auth()->user()->can('hotel.book'); @endphp
             <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 class="text-base font-semibold text-brand-900">Not yet confirmed</h2>
+                {{-- A booker with no agency (platform staff) is never debited, so the
+                     panel must not claim money that did not move. --}}
                 <p class="mt-2 text-sm text-gray-500">
-                    This stay is saved and paid for on our side. Nothing has been sent to the hotel yet.
+                    This stay is saved
+                    @if ($booking->walletCharge())
+                        and the agency has been charged
+                        {{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }},
+                    @else
+                        at {{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }},
+                    @endif
+                    but nothing has been sent to the hotel. Confirming takes the room.
                 </p>
+
+                @if ($booking->environment === 'live')
+                    <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <strong>This is a LIVE booking.</strong> Confirming creates a real reservation the
+                        hotel will hold, and cancelling it later may carry a charge.
+                    </div>
+                @endif
+
+                @if ($canBook)
+                    <form method="POST" action="{{ route('hotels.bookings.book', $booking) }}" class="mt-4"
+                          x-data="{ submitting: false }" @submit="submitting = true">
+                        @csrf
+                        <button type="submit" :disabled="submitting"
+                                @class([
+                                    'rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50',
+                                    'bg-red-600 hover:bg-red-700' => $booking->environment === 'live',
+                                    'bg-blue-600 hover:bg-blue-700' => $booking->environment !== 'live',
+                                ])>
+                            <span x-show="! submitting">Confirm with hotel</span>
+                            <span x-show="submitting" x-cloak>Sending…</span>
+                        </button>
+                    </form>
+                @else
+                    <p class="mt-3 text-sm text-gray-400">You do not have permission to confirm hotel bookings.</p>
+                @endif
             </div>
         @elseif ($booking->status === $statuses::Quoted)
             {{-- Only reachable for bookings saved before ticketing became one act. --}}

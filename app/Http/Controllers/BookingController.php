@@ -242,6 +242,9 @@ class BookingController extends Controller
             'label' => $booking->status->label(),
             'inFlight' => $booking->status->isInFlight(),
             'pnr' => $booking->pnr,
+            // Hotels have no PNR; their reference is TBO's confirmation number, and the
+            // page polling this needs whichever the product actually has.
+            'reference' => $booking->supplier_reference ?? $booking->pnr,
         ]);
     }
 

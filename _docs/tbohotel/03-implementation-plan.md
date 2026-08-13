@@ -421,6 +421,20 @@ cancelling with the right money.
   refund arithmetic across fixed and percentage policies and across the policy date boundary, a
   refused cancel, and the drift report.
 
+**Measured against TEST while closing Phase 5** (booking `D2IEVF`, cancelled afterwards; the whole
+response is `tests/Fixtures/tbohotel/bookingdetail-cancelled.json`):
+
+- A cancelled booking answers `Status.Code 200 / "Successful"` with `BookingDetail.BookingStatus:
+  "Cancelled"`, and each room repeats it in its own `Status`. The `Cancel` call itself answers
+  `{Code: 200, Description: "Cancelled"}` and nothing else.
+- **No cancellation charge appears anywhere** — not in the Cancel response and not in BookingDetail.
+  Confirms the plan above: the charge has to be computed from the stored PreBook policy and posted
+  as an *estimated* ledger line.
+- **BookingDetail double-encodes its text**: `Member’s exclusive price` arrives as
+  `Memberâ€™s exclusive price` (UTF-8 bytes read back as CP1252). Search and PreBook are clean, so
+  nothing displays it today — but Phase 6 is the first thing to render BookingDetail text, and it
+  needs a repair pass on the way in or the mojibake ships to the booking page.
+
 ## Phase 7 — Go-live
 
 - Live credentials into `TBOHOTEL_LIVE_USERNAME`/`_PASSWORD`; confirm the live BaseURL (`01`§13 Q2)

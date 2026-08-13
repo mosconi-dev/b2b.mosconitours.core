@@ -63,10 +63,16 @@ readonly class SupplementSet
     {
         $rows = [];
 
+        // Tolerant of shape, because this also reads rows written by older code and a
+        // malformed supplement must not take down a booking page or a voucher.
         foreach ($this->buckets as $supplements) {
-            foreach ($supplements as $supplement) {
-                if (strcasecmp($supplement['type'], 'AtProperty') === 0) {
-                    $rows[] = $supplement;
+            foreach ((array) $supplements as $supplement) {
+                if (! is_array($supplement)) {
+                    continue;
+                }
+
+                if (strcasecmp((string) ($supplement['type'] ?? ''), 'AtProperty') === 0) {
+                    $rows[] = $supplement + ['description' => '', 'price' => 0.0, 'currency' => ''];
                 }
             }
         }

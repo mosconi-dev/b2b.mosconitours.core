@@ -52,6 +52,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('can:hotel.book');
     Route::post('/hotels/bookings', [HotelBookingController::class, 'store'])->name('hotels.bookings.store')
         ->middleware('can:hotel.book');
+    // The money step. Separate from store(): creating the booking takes the agency's
+    // money, this takes the room.
+    Route::post('/hotels/bookings/{booking}/book', [HotelBookingController::class, 'book'])
+        ->name('hotels.bookings.book')->whereNumber('booking')->middleware('can:hotel.book');
+    Route::get('/hotels/bookings/{booking}/voucher', [HotelBookingController::class, 'voucher'])
+        ->name('hotels.bookings.voucher')->whereNumber('booking')->middleware('can:booking.view');
     // Step 2 on its own page, the way a fare gets one on the flight side.
     Route::get('/hotels/{code}/rooms', [HotelController::class, 'rooms'])->name('hotels.rooms')
         ->whereNumber('code')->middleware('can:hotel.search');

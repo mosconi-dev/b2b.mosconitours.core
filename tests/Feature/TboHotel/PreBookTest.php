@@ -281,6 +281,23 @@ class PreBookTest extends TestCase
         $this->assertSame(['Book early and save'], $room->promotions);
     }
 
+    /**
+     * TBO omits the space after the comma. Left alone it reads as our typo on the room
+     * card, the booking page and the printed voucher alike.
+     */
+    public function test_a_room_name_is_spaced_the_way_it_is_read(): void
+    {
+        $room = RoomOffer::fromResponse([
+            'BookingCode' => 'x',
+            'Name' => ['Standard Studio,1 Queen Bed', 'Deluxe Room , 2 Twin Beds', '  Suite  '],
+        ]);
+
+        $this->assertSame(
+            ['Standard Studio, 1 Queen Bed', 'Deluxe Room, 2 Twin Beds', 'Suite'],
+            $room->names,
+        );
+    }
+
     public function test_amenities_come_back_with_the_room(): void
     {
         Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture('prebook'))]);

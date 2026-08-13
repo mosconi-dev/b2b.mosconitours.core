@@ -36,6 +36,18 @@ readonly class RoomOffer
     ) {}
 
     /**
+     * Tidy one room name for display.
+     *
+     * TBO writes them without a space after the comma — "Standard Studio,1 Queen Bed" —
+     * which reads as a typo of ours wherever it appears. Only whitespace is touched;
+     * the words themselves are the supplier's and stay as they are.
+     */
+    private static function roomName(mixed $name): string
+    {
+        return trim(preg_replace('/\s*,\s*(?=\S)/u', ', ', (string) $name) ?? (string) $name);
+    }
+
+    /**
      * @param  array<string, mixed>  $raw
      */
     public static function fromResponse(array $raw): self
@@ -43,7 +55,7 @@ readonly class RoomOffer
         return new self(
             bookingCode: (string) Arr::get($raw, 'BookingCode', ''),
             names: array_values(array_filter(array_map(
-                fn ($n): string => trim((string) $n),
+                self::roomName(...),
                 (array) Arr::get($raw, 'Name', []),
             ))),
             inclusion: filled(Arr::get($raw, 'Inclusion')) ? trim((string) Arr::get($raw, 'Inclusion')) : null,
