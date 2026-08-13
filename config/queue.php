@@ -35,12 +35,26 @@ return [
             'driver' => 'sync',
         ],
 
+        /*
+        | `retry_after` must be longer than the longest job's `$timeout`, or the queue
+        | decides a job that is merely slow has been abandoned and hands it to a second
+        | worker while the first is still working. That is not theoretical here: the
+        | catalogue sync declares a 30-minute timeout because enriching thousands of
+        | properties genuinely takes that long, and at Laravel's default 90 seconds it
+        | was reclaimed mid-run, marked MaxAttemptsExceeded, and left racing a duplicate
+        | of itself against the supplier's API.
+        |
+        | The cost of the larger number is slower recovery from a worker that dies
+        | outright. That is the right trade: a dead worker is rare, and the booking jobs
+        | this delays are all `tries = 1` — they would be failed on reclaim rather than
+        | retried, so waiting is no worse for them than being reclaimed promptly.
+        */
         'database' => [
             'driver' => 'database',
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 2100),
             'after_commit' => false,
         ],
 

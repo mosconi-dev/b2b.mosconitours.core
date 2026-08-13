@@ -112,6 +112,10 @@ class CatalogueSyncService
                     // One unreachable city must not cost us the other ninety-three.
                     $run->recordFailure($city->code, $city->name, $e->getMessage());
                 }
+
+                // Per city, for the same reason as the detail pass: a page that never
+                // moves is indistinguishable from a page that has stopped.
+                $run->save();
             }
         });
     }
@@ -141,6 +145,12 @@ class CatalogueSyncService
                     } catch (TboHotelException|Throwable $e) {
                         $run->recordFailure(implode(',', array_slice($codes, 0, 3)).'…', null, $e->getMessage());
                     }
+
+                    // Written every batch, not once at the end. Enriching the catalogue
+                    // is tens of minutes of crawling, and a run that shows `processed: 0`
+                    // throughout looks exactly like a run that has hung — which is how
+                    // one gets pressed a second time and ends up racing itself.
+                    $run->save();
                 });
         });
     }
