@@ -13,7 +13,11 @@
             suggestUrl: '{{ route('hotels.suggest') }}',
             searchUrl: '{{ route('hotels.search') }}',
             roomsUrl: '{{ route('hotels.rooms', ['code' => '__CODE__']) }}',
-         })" class="space-y-5">
+         })"
+         {{-- gap, not space-y: the search form above is display:none once collapsed but
+              still counts as a sibling, so space-y put 20px of nothing above the summary
+              bar. Gaps ignore children that generate no box. --}}
+         class="flex flex-col gap-5">
 
         @include('hotels.form')
 

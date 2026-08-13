@@ -1645,14 +1645,16 @@ Alpine.data('hotelSearch', (config = {}) => ({
      */
     restore() {
         const q = new URLSearchParams(window.location.search);
+        const city = q.get('city');
+        const hotel = q.get('hotel');
 
-        if (!q.get('city') || !q.get('checkIn')) return;
+        if ((!city && !hotel) || !q.get('checkIn')) return;
 
         this.checkIn = q.get('checkIn');
         this.checkOut = q.get('checkOut') || this.checkOutMin;
         this.guestNationality = q.get('guestNationality') || this.guestNationality;
-        this.locationType = 'city';
-        this.locationCode = q.get('city');
+        this.locationType = hotel ? 'hotel' : 'city';
+        this.locationCode = hotel || city;
         this.locationLabel = q.get('label') || '';
 
         const rooms = this.decodeRooms(q.get('rooms') || '');
@@ -1792,6 +1794,34 @@ Alpine.data('hotelSearch', (config = {}) => ({
             .pop() || null;
     },
 
+    /**
+     * Put the search in the address bar.
+     *
+     * Without it /hotels is the only page in the flow that cannot be reloaded, shared
+     * or bookmarked, and the browser's own back button loses the results. Written with
+     * the same parameter names the rooms page emits and restore() reads, rather than a
+     * second, opaque encoding of the same six facts.
+     *
+     * replaceState, not pushState: re-searching refines one intent rather than making a
+     * new place, and stacking history entries would mean pressing back five times to
+     * leave a page the agent visited once.
+     */
+    rememberInUrl() {
+        if (this.redirectUrl) return; // the embedded form navigates instead
+
+        const params = new URLSearchParams({
+            checkIn: this.checkIn,
+            checkOut: this.checkOut,
+            guestNationality: this.guestNationality,
+            rooms: this.roomsToken,
+            label: this.locationLabel,
+        });
+
+        params.set(this.locationType === 'hotel' ? 'hotel' : 'city', this.locationCode);
+
+        window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+    },
+
     selectHotel(offer) {
         this.selecting = offer.hotelCode;
         window.location = this.roomsUrl(offer);
@@ -1897,6 +1927,7 @@ Alpine.data('hotelSearch', (config = {}) => ({
 
             this.result = body;
             this.collapsed = true;
+            this.rememberInUrl();
         } catch {
             this.error = 'The search could not be completed. Please try again.';
         } finally {
