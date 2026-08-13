@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Models\Booking;
+use App\Services\Booking\Concerns\IssuedByAgency;
 use Illuminate\Support\Carbon;
 
 /**
@@ -21,6 +22,8 @@ use Illuminate\Support\Carbon;
  */
 class ETicket
 {
+    use IssuedByAgency;
+
     private function __construct(
         public readonly Booking $booking,
         public readonly bool $withPrices,
@@ -68,30 +71,6 @@ class ETicket
         return filled($this->booking->pnr)
             ? 'This is a reservation, not a ticket. No ticket has been issued yet and the airline may release these seats until it is.'
             : 'This is a priced quote. Nothing has been reserved with the airline.';
-    }
-
-    /**
-     * Who issued this document, and how the traveller reaches them.
-     *
-     * The agency is the customer's counterparty — when a flight moves, they call the
-     * agency, not us and not the airline. So the details are resolved rather than
-     * printed blank: an agency that has not uploaded a logo still gets a branded
-     * document, and one that has not filled in a contact email falls back to the agent
-     * who actually made the booking.
-     *
-     * @return array{name: string, logo: string, email: ?string, phone: ?string, address: ?string}
-     */
-    public function issuer(): array
-    {
-        $agency = $this->booking->agency;
-
-        return [
-            'name' => $agency?->name ?: config('app.name'),
-            'logo' => $agency?->logoUrl() ?: asset('favicon.png'),
-            'email' => $agency?->contact_email ?: $this->booking->user?->email,
-            'phone' => $agency?->contact_phone ?: null,
-            'address' => $agency?->address ?: null,
-        ];
     }
 
     /**

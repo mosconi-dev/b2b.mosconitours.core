@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletLoadRequest;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Booking\HotelVoucher;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\HotelBookingService;
 use App\Services\TboHotel\TboHotelService;
@@ -170,6 +171,9 @@ class HotelBookingController extends Controller
      * Rendered entirely from hotel_bookings, so it prints during a TBO outage and reads
      * the same years later whatever has happened to the property since. There is
      * nothing to print before TBO has confirmed: until then it is a quote.
+     *
+     * `?prices=0` renders the guest copy — the same document without the rate, which is
+     * what an agency hands the traveller. Same switch the e-ticket carries.
      */
     public function voucher(Request $request, Booking $booking): View
     {
@@ -181,7 +185,11 @@ class HotelBookingController extends Controller
         abort_unless($booking->product === BookingProduct::Hotel, 404);
         abort_if(blank($booking->hotel?->confirmation_number), 404);
 
-        return view('hotels.voucher', ['booking' => $booking, 'stay' => $booking->hotel]);
+        return view('hotels.voucher', [
+            'booking' => $booking,
+            'stay' => $booking->hotel,
+            'voucher' => HotelVoucher::for($booking, withPrices: $request->query('prices') !== '0'),
+        ]);
     }
 
     private function storeError(Request $request, string $message, int $status): RedirectResponse|JsonResponse

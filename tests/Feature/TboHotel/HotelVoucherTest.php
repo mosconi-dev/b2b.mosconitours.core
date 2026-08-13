@@ -24,6 +24,8 @@ class HotelVoucherTest extends TestCase
 {
     use InteractsWithRbac, RefreshDatabase;
 
+    private int $issued = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -38,7 +40,8 @@ class HotelVoucherTest extends TestCase
     private function booking(User $owner, BookingStatus $status = BookingStatus::Quoted, array $detail = []): Booking
     {
         $booking = Booking::create([
-            'reference' => 'MT-VOUCHER',
+            // Numbered, because a test may need two bookings and the column is unique.
+            'reference' => 'MT-VOUCHER'.(++$this->issued > 1 ? $this->issued : ''),
             'product' => BookingProduct::Hotel,
             'supplier' => Supplier::TboHotel,
             'user_id' => $owner->id,
@@ -209,12 +212,13 @@ class HotelVoucherTest extends TestCase
             ->assertSee('WM9CWM')
             ->assertSee('Jen s Comfy Home')
             ->assertSee('Standard Studio, 1 Queen Bed')
-            ->assertSee('Mr Juan Dela Cruz')
-            ->assertSee('lead guest')
+            ->assertSee('MR JUAN DELA CRUZ')
+            ->assertSee('lead')
             // What the guest still owes on arrival, and the terms that govern cancelling.
             ->assertSee('Payable at the hotel')
             ->assertSee('Deposit Fee per stay')
-            ->assertSee('100% of the stay')
+            ->assertSee('100%')
+            ->assertSee('of the stay')
             ->assertSee('Photo ID required at check-in', false)
             ->assertSee('MT-VOUCHER');
     }
@@ -230,25 +234,156 @@ class HotelVoucherTest extends TestCase
         $this->actingAs($user)
             ->get(route('hotels.bookings.voucher', $booking))
             ->assertOk()
-            ->assertSee('not a real booking');
+            ->assertSee('NOT A REAL BOOKING');
     }
 
     /**
      * The hotel's own reference arrives late and only within thirty days of check-in,
-     * so its absence is normal and must not print an empty label.
+     * so the reference band has to distinguish "not issued yet" from "we lost it".
      */
-    public function test_the_hotel_reference_appears_only_once_issued(): void
+    public function test_the_hotel_reference_reads_as_pending_until_it_is_issued(): void
     {
         $user = $this->agent();
 
-        $without = $this->booking($user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM']);
-        $this->actingAs($user)->get(route('hotels.bookings.voucher', $without))
-            ->assertOk()->assertDontSee('Hotel reference');
+        $booking = $this->booking($user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM']);
+        $this->actingAs($user)->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee('Hotel reference')
+            ->assertSee('—');
 
-        $without->hotel->update(['hotel_confirmation_number' => 'HTL-778']);
+        $booking->hotel->update(['hotel_confirmation_number' => 'HTL-778']);
 
-        $this->actingAs($user)->get(route('hotels.bookings.voucher', $without->fresh()))
+        $this->actingAs($user)->get(route('hotels.bookings.voucher', $booking->fresh()))
             ->assertOk()->assertSee('Hotel reference')->assertSee('HTL-778');
+    }
+
+    // ------------------------------------------------- the shape of the document ----
+
+    /**
+     * The guest deals with the agency, not with us and not with TBO. Both printed
+     * documents carry the agency's masthead for the same reason.
+     */
+    public function test_the_voucher_is_issued_in_the_agency_name(): void
+    {
+        $user = $this->agent();
+        $agency = $user->agency;
+        $agency->update(['contact_email' => 'desk@agency.test', 'contact_phone' => '+63 2 8000 0000']);
+
+        $booking = $this->booking($user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM']);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee($agency->name)
+            ->assertSee('desk@agency.test')
+            ->assertSee('+63 2 8000 0000')
+            ->assertSee('Need help with this booking?');
+    }
+
+    /**
+     * The same switch the e-ticket carries: what the agency paid is not the guest's
+     * business, and the copy handed over must not print it.
+     */
+    public function test_the_guest_copy_hides_the_rate(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM']);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee('Rate summary')
+            ->assertSee('4,036.02');
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', [$booking, 'prices' => 0]))
+            ->assertOk()
+            ->assertDontSee('Rate summary')
+            ->assertDontSee('4,036.02')
+            // What the guest still owes is not the agency's rate, and stays.
+            ->assertSee('Deposit Fee per stay');
+    }
+
+    /**
+     * A voucher is a document people keep, and the printed copy does not update when
+     * the booking does. A cancelled stay has to say so on its face.
+     */
+    public function test_a_cancelled_stay_says_the_voucher_is_dead(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Cancelled, ['confirmation_number' => 'WM9CWM']);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee('no longer valid');
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $this->booking(
+                $user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM'],
+            )))
+            ->assertOk()
+            ->assertDontSee('no longer valid');
+    }
+
+    /**
+     * The desk hours are stated inside the hotel's own small print. A guest arriving at
+     * 8am needs them at the top, not buried on page two.
+     */
+    public function test_the_desk_hours_are_lifted_out_of_the_small_print(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Confirmed, [
+            'confirmation_number' => 'WM9CWM',
+            'rate_conditions' => [
+                '<p>CheckIn Time-Begin: 2:00 PM</p>',
+                '<p>CheckIn Time-End: 6:00 PM</p>',
+                '<p>CheckOut Time: 12:00 PM</p>',
+            ],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee('from 2:00 PM until 6:00 PM')
+            ->assertSee('by 12:00 PM');
+    }
+
+    /**
+     * A property that does not state its hours must not have any invented for it.
+     */
+    public function test_absent_desk_hours_are_simply_not_printed(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Confirmed, [
+            'confirmation_number' => 'WM9CWM',
+            'rate_conditions' => ['<p>Photo ID required at check-in.</p>'],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertDontSee('from ')
+            ->assertDontSee('by 12');
+    }
+
+    /**
+     * Every room the property is holding belongs on the rooming list, including one
+     * whose guest names never made it into the booking.
+     */
+    public function test_a_room_without_names_still_appears(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Confirmed, [
+            'confirmation_number' => 'WM9CWM',
+            'rooms_count' => 2,
+            'room_names' => ['Standard Studio, 1 Queen Bed', 'Deluxe Room, 2 Twin Beds'],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee('Deluxe Room, 2 Twin Beds');
     }
 
     public function test_the_voucher_is_owned_and_gated(): void
