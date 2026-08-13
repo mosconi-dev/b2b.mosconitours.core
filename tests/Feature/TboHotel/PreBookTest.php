@@ -94,6 +94,38 @@ class PreBookTest extends TestCase
         $this->assertStringContainsString('cancellation charge', $result->rateConditions[0]);
     }
 
+    /**
+     * TBO sends several rate conditions as HTML with the brackets already escaped, so
+     * they arrive as literal "&lt;ul&gt;&lt;li&gt;…". Printed as-is an agent reads
+     * markup instead of the check-in rules.
+     */
+    public function test_escaped_markup_in_rate_conditions_is_decoded_and_made_safe(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response([
+            'Status' => ['Code' => 200, 'Description' => 'Successful'],
+            'HotelResult' => [[
+                'HotelCode' => '1012705',
+                'Currency' => 'PHP',
+                'RateConditions' => [
+                    'CheckIn Instructions: &lt;ul&gt;&lt;li&gt;Photo ID required&lt;/li&gt;&lt;/ul&gt;',
+                    'Early check out will attract full cancellation charge',
+                    'Hosted: &lt;script&gt;alert(1)&lt;/script&gt;&lt;p&gt;Cash only&lt;/p&gt;',
+                ],
+                'Rooms' => [['BookingCode' => self::CODE, 'TotalFare' => 100.0, 'Name' => ['Room']]],
+            ]],
+        ])]);
+
+        $conditions = $this->service()->preBook(self::CODE)->rateConditions;
+
+        $this->assertStringContainsString('<li>Photo ID required</li>', $conditions[0]);
+        $this->assertStringNotContainsString('&lt;', $conditions[0]);
+        // Plain entries are left exactly as written.
+        $this->assertSame('Early check out will attract full cancellation charge', $conditions[1]);
+        // Decoding must not become an injection route.
+        $this->assertStringNotContainsString('alert', $conditions[2]);
+        $this->assertStringContainsString('Cash only', $conditions[2]);
+    }
+
     public function test_amenities_come_back_with_the_room(): void
     {
         Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture('prebook'))]);

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
 use App\Http\Requests\StoreBookingRequest;
 use App\Jobs\FulfilBookingJob;
@@ -208,6 +209,11 @@ class BookingController extends Controller
             $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
             403,
         );
+
+        // This chain is Book → Ticket against TBO Air. A hotel booking carries a
+        // BookingCode and no result index, so running it here would send a hotel's
+        // stored quote to the airline API and fail somewhere expensive.
+        abort_unless($booking->product === BookingProduct::Flight, 404);
 
         if (! $booking->status->isInFlight() && $booking->status !== BookingStatus::Quoted) {
             return back()->with(

@@ -44,13 +44,18 @@
                         <dd class="font-medium text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->ancillary_total, 2) }}</dd>
                     </div>
                 @endif
+                @unless ($booking->isHotel())
+                    <div>
+                        <dt class="text-gray-500">Fare type</dt>
+                        <dd class="font-medium text-brand-900">{{ $booking->is_lcc ? 'Low-cost (LCC)' : 'GDS' }}</dd>
+                    </div>
+                @endunless
+                {{-- Both products have a supplier reference; only flights call it a PNR
+                     and only flights have a trace. BookingProduct::referenceLabel()
+                     carries the naming so it is decided in one place. --}}
                 <div>
-                    <dt class="text-gray-500">Fare type</dt>
-                    <dd class="font-medium text-brand-900">{{ $booking->is_lcc ? 'Low-cost (LCC)' : 'GDS' }}</dd>
-                </div>
-                <div>
-                    <dt class="text-gray-500">PNR</dt>
-                    <dd class="font-medium text-brand-900">{{ $booking->pnr ?? '—' }}</dd>
+                    <dt class="text-gray-500">{{ $booking->product->referenceLabel() }}</dt>
+                    <dd class="font-medium text-brand-900">{{ $booking->supplier_reference ?? $booking->pnr ?? '—' }}</dd>
                 </div>
                 @if (filled($booking->booking_id))
                     <div>
@@ -62,10 +67,12 @@
                     <dt class="text-gray-500">Created</dt>
                     <dd class="font-medium text-brand-900">{{ $booking->created_at?->format('M j, Y H:i') }}</dd>
                 </div>
-                <div class="col-span-2">
-                    <dt class="text-gray-500">Trace</dt>
-                    <dd class="truncate font-mono text-xs text-gray-500">{{ $booking->trace_id ?? '—' }}</dd>
-                </div>
+                @unless ($booking->isHotel())
+                    <div class="col-span-2">
+                        <dt class="text-gray-500">Trace</dt>
+                        <dd class="truncate font-mono text-xs text-gray-500">{{ $booking->trace_id ?? '—' }}</dd>
+                    </div>
+                @endunless
             </dl>
         </div>
 
@@ -141,6 +148,17 @@
                     @endif
                 </p>
             </div>
+        @elseif ($booking->status === $statuses::Quoted && $booking->isHotel())
+            {{-- A hotel quote is finished on our side and not yet sent to TBO. There is
+                 no ticket to issue and no airline to call, so the flight panel below
+                 must not be offered here — its button runs Book → Ticket against TBO
+                 Air. Vouchering arrives in the next phase. --}}
+            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-brand-900">Not yet confirmed</h2>
+                <p class="mt-2 text-sm text-gray-500">
+                    This stay is saved and paid for on our side. Nothing has been sent to the hotel yet.
+                </p>
+            </div>
         @elseif ($booking->status === $statuses::Quoted)
             {{-- Only reachable for bookings saved before ticketing became one act. --}}
             <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -170,6 +188,79 @@
                     </form>
                 @else
                     <p class="mt-3 text-sm text-gray-400">You do not have permission to issue tickets.</p>
+                @endif
+            </div>
+        @endif
+
+        {{-- The stay. Read entirely from hotel_bookings, never from the catalogue: a
+             booking must read the same years later, whatever has happened to the
+             property since. --}}
+        @if ($booking->isHotel() && $booking->hotel)
+            @php $stay = $booking->hotel; @endphp
+            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-brand-900">{{ $stay->hotel_name }}</h2>
+                @if (filled($stay->address))
+                    <p class="mt-0.5 text-sm text-gray-500">{{ $stay->address }}</p>
+                @endif
+
+                <dl class="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                    <div>
+                        <dt class="text-gray-500">Check-in</dt>
+                        <dd class="font-medium text-brand-900">{{ $stay->check_in->format('j M Y') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Check-out</dt>
+                        <dd class="font-medium text-brand-900">{{ $stay->check_out->format('j M Y') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Nights</dt>
+                        <dd class="font-medium text-brand-900">{{ $stay->nights }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Rooms</dt>
+                        <dd class="font-medium text-brand-900">{{ $stay->rooms_count }}</dd>
+                    </div>
+                </dl>
+
+                @if (! empty($stay->room_names))
+                    <ul class="mt-4 space-y-1 border-t border-gray-100 pt-4 text-sm text-gray-600">
+                        @foreach ($stay->room_names as $name)
+                            <li>{{ $name }}</li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                <div class="mt-4 flex flex-wrap gap-1.5">
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                        {{ $stay->is_refundable ? 'Refundable' : 'Non-refundable' }}
+                    </span>
+                    @if ($stay->with_transfers)
+                        <span class="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">Transfers</span>
+                    @endif
+                    @if (filled($stay->confirmation_number))
+                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                            Confirmation {{ $stay->confirmation_number }}
+                        </span>
+                    @endif
+                </div>
+
+                {{-- Shown here as well as before booking: the guest still has to pay it,
+                     and the agent may be reading this page to answer that question. --}}
+                @if ($stay->payableAtProperty() !== [])
+                    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+                        <p class="text-sm font-semibold text-amber-900">Payable at the hotel</p>
+                        <ul class="mt-2 space-y-1 text-sm text-amber-900">
+                            @foreach ($stay->payableAtProperty() as $supplement)
+                                <li class="flex justify-between gap-4">
+                                    <span>{{ $supplement['description'] ?? 'Additional charge' }}</span>
+                                    <span class="font-medium">
+                                        {{ $supplement['currency'] ?? $booking->currency }}
+                                        {{ number_format((float) ($supplement['price'] ?? 0), 2) }}
+                                    </span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
                 @endif
             </div>
         @endif
@@ -242,7 +333,7 @@
 
         {{-- Passengers --}}
         <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 class="text-base font-semibold text-brand-900">Passengers</h2>
+            <h2 class="text-base font-semibold text-brand-900">{{ $booking->isHotel() ? 'Guests' : 'Passengers' }}</h2>
             <div class="mt-4 divide-y divide-gray-100">
                 @foreach ($booking->pax ?? [] as $p)
                     <div class="flex items-center justify-between py-2.5 text-sm">

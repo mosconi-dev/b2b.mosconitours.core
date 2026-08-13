@@ -2,6 +2,7 @@
 
 namespace App\Services\TboHotel\DTO;
 
+use App\Support\SupplierHtml;
 use Illuminate\Support\Arr;
 
 /**
@@ -50,7 +51,7 @@ readonly class PreBookResult
             room: RoomOffer::fromResponse($room),
             // RateConditions hangs off the hotel, not the room — the spec's wording
             // ("adds ... RateConditions" to the room object) does not match the wire.
-            rateConditions: self::strings(Arr::get($hotel, 'RateConditions')),
+            rateConditions: self::conditions(Arr::get($hotel, 'RateConditions')),
             amenities: self::strings(Arr::get($room, 'Amenities')),
             raw: $body,
         );
@@ -102,6 +103,29 @@ readonly class PreBookResult
     private function cents(float $amount): int
     {
         return (int) round($amount * 100);
+    }
+
+    /**
+     * The hotel's norms, made readable.
+     *
+     * TBO sends several of these as HTML with the angle brackets already escaped, so
+     * they arrive as the literal text `&lt;ul&gt;&lt;li&gt;…`. Printed as-is an agent
+     * reads markup instead of the check-in rules; decoded and rendered raw, a supplier
+     * gets to inject markup into a logged-in page. Decoded, then reduced to the same
+     * allow-list the descriptions go through.
+     *
+     * Entries with no markup are common and pass through untouched.
+     *
+     * @return array<int, string>
+     */
+    private static function conditions(mixed $value): array
+    {
+        return array_values(array_filter(array_map(
+            fn (string $condition): string => (string) SupplierHtml::clean(
+                html_entity_decode($condition, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            ),
+            self::strings($value),
+        ), fn (string $condition): bool => $condition !== ''));
     }
 
     /**

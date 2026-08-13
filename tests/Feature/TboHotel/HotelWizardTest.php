@@ -1,0 +1,396 @@
+<?php
+
+namespace Tests\Feature\TboHotel;
+
+use App\Enums\BookingProduct;
+use App\Enums\BookingStatus;
+use App\Models\Agency;
+use App\Models\Booking;
+use App\Models\Hotel;
+use App\Models\User;
+use App\Models\Wallet;
+use Database\Seeders\PermissionSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Concerns\InteractsWithRbac;
+use Tests\TestCase;
+
+class HotelWizardTest extends TestCase
+{
+    use InteractsWithRbac, RefreshDatabase;
+
+    private const BASE = 'https://api.tbotechnology.in/HotelAPI';
+
+    private const CODE = '1012705!TB!1!TB!f8cea260-96bf-11f1-a512-aa71e0cecaa6!TB!N!TB!AFF!';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(PermissionSeeder::class);
+
+        config([
+            'tbohotel.default' => 'test',
+            'tbohotel.environments.test.credentials.username' => 'hotel-user',
+            'tbohotel.environments.test.credentials.password' => 'hotel-pass',
+            'tbohotel.environments.test.base_url' => self::BASE,
+            'tbohotel.retry_delay' => 0,
+        ]);
+
+        Hotel::create([
+            'source' => 'tbo', 'code' => '1012705', 'city_code' => '127116',
+            'country_code' => 'PH', 'name' => 'Jen s Comfy Home', 'rating' => 3,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fixture(string $name): array
+    {
+        return json_decode(file_get_contents(base_path("tests/Fixtures/tbohotel/{$name}.json")), true);
+    }
+
+    private function fakePreBook(string $fixture = 'prebook'): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response($this->fixture($fixture))]);
+    }
+
+    private function agent(array $permissions = ['hotel.view', 'hotel.search', 'hotel.book']): User
+    {
+        $user = $this->userWith($permissions);
+        $agency = Agency::factory()->create();
+        Wallet::create(['agency_id' => $agency->id, 'currency' => 'PHP', 'balance' => '100000.00']);
+        $user->forceFill(['agency_id' => $agency->id])->save();
+
+        return $user->fresh();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function query(array $overrides = []): array
+    {
+        return array_replace([
+            'bookingCode' => self::CODE,
+            'checkIn' => '2026-09-11',
+            'checkOut' => '2026-09-13',
+            'locationCode' => '1012705',
+            'guestNationality' => 'PH',
+            'rooms' => '2-0',
+            'shownFare' => '4036.02',
+        ], $overrides);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function payload(array $overrides = []): array
+    {
+        return array_replace([
+            'bookingCode' => self::CODE,
+            'checkIn' => '2026-09-11',
+            'checkOut' => '2026-09-13',
+            'locationCode' => '1012705',
+            'guestNationality' => 'PH',
+            'rooms' => [['adults' => 2, 'children' => 0, 'childrenAges' => []]],
+            'guests' => [
+                ['title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Dela Cruz', 'type' => 'Adult', 'roomIndex' => 0, 'isLead' => true],
+                ['title' => 'Mrs', 'firstName' => 'Ana', 'lastName' => 'Dela Cruz', 'type' => 'Adult', 'roomIndex' => 0, 'isLead' => false],
+            ],
+            'contact' => ['email' => 'agent@example.test', 'phone' => '+639171234567'],
+            'shownFare' => 4036.02,
+            'acceptPriceChange' => false,
+        ], $overrides);
+    }
+
+    public function test_the_wizard_opens_on_a_chosen_rate(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query()))
+            ->assertOk()
+            ->assertSee('Complete Booking')
+            ->assertSee('Jen s Comfy Home')
+            ->assertSee('Guest Details')
+            ->assertSee('Select Hotel')
+            ->assertSee('Select Room');
+    }
+
+    public function test_the_wizard_is_gated_on_booking(): void
+    {
+        $this->actingAs($this->userWith(['hotel.view', 'hotel.search']))
+            ->get('/hotels/book?'.http_build_query($this->query()))
+            ->assertForbidden();
+    }
+
+    /**
+     * PreBook runs before the page renders: the terms an agent is about to accept must
+     * be the supplier's current ones, not a results page from ten minutes ago.
+     */
+    public function test_it_reprices_before_rendering(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())->get('/hotels/book?'.http_build_query($this->query()))->assertOk();
+
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/PreBook'));
+    }
+
+    public function test_an_expired_rate_sends_the_agent_back_to_search(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response(['Status' => ['Code' => 315, 'Description' => 'Session Expired']])]);
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query()))
+            ->assertRedirect(route('hotels'))
+            ->assertSessionHas('error', 'That rate has expired. Search again to see current availability.');
+    }
+
+    /**
+     * The occupancy has to survive the hop, or the guest form offers the wrong number
+     * of name fields. "2-0;2-1x8" is two rooms, the second with an eight-year-old.
+     */
+    public function test_the_occupancy_survives_the_url(): void
+    {
+        $this->fakePreBook('prebook-multiroom');
+
+        $response = $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query(['rooms' => '2-0;2-1x8'])))
+            ->assertOk();
+
+        $rooms = $response->viewData('stay')['rooms'];
+
+        $this->assertCount(2, $rooms);
+        $this->assertSame(['adults' => 2, 'children' => 0, 'childrenAges' => []], $rooms[0]);
+        $this->assertSame(['adults' => 2, 'children' => 1, 'childrenAges' => [8]], $rooms[1]);
+    }
+
+    public function test_a_price_move_arms_the_gate_on_render(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query(['shownFare' => '3500.00'])))
+            ->assertOk()
+            ->assertViewHas('priceChanged', true);
+    }
+
+    public function test_an_unchanged_price_leaves_the_gate_down(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->get('/hotels/book?'.http_build_query($this->query()))
+            ->assertOk()
+            ->assertViewHas('priceChanged', false);
+    }
+
+    public function test_submitting_creates_the_booking_and_redirects(): void
+    {
+        $this->fakePreBook();
+        $user = $this->agent();
+
+        $response = $this->actingAs($user)
+            ->postJson('/hotels/bookings', $this->payload())
+            ->assertOk()
+            ->assertJsonStructure(['redirect', 'reference']);
+
+        $booking = Booking::firstOrFail();
+
+        $this->assertSame(BookingProduct::Hotel, $booking->product);
+        $this->assertSame(BookingStatus::Quoted, $booking->status);
+        $this->assertSame('4036.02', $booking->total_amount);
+        $this->assertSame(route('bookings.show', $booking), $response->json('redirect'));
+        $this->assertSame('Jen s Comfy Home', $booking->hotel->hotel_name);
+    }
+
+    public function test_storing_is_gated_on_booking(): void
+    {
+        $this->actingAs($this->userWith(['hotel.view', 'hotel.search']))
+            ->postJson('/hotels/bookings', $this->payload())
+            ->assertForbidden();
+    }
+
+    /**
+     * The gate is the server's, not the browser's — a client that skips it is refused.
+     */
+    public function test_an_unaccepted_price_move_is_refused_with_both_figures(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload(['shownFare' => 3500.00]))
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'The hotel re-priced this room from 3,500.00 to 4,036.02. Confirm the new price to continue.');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_an_accepted_price_move_books_at_the_new_price(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload(['shownFare' => 3500.00, 'acceptPriceChange' => true]))
+            ->assertOk();
+
+        $this->assertSame('4036.02', Booking::firstOrFail()->total_amount);
+    }
+
+    public function test_guests_must_match_the_priced_occupancy(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload([
+                'guests' => [
+                    ['title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Dela Cruz', 'type' => 'Adult', 'roomIndex' => 0, 'isLead' => true],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Room 1 was priced for 2 adult(s) and 0 child(ren) — 1 and 0 were given.');
+    }
+
+    /**
+     * TBO accepts Mr, Mrs and Ms only — the flight set would be refused at Book.
+     */
+    public function test_a_title_tbo_will_not_accept_is_refused(): void
+    {
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload([
+                'guests' => [
+                    ['title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Dela Cruz', 'type' => 'Adult', 'roomIndex' => 0, 'isLead' => true],
+                    ['title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Dela Cruz', 'type' => 'Adult', 'roomIndex' => 0, 'isLead' => false],
+                ],
+            ]))
+            ->assertJsonValidationErrors('guests.0.title');
+    }
+
+    public function test_a_nameless_guest_is_refused_before_tbo_sees_it(): void
+    {
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload([
+                'guests' => [
+                    ['title' => 'Mr', 'firstName' => '', 'lastName' => 'Dela Cruz', 'type' => 'Adult', 'roomIndex' => 0, 'isLead' => true],
+                ],
+            ]))
+            ->assertJsonValidationErrors('guests.0.firstName');
+    }
+
+    public function test_contact_details_are_required(): void
+    {
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload(['contact' => ['email' => '', 'phone' => '']]))
+            ->assertJsonValidationErrors(['contact.email', 'contact.phone']);
+    }
+
+    /**
+     * A booking nobody paid for is worse than no booking.
+     */
+    public function test_a_short_wallet_refuses_and_creates_nothing(): void
+    {
+        $this->fakePreBook();
+
+        $user = $this->userWith(['hotel.view', 'hotel.book']);
+        $agency = Agency::factory()->create();
+        Wallet::create(['agency_id' => $agency->id, 'currency' => 'PHP', 'balance' => '10.00']);
+        $user->forceFill(['agency_id' => $agency->id])->save();
+
+        $this->actingAs($user->fresh())
+            ->postJson('/hotels/bookings', $this->payload())
+            ->assertStatus(422);
+
+        $this->assertDatabaseCount('bookings', 0);
+        $this->assertDatabaseCount('hotel_bookings', 0);
+    }
+
+    public function test_an_expired_rate_at_submit_is_reported_as_expired(): void
+    {
+        Http::fake([self::BASE.'/PreBook' => Http::response(['Status' => ['Code' => 315, 'Description' => 'Session Expired']])]);
+
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload())
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'That rate has expired. Please search again.');
+    }
+
+    /**
+     * The booking page is shared, and its flight half must not leak onto a hotel: the
+     * Complete booking button there runs Book → Ticket against TBO Air.
+     */
+    public function test_the_booking_page_shows_the_stay_and_no_flight_actions(): void
+    {
+        $this->fakePreBook();
+        $user = $this->agent(['hotel.view', 'hotel.book', 'booking.view']);
+
+        $this->actingAs($user)->postJson('/hotels/bookings', $this->payload());
+        $booking = Booking::firstOrFail();
+
+        $this->actingAs($user)
+            ->get(route('bookings.show', $booking))
+            ->assertOk()
+            ->assertSee('Jen s Comfy Home')
+            ->assertSee('Check-in')
+            ->assertSee('Not yet confirmed')
+            ->assertSee('Guests')
+            // Its reference is a confirmation number, and it has no trace or fare type.
+            ->assertSee('Confirmation no.')
+            ->assertDontSee('Not yet ticketed')
+            ->assertDontSee('Complete booking')
+            ->assertDontSee('Fare type')
+            ->assertDontSee('>Trace<', false)
+            ->assertDontSee('>PNR<', false)
+            ->assertDontSee('>Passengers<', false);
+    }
+
+    /**
+     * And the route itself refuses, so a hand-crafted POST cannot send a hotel's stored
+     * quote to the airline API.
+     */
+    public function test_the_flight_fulfil_route_refuses_a_hotel_booking(): void
+    {
+        $this->fakePreBook();
+
+        // The owner, holding every flight ability — so the refusal is about the
+        // product and nothing else.
+        $user = $this->agent(['hotel.view', 'hotel.book', 'booking.view', 'flight.book', 'flight.issue']);
+
+        $this->actingAs($user)->postJson('/hotels/bookings', $this->payload());
+        $booking = Booking::firstOrFail();
+
+        $this->actingAs($user)
+            ->post(route('bookings.fulfil', $booking))
+            ->assertNotFound();
+
+        $this->assertSame(BookingStatus::Quoted, $booking->fresh()->status);
+    }
+
+    /**
+     * The results page is where steps 1 and 2 happen, so it carries the same stepper —
+     * and the Select button is the move from 2 to 3.
+     */
+    public function test_the_results_page_carries_the_stepper_and_the_select_link(): void
+    {
+        $this->actingAs($this->agent())
+            ->get('/hotels')
+            ->assertOk()
+            ->assertSee('Select Hotel')
+            ->assertSee('Select Room')
+            ->assertSee(route('hotels.book'), false);
+    }
+
+    /**
+     * Without hotel.book the Select control is inert. The route enforces this too —
+     * this is about not offering a door the agent cannot walk through.
+     */
+    public function test_an_agent_who_cannot_book_gets_no_select_link(): void
+    {
+        $this->actingAs($this->userWith(['hotel.view', 'hotel.search']))
+            ->get('/hotels')
+            ->assertOk()
+            ->assertSee('You do not have permission to book hotels')
+            ->assertDontSee('bookUrl(offer, room)', false);
+    }
+}

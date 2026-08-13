@@ -13,7 +13,15 @@
             suggestUrl: '{{ route('hotels.suggest') }}',
             searchUrl: '{{ route('hotels.search') }}',
             hotelUrl: '{{ url('hotels') }}',
+            bookUrl: '{{ route('hotels.book') }}',
          })" class="space-y-5">
+
+        {{-- Steps 1 and 2 both live on this page: picking the hotel, then the room
+             inside it. The stepper reads the component's reactive `step`, which is 2
+             once a property is open. --}}
+        <div x-show="result" x-cloak class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <x-hotel-stepper />
+        </div>
 
         @include('hotels.form')
 
@@ -227,11 +235,20 @@
                                                 <div class="shrink-0 text-right">
                                                     <p class="text-base font-semibold text-brand-900" x-text="money(room.totalFare, offer.currency)"></p>
                                                     <p class="text-xs text-gray-400" x-text="'incl. tax ' + money(room.totalTax, offer.currency)"></p>
-                                                    {{-- Phase 4 turns this into PreBook. --}}
-                                                    <button type="button" disabled
-                                                            class="mt-2 cursor-not-allowed rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-500">
-                                                        Select
-                                                    </button>
+                                                    @can('hotel.book')
+                                                        {{-- Leaves step 2. The wizard re-prices through PreBook
+                                                             before it renders, so the terms the agent accepts are
+                                                             the supplier's current ones, not this page's. --}}
+                                                        <a :href="bookUrl(offer, room)"
+                                                           class="mt-2 inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800">
+                                                            Select
+                                                        </a>
+                                                    @else
+                                                        <button type="button" disabled title="You do not have permission to book hotels"
+                                                                class="mt-2 cursor-not-allowed rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-500">
+                                                            Select
+                                                        </button>
+                                                    @endcan
                                                 </div>
                                             </div>
                                         </div>

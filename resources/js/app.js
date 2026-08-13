@@ -1582,6 +1582,7 @@ Alpine.data('hotelSearch', (config = {}) => ({
     suggestUrl: config.suggestUrl,
     searchUrl: config.searchUrl,
     hotelUrl: config.hotelUrl,
+    bookUrlBase: config.bookUrl,
 
     // Form
     locationLabel: '',
@@ -1648,6 +1649,15 @@ Alpine.data('hotelSearch', (config = {}) => ({
         return this.iso(moved);
     },
 
+    /**
+     * Which wizard step this page is on. Choosing the hotel is step 1; opening one to
+     * pick a room is step 2. The remaining three happen in the booking wizard, which
+     * shares the same stepper and the same numbering.
+     */
+    get step() {
+        return this.open ? 2 : 1;
+    },
+
     get today() {
         return this.iso(new Date());
     },
@@ -1704,6 +1714,29 @@ Alpine.data('hotelSearch', (config = {}) => ({
         return `${currency || ''} ${Number(amount).toLocaleString(undefined, {
             minimumFractionDigits: 2, maximumFractionDigits: 2,
         })}`.trim();
+    },
+
+    /**
+     * Step 2 → step 3. Occupancy rides along encoded as "2-0;2-1x8,10" — the wizard
+     * needs the exact rooms that were priced to build one name field per occupant, and
+     * a BookingCode does not carry them.
+     */
+    bookUrl(offer, room) {
+        const rooms = this.rooms
+            .map((r) => `${r.adults}-${r.children}` + (r.childrenAges.length ? `x${r.childrenAges.join(',')}` : ''))
+            .join(';');
+
+        const params = new URLSearchParams({
+            bookingCode: room.bookingCode,
+            checkIn: this.checkIn,
+            checkOut: this.checkOut,
+            locationCode: offer.hotelCode,
+            guestNationality: this.guestNationality,
+            rooms,
+            shownFare: room.totalFare,
+        });
+
+        return `${this.bookUrlBase}?${params}`;
     },
 
     async suggest() {
@@ -1813,6 +1846,183 @@ Alpine.data('hotelSearch', (config = {}) => ({
         } catch {
             // The rates are the point of the panel; a missing description is not
             // worth an error message.
+        }
+    },
+}));
+
+/**
+ * The hotel booking wizard, steps 3–5.
+ *
+ * Steps 1 and 2 happened on the results page, so this opens on Guest Details. The
+ * numbering is shared with the flights wizard deliberately — same stepper, same
+ * positions — so an agent who has learned one has learned both.
+ */
+Alpine.data('hotelBooking', (config = {}) => ({
+    storeUrl: config.storeUrl,
+    hotelsUrl: config.hotelsUrl,
+    bookingCode: config.bookingCode,
+    quote: config.quote || {},
+    stay: config.stay || {},
+    wallet: config.wallet,
+    shownFare: config.shownFare,
+    priceChanged: !!config.priceChanged,
+
+    step: 3,
+    guests: [],
+    contact: { email: config.contactEmail || '', phone: '' },
+    acceptPriceChange: false,
+    loading: false,
+    error: '',
+
+    formatDay,
+
+    init() {
+        this.guests = this.blankGuests();
+    },
+
+    get rooms() {
+        return this.stay.rooms || [];
+    },
+
+    /**
+     * One name field per occupant, in the room that occupant sleeps in. TBO prices per
+     * room and groups CustomerDetails the same way, so the form has to be built from
+     * the occupancy that was priced rather than from a free-form count.
+     */
+    blankGuests() {
+        const guests = [];
+
+        this.rooms.forEach((room, r) => {
+            for (let i = 0; i < room.adults; i++) {
+                guests.push(this.blank(r, 'Adult', guests.length));
+            }
+
+            for (let i = 0; i < room.children; i++) {
+                guests.push(this.blank(r, 'Child', guests.length));
+            }
+        });
+
+        // The lead is who the desk asks for: the first adult of the first room. The
+        // server enforces this too — the flag here is only so the agent can see it.
+        const lead = guests.find((g) => g.type === 'Adult' && g.roomIndex === 0);
+        if (lead) lead.isLead = true;
+
+        return guests;
+    },
+
+    blank(roomIndex, type, key) {
+        return { key, title: type === 'Child' ? 'Ms' : 'Mr', firstName: '', lastName: '', type, roomIndex, isLead: false };
+    },
+
+    guestsIn(roomIndex) {
+        return this.guests.filter((g) => g.roomIndex === roomIndex);
+    },
+
+    roomName(index) {
+        return (this.quote.names || [])[index] || '';
+    },
+
+    occupancyLabel(room) {
+        const parts = [`${room.adults} adult${room.adults === 1 ? '' : 's'}`];
+
+        if (room.children) {
+            parts.push(`${room.children} child${room.children === 1 ? '' : 'ren'}`);
+        }
+
+        return parts.join(' · ');
+    },
+
+    get nightsLabel() {
+        const from = new Date(`${this.stay.checkIn}T00:00:00`);
+        const to = new Date(`${this.stay.checkOut}T00:00:00`);
+        const nights = Math.max(1, Math.round((to - from) / 86400000));
+        const rooms = this.rooms.length;
+
+        return `${nights} night${nights === 1 ? '' : 's'} · ${rooms} room${rooms === 1 ? '' : 's'}`;
+    },
+
+    get delta() {
+        return Number(this.quote.totalFare || 0) - Number(this.shownFare || 0);
+    },
+
+    get shortfall() {
+        if (!this.wallet) return 0;
+
+        return Math.max(0, Number(this.quote.totalFare || 0) - Number(this.wallet.balance || 0));
+    },
+
+    get canSubmit() {
+        return !this.priceChanged || this.acceptPriceChange;
+    },
+
+    money(amount) {
+        return `${this.quote.currency || ''} ${Number(amount || 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        })}`.trim();
+    },
+
+    /**
+     * Checked here only to save a round trip. The server checks the same things again,
+     * and its answer is the one that counts.
+     */
+    toPayment() {
+        const missing = this.guests.find((g) => !g.firstName.trim() || !g.lastName.trim());
+
+        if (missing) {
+            this.error = `Room ${missing.roomIndex + 1} is missing a guest name.`;
+            return;
+        }
+
+        if (!this.contact.email.trim() || !this.contact.phone.trim()) {
+            this.error = 'An email and phone number are needed for the booking.';
+            return;
+        }
+
+        this.error = '';
+        this.step = 4;
+    },
+
+    async submit() {
+        if (this.loading || !this.canSubmit) return;
+
+        this.loading = true;
+        this.error = '';
+
+        try {
+            const res = await fetch(this.storeUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '',
+                },
+                body: JSON.stringify({
+                    bookingCode: this.bookingCode,
+                    checkIn: this.stay.checkIn,
+                    checkOut: this.stay.checkOut,
+                    locationCode: this.stay.locationCode,
+                    guestNationality: this.stay.guestNationality,
+                    rooms: this.rooms,
+                    guests: this.guests.map(({ key, ...g }) => g),
+                    contact: this.contact,
+                    shownFare: this.shownFare,
+                    acceptPriceChange: this.acceptPriceChange,
+                }),
+            });
+
+            const body = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                this.error = body.message || 'We could not complete this booking.';
+                this.loading = false;
+                return;
+            }
+
+            this.step = 5;
+            window.location = body.redirect;
+        } catch {
+            this.error = 'Something went wrong. Please try again.';
+            this.loading = false;
         }
     },
 }));

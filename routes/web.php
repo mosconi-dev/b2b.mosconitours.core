@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\FlightController;
+use App\Http\Controllers\HotelBookingController;
 use App\Http\Controllers\HotelController;
 use App\Http\Controllers\HotelSuggestController;
 use App\Http\Controllers\LoadRequestController;
@@ -45,6 +46,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('can:hotel.search');
     Route::post('/hotels/search', [HotelController::class, 'search'])->name('hotels.search')
         ->middleware('can:hotel.search');
+    // Steps 3–5 of the wizard. Also before /hotels/{code}, which matches numbers only
+    // but would still be the more confusing failure if it ever widened.
+    Route::get('/hotels/book', [HotelBookingController::class, 'create'])->name('hotels.book')
+        ->middleware('can:hotel.book');
+    Route::post('/hotels/bookings', [HotelBookingController::class, 'store'])->name('hotels.bookings.store')
+        ->middleware('can:hotel.book');
     Route::get('/hotels/{code}', [HotelController::class, 'show'])->name('hotels.show')
         ->whereNumber('code')->middleware('can:hotel.view');
 
