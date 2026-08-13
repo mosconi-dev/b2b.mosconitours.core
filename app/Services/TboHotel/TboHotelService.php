@@ -148,6 +148,35 @@ class TboHotelService
     }
 
     /**
+     * Send a Book exactly as assembled, and hand back what TBO said.
+     *
+     * Raw on purpose. Every other method here normalises, but this one's caller has to
+     * distinguish "TBO refused" from "TBO did not answer", and normalising would blur
+     * the two into one failure.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     *
+     * @throws TboHotelException
+     */
+    public function bookRaw(array $payload): array
+    {
+        return $this->client->book($payload);
+    }
+
+    /**
+     * Read a booking back from TBO — the authoritative account of whether it exists.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws TboHotelException
+     */
+    public function bookingDetail(string $reference, bool $isConfirmationNumber = false): array
+    {
+        return $this->client->bookingDetail($reference, $isConfirmationNumber);
+    }
+
+    /**
      * The hotel codes a search covers: one property, or a whole city's.
      *
      * @return array<int, string>

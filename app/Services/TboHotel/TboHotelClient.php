@@ -125,6 +125,42 @@ class TboHotelClient
     }
 
     /**
+     * Make the booking (§8). The money step.
+     *
+     * **Never retryable, at any level.** A Book that times out may well have succeeded
+     * — TBO's own §10 assumes exactly that — so repeating it risks a second reservation
+     * against the same guests and the same credit line. An ambiguous answer is settled
+     * by reading, never by asking again: see bookingDetail().
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function book(array $payload): array
+    {
+        return $this->call('book', $payload);
+    }
+
+    /**
+     * Read a booking back from TBO (§10) — the authoritative answer.
+     *
+     * Accepts either reference. `ConfirmationNumber` when Book answered; our own
+     * `BookingReferenceId` when it did not, which is the case that matters: §10 makes
+     * it *mandatory* to call this 120 seconds after a timed-out Book.
+     *
+     * Retryable, because it is a read and the whole point of it is to keep asking until
+     * the supplier gives a straight answer.
+     *
+     * @return array<string, mixed>
+     */
+    public function bookingDetail(string $reference, bool $isConfirmationNumber = false): array
+    {
+        return $this->call('bookingdetail', [
+            $isConfirmationNumber ? 'ConfirmationNumber' : 'BookingReferenceId' => $reference,
+            'PaymentMode' => 'Limit',
+        ], retryable: true);
+    }
+
+    /**
      * Issue one call and return its decoded body.
      *
      * **`retryable` defaults to false.** Retrying is safe only for reads; a Book or

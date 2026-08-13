@@ -5,16 +5,22 @@ namespace App\Services\TboHotel;
 use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
 use App\Enums\Supplier;
+use App\Jobs\ReconcileHotelBooking;
 use App\Models\Booking;
 use App\Models\Hotel;
 use App\Models\User;
 use App\Services\Booking\Concerns\ChargesWallet;
+use App\Services\Booking\Concerns\TransitionsBooking;
 use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboHotel\DTO\Guest;
 use App\Services\TboHotel\DTO\PreBookResult;
 use App\Services\TboHotel\DTO\SearchInput;
+use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\Wallet\WalletService;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Turning a chosen rate into a durable, paid-for booking — with nothing yet committed
@@ -26,7 +32,7 @@ use Illuminate\Support\Facades\DB;
  */
 class HotelBookingService
 {
-    use ChargesWallet;
+    use ChargesWallet, TransitionsBooking;
 
     public function __construct(
         private readonly TboHotelService $tbo,
@@ -45,7 +51,7 @@ class HotelBookingService
      * @param  array{email: string, phone: string}  $contact
      *
      * @throws BookingException when the guests do not match the stay, or the wallet is short
-     * @throws Exceptions\TboHotelException when the rate has expired or vanished
+     * @throws TboHotelException when the rate has expired or vanished
      */
     public function createFromQuote(
         User $user,
@@ -223,5 +229,167 @@ class HotelBookingService
             $guests,
             array_keys($guests),
         );
+    }
+
+    /**
+     * Send the booking to TBO. This is the money step, and the only one.
+     *
+     * Deliberately outside any database transaction. A supplier call inside one holds
+     * a row lock open across the network, and worse, a rollback would erase our record
+     * of a reservation TBO had already made.
+     *
+     * The booking is marked `processing` **before** the call, not after. If this
+     * process dies mid-flight the row still says a Book was attempted, which is what
+     * makes the ambiguous case recoverable rather than invisible.
+     *
+     * @throws BookingException on a refusal we can attribute
+     */
+    public function book(Booking $booking): Booking
+    {
+        $lock = Cache::lock("booking:{$booking->getKey()}:write", 180);
+
+        if (! $lock->get()) {
+            throw new BookingException("Booking {$booking->reference} is already being processed.");
+        }
+
+        try {
+            return $this->attemptBook($booking->fresh());
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function attemptBook(Booking $booking): Booking
+    {
+        $this->guardBookable($booking);
+
+        $payload = TboHotelBookPayload::for($booking);
+
+        if ($booking->status !== BookingStatus::Processing) {
+            $booking = $this->transitionTo($booking, BookingStatus::Processing);
+        }
+
+        try {
+            $response = $this->tbo->bookRaw($payload);
+        } catch (TboHotelException $e) {
+            return $this->handleBookFailure($booking, $e);
+        }
+
+        $confirmation = trim((string) Arr::get($response, 'ConfirmationNumber', ''));
+
+        // TBO said yes and gave us nothing to hold it by. Treat it as unresolved rather
+        // than confirmed: a booking we cannot name is one we cannot cancel or void.
+        if ($confirmation === '') {
+            Log::warning('TBO Hotel booked without a confirmation number', ['booking' => $booking->reference]);
+
+            return $this->reconcileLater($booking, 'Book returned no confirmation number.');
+        }
+
+        return $this->confirm($booking, $confirmation);
+    }
+
+    /**
+     * Record the reservation, then say it is confirmed.
+     *
+     * In that order, and in one transaction. If the status moved first and the write of
+     * the confirmation number failed, we would hold a booking marked Confirmed with no
+     * way to name it at the supplier.
+     */
+    public function confirm(Booking $booking, string $confirmationNumber, ?string $hotelConfirmationNumber = null, ?string $invoiceNumber = null): Booking
+    {
+        return DB::transaction(function () use ($booking, $confirmationNumber, $hotelConfirmationNumber, $invoiceNumber): Booking {
+            $booking->hotel?->forceFill(array_filter([
+                'confirmation_number' => $confirmationNumber,
+                'hotel_confirmation_number' => $hotelConfirmationNumber,
+                'invoice_number' => $invoiceNumber,
+            ], fn ($value): bool => filled($value)))->save();
+
+            return $this->transitionTo($booking, BookingStatus::Confirmed, [
+                'supplier_reference' => $confirmationNumber,
+            ]);
+        });
+    }
+
+    /**
+     * Record the booking as failed, giving the agency its money back.
+     *
+     * Only ever called when the supplier has said no. An unanswered Book is not a
+     * failure — see handleBookFailure.
+     */
+    public function fail(Booking $booking, string $reason): Booking
+    {
+        Log::warning('Hotel booking failed', ['booking' => $booking->reference, 'reason' => $reason]);
+
+        return $this->transitionTo($booking, BookingStatus::Failed);
+    }
+
+    /**
+     * Decide whether a failed Book is a refusal or a question.
+     *
+     * The difference is whether TBO answered. A status code in the body is an answer —
+     * the booking was not made, the wallet goes back, and the agent is told why. A
+     * timeout or a broken connection is not an answer: §10 is explicit that the booking
+     * may well exist, so the money stays put and the reference gets read back later.
+     *
+     * Guessing wrong in one direction refunds an agency for a room its guest will turn
+     * up to. In the other it charges them for nothing. Only the supplier can say, so
+     * only the supplier is asked.
+     */
+    private function handleBookFailure(Booking $booking, TboHotelException $e): Booking
+    {
+        if ($e->status() === null) {
+            return $this->reconcileLater($booking, $e->getMessage());
+        }
+
+        report($e);
+
+        $this->transitionTo($booking, BookingStatus::Failed);
+
+        throw new BookingException($e->getMessage());
+    }
+
+    /**
+     * Leave the booking in flight and go and find out what happened.
+     *
+     * §10, verbatim: *"In case of timeout/failure/http/network related error in book
+     * response then it is mandatory to call the BookingDetail method by using
+     * BookingReferenceId after 120 seconds of book response."*
+     *
+     * The booking is never re-Booked. The reference is spent, and asking again could
+     * buy the room twice.
+     */
+    private function reconcileLater(Booking $booking, string $reason): Booking
+    {
+        Log::warning('TBO Hotel book unresolved; reconciling', [
+            'booking' => $booking->reference,
+            'reason' => $reason,
+        ]);
+
+        ReconcileHotelBooking::dispatch($booking->getKey())
+            ->delay(now()->addSeconds((int) config('tbohotel.reconcile_delay', 120)));
+
+        return $booking->fresh();
+    }
+
+    /**
+     * @throws BookingException
+     */
+    private function guardBookable(Booking $booking): void
+    {
+        if ($booking->product !== BookingProduct::Hotel) {
+            throw new BookingException("Booking {$booking->reference} is not a hotel booking.");
+        }
+
+        // Stamped at creation and immutable. A booking quoted on test must never be
+        // sent to production, whatever the platform has been switched to since.
+        if ($booking->environment !== $this->tbo->environment()) {
+            throw new BookingException(
+                "Booking {$booking->reference} was quoted on {$booking->environment} and cannot be booked on {$this->tbo->environment()}."
+            );
+        }
+
+        if (! in_array($booking->status, [BookingStatus::Quoted, BookingStatus::Processing], true)) {
+            throw new BookingException("Booking {$booking->reference} is {$booking->status->value} and cannot be booked.");
+        }
     }
 }

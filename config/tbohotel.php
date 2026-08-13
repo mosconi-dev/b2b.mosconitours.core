@@ -159,6 +159,14 @@ return [
 
     'search_cache_ttl' => (int) env('TBOHOTEL_SEARCH_CACHE_TTL', 600), // 10 min
 
+    // §10 makes this mandatory and names the number: after a Book that timed out or
+    // errored, BookingDetail must be called by BookingReferenceId 120 seconds later.
+    'reconcile_delay' => (int) env('TBOHOTEL_RECONCILE_DELAY', 120),
+
+    // How long to keep asking before a human is needed. A booking TBO will not account
+    // for is a support problem, not something to poll forever.
+    'reconcile_attempts' => (int) env('TBOHOTEL_RECONCILE_ATTEMPTS', 8),
+
     'booking_window' => (int) env('TBOHOTEL_BOOKING_WINDOW', 1800), // 30 min
 
     // Sent as the Search request's ResponseTime: how long TBO may spend gathering
