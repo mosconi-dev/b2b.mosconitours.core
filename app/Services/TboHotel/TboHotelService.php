@@ -2,10 +2,13 @@
 
 namespace App\Services\TboHotel;
 
+use App\Enums\TboHotelStatus;
 use App\Models\Hotel;
 use App\Services\TboHotel\DTO\HotelOffer;
+use App\Services\TboHotel\DTO\PreBookResult;
 use App\Services\TboHotel\DTO\SearchInput;
 use App\Services\TboHotel\DTO\SearchResult;
+use App\Services\TboHotel\Exceptions\TboHotelException;
 use Illuminate\Support\Arr;
 
 /**
@@ -108,6 +111,40 @@ class TboHotelService
         }
 
         return $this->assemble($raw, count($codes), count($chunks), $failed);
+    }
+
+    /**
+     * Re-price one rate and read the terms that will govern the booking.
+     *
+     * Always called server-side from the stored BookingCode, never from a price the
+     * browser sent back: what the agent was shown is an input to the gate, not a
+     * source of truth about money.
+     *
+     * Throws on 315 — an expired BookingCode means the search behind it is stale and
+     * the agent needs a fresh one, not a retry of this call.
+     *
+     * @throws TboHotelException
+     */
+    public function preBook(string $bookingCode): PreBookResult
+    {
+        $body = $this->client->preBook($bookingCode);
+        $result = PreBookResult::fromResponse($body);
+
+        // Status 201 means different things to different methods. To Search it is an
+        // answer — this chunk of hotels is full — so the client lets it through. To
+        // PreBook it means the one rate we asked about is gone, which is a refusal,
+        // and returning a zero-fare result would let it reach the wallet as free.
+        if (! $result->isBookable()) {
+            $code = (int) Arr::get($body, 'Status.Code', 0);
+
+            throw TboHotelException::fromStatus(
+                TboHotelStatus::tryFrom($code),
+                $code,
+                (string) Arr::get($body, 'Status.Description', '') ?: 'That rate is no longer available.',
+            );
+        }
+
+        return $result;
     }
 
     /**

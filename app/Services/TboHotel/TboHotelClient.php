@@ -105,6 +105,26 @@ class TboHotelClient
     }
 
     /**
+     * Re-price a rate and read its binding terms (§7).
+     *
+     * Not a hold and not a booking — nothing is committed at TBO — but it is the
+     * contract: §18 makes the cancellation policy and norms returned here final for
+     * the itinerary, so this response, not Search's, is what we charge and store.
+     *
+     * Retryable, because it commits nothing. An expired BookingCode comes back as
+     * status 315 and means the search behind it is stale.
+     *
+     * @return array<string, mixed>
+     */
+    public function preBook(string $bookingCode): array
+    {
+        return $this->call('prebook', [
+            'BookingCode' => $bookingCode,
+            'PaymentMode' => 'Limit',
+        ], retryable: true);
+    }
+
+    /**
      * Issue one call and return its decoded body.
      *
      * **`retryable` defaults to false.** Retrying is safe only for reads; a Book or
