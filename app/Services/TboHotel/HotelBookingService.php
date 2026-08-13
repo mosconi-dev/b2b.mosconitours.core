@@ -393,7 +393,13 @@ class HotelBookingService
             $booking->hotel?->forceFill([
                 'cancellation_charge' => $charge,
                 'cancelled_at' => now(),
+                // TBO has just told us this, so it counts as a read — and the per-room
+                // statuses from the last one are now describing a booking that no
+                // longer exists. Dropped rather than left to contradict the line above
+                // them; the next check repopulates them from the source.
                 'supplier_status' => 'Cancelled',
+                'room_statuses' => null,
+                'refreshed_at' => now(),
             ])->save();
 
             $refunded = $booking->walletCharge() !== null;

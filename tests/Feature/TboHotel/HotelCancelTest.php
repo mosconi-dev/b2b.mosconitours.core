@@ -215,6 +215,22 @@ class HotelCancelTest extends TestCase
     }
 
     /**
+     * Per-room statuses read before the cancellation describe a booking that no longer
+     * exists — left in place they print "reported Cancelled · Room 1 not cancelled".
+     */
+    public function test_cancelling_does_not_leave_stale_room_statuses_behind(): void
+    {
+        $booking = $this->confirmed(['room_statuses' => [['name' => 'Studio', 'status' => 'Not Cancelled']]]);
+        $this->fakeCancel(Http::response($this->cancelled()));
+
+        $stay = $this->service()->cancel($booking)->hotel;
+
+        $this->assertSame('Cancelled', $stay->supplier_status);
+        $this->assertNull($stay->room_statuses);
+        $this->assertNotNull($stay->refreshed_at);
+    }
+
+    /**
      * The refund and the fee are two lines, not one net figure: that is what happened,
      * and a single number nobody can reconstruct is what a disputed invoice argues with.
      */
