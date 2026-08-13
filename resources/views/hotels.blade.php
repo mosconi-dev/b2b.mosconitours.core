@@ -115,63 +115,73 @@
                     </template>
 
                     <template x-for="offer in filtered" :key="offer.hotelCode">
-                        <div class="rounded-xl border border-gray-200 bg-white shadow-sm">
-                            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-                                {{-- Property, where the flight card puts the airline --}}
-                                <div class="flex items-center gap-3 sm:w-60">
-                                    <span class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50 text-xs font-bold text-brand-700">
-                                        <template x-if="offer.thumbnail">
-                                            <img :src="offer.thumbnail" :alt="offer.name" class="h-full w-full object-cover" loading="lazy">
-                                        </template>
-                                        <template x-if="!offer.thumbnail">
-                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-gray-300 hover:shadow">
+                            <div class="flex flex-col sm:flex-row">
+
+                                {{-- The photograph, at a size worth having. It is how an
+                                     agent recognises a property, and it was the first thing
+                                     to go when this card chased the flight layout. --}}
+                                <div class="relative h-44 w-full shrink-0 bg-gray-100 sm:h-auto sm:w-56">
+                                    <template x-if="offer.thumbnail">
+                                        <img :src="offer.thumbnail" :alt="offer.name"
+                                             class="absolute inset-0 h-full w-full object-cover" loading="lazy">
+                                    </template>
+                                    <template x-if="!offer.thumbnail">
+                                        <div class="absolute inset-0 flex items-center justify-center text-gray-300">
+                                            <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke-width="1.2" stroke="currentColor">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21" />
                                             </svg>
-                                        </template>
-                                    </span>
-                                    <div class="min-w-0">
-                                        <p class="truncate text-sm font-semibold text-brand-900" x-text="offer.name"></p>
-                                        <p class="truncate text-xs text-gray-400" x-text="offer.address"></p>
-                                    </div>
-                                </div>
-
-                                {{-- The stay, drawn like the itinerary: two ends and the
-                                     span between them. A hotel's journey is its dates. --}}
-                                <div class="flex flex-1 items-center justify-between gap-3">
-                                    <div class="text-center">
-                                        <p class="text-lg font-semibold text-brand-900" x-text="dayMonth(checkIn)"></p>
-                                        <p class="text-xs font-medium text-gray-500">Check-in</p>
-                                    </div>
-                                    <div class="flex flex-1 flex-col items-center">
-                                        <span class="text-[11px] text-gray-400"
-                                              x-text="result.nights + (result.nights === 1 ? ' night' : ' nights')"></span>
-                                        <div class="my-1 flex w-full items-center gap-1">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-gray-300"></span>
-                                            <span class="h-px flex-1 bg-gray-200"></span>
-                                            <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.25V18a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V8.25M3 8.25V6a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 6v2.25M3 8.25h18M7.5 12a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0zm4.5 0h4.5" />
-                                            </svg>
-                                            <span class="h-px flex-1 bg-gray-200"></span>
-                                            <span class="h-1.5 w-1.5 rounded-full bg-gray-300"></span>
                                         </div>
-                                        <span class="text-[11px] font-medium text-gray-500"
-                                              x-text="result.rooms + (result.rooms === 1 ? ' room' : ' rooms') + ' · ' + result.guests + (result.guests === 1 ? ' guest' : ' guests')"></span>
-                                    </div>
-                                    <div class="text-center">
-                                        <p class="text-lg font-semibold text-brand-900" x-text="dayMonth(checkOut)"></p>
-                                        <p class="text-xs font-medium text-gray-500">Check-out</p>
-                                    </div>
+                                    </template>
                                 </div>
 
-                                {{-- Price + select --}}
-                                <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-3 sm:w-40 sm:flex-col sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-                                    <div class="text-right">
-                                        <p class="text-[11px] text-gray-400">total stay</p>
-                                        <p class="text-lg font-bold text-brand-900" x-text="money(offer.lowestFare, offer.currency)"></p>
+                                {{-- What the property is --}}
+                                <div class="min-w-0 flex-1 p-4">
+                                    <p class="truncate text-base font-semibold text-brand-900" x-text="offer.name"></p>
+
+                                    <p x-show="offer.rating" x-cloak class="mt-0.5 text-xs text-amber-500">
+                                        <template x-for="n in (offer.rating || 0)" :key="n"><span>★</span></template>
+                                    </p>
+
+                                    <p x-show="offer.address" x-cloak class="mt-1 flex items-start gap-1 text-xs text-gray-500">
+                                        <svg class="mt-px h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                                        </svg>
+                                        <span class="line-clamp-2" x-text="offer.address"></span>
+                                    </p>
+
+                                    {{-- What an agent screens on, in one line --}}
+                                    <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                                        <span x-show="offer.hasRefundable" x-cloak class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Refundable</span>
+                                        <span x-show="!offer.hasRefundable" x-cloak class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Non-refundable</span>
+                                        <span x-show="offer.hasBreakfast" x-cloak class="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">Breakfast</span>
+                                        <span x-show="offer.hasTransfers" x-cloak class="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">Transfers</span>
                                     </div>
+
+                                    {{-- The one fact that decides a booking more often than any
+                                         other, so it gets a line of its own rather than a chip. --}}
+                                    <p x-show="freeCancellation(offer)" x-cloak class="mt-2 text-xs font-medium text-emerald-700"
+                                       x-text="'Free cancellation before ' + formatDay(freeCancellation(offer))"></p>
+
+                                    <p class="mt-2 text-xs text-gray-400"
+                                       x-text="offer.roomCount + (offer.roomCount === 1 ? ' room type available' : ' room types available')"></p>
+                                </div>
+
+                                {{-- Price and the way forward --}}
+                                <div class="flex items-end justify-between gap-3 border-t border-gray-100 p-4 sm:w-52 sm:flex-col sm:items-end sm:justify-center sm:border-l sm:border-t-0">
+                                    <div class="text-right">
+                                        <p class="text-xl font-bold text-brand-900" x-text="money(offer.lowestFare, offer.currency)"></p>
+                                        {{-- Said plainly because Agoda and its kind quote per
+                                             night: this is the whole stay, taxes in. --}}
+                                        <p class="mt-0.5 text-xs text-gray-500"
+                                           x-text="'total · ' + result.nights + (result.nights === 1 ? ' night' : ' nights') + ' · ' + result.rooms + (result.rooms === 1 ? ' room' : ' rooms')"></p>
+                                        <p class="text-[11px] text-gray-400">taxes included</p>
+                                    </div>
+
                                     <button type="button" @click="selectHotel(offer)"
                                             :disabled="selecting === offer.hotelCode"
-                                            class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                                            class="mt-3 inline-flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
                                         <svg x-show="selecting === offer.hotelCode" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
                                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
@@ -179,27 +189,6 @@
                                         <span x-text="selecting === offer.hotelCode ? 'Pricing…' : 'Select'"></span>
                                     </button>
                                 </div>
-                            </div>
-
-                            {{-- Meta strip, as on the flight card --}}
-                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
-                                <span x-show="offer.rating" x-cloak class="inline-flex items-center gap-1 text-amber-500">
-                                    <template x-for="n in (offer.rating || 0)" :key="n"><span>★</span></template>
-                                </span>
-                                <span class="inline-flex items-center gap-1">
-                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8.25V18a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V8.25M3 8.25V6a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 6v2.25M3 8.25h18M7.5 12a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0zm4.5 0h4.5" /></svg>
-                                    <span x-text="offer.roomCount + (offer.roomCount === 1 ? ' rate' : ' rates')"></span>
-                                </span>
-                                <span x-show="offer.hasBreakfast" x-cloak class="inline-flex items-center gap-1">
-                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /></svg>
-                                    Breakfast
-                                </span>
-                                <span x-show="offer.hasTransfers" x-cloak class="inline-flex items-center gap-1">
-                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>
-                                    Transfers
-                                </span>
-                                <span x-show="offer.hasRefundable" x-cloak class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">Refundable</span>
-                                <span x-show="!offer.hasRefundable" x-cloak class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">Non-refundable</span>
                             </div>
                         </div>
                     </template>

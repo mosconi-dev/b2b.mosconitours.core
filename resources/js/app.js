@@ -1778,13 +1778,18 @@ Alpine.data('hotelSearch', (config = {}) => ({
     },
 
     /**
-     * "12 Sep" — the card's date ends, where the flight card puts a departure time.
+     * The latest date any of this property's rates can still be cancelled free.
+     *
+     * The latest rather than the cheapest room's: the card is an invitation to look,
+     * and the best cancellation terms on offer are what make a property worth opening.
+     * The room page then shows which rate carries them.
      */
-    dayMonth(date) {
-        if (!date) return '';
-        const d = new Date(`${date}T00:00:00`);
-
-        return isNaN(d) ? date : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    freeCancellation(offer) {
+        return (offer.rooms || [])
+            .map((r) => r.freeCancellationUntil)
+            .filter(Boolean)
+            .sort()
+            .pop() || null;
     },
 
     selectHotel(offer) {
