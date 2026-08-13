@@ -3,6 +3,7 @@
 namespace Tests\Feature\TboHotel;
 
 use App\Enums\BookingStatus;
+use App\Jobs\BookHotelJob;
 use App\Jobs\ReconcileHotelBooking;
 use App\Models\Agency;
 use App\Models\Booking;
@@ -276,6 +277,63 @@ class HotelBookTest extends TestCase
         } finally {
             $this->assertSame($before, $this->bookRequests(), 'no second Book reached TBO');
         }
+    }
+
+    /**
+     * The ambiguous case, which is the one that matters.
+     *
+     * A Book that went out and was never answered leaves the booking `processing` with
+     * a send time and no confirmation number — indistinguishable by status from one
+     * merely queued. It may already hold the room, so it is settled by reading the
+     * reference back, never by asking again.
+     */
+    public function test_a_booking_already_on_the_wire_is_never_sent_again(): void
+    {
+        $this->fakeBook(Http::response($this->fixture('book')));
+
+        $booking = $this->quoted();
+        $booking->hotel->update(['book_sent_at' => now()]);
+        $booking->forceFill(['status' => BookingStatus::Processing])->saveQuietly();
+
+        $this->expectException(BookingException::class);
+        $this->expectExceptionMessage('already been sent');
+
+        try {
+            $this->service()->book($booking->fresh());
+        } finally {
+            $this->assertSame(0, $this->bookRequests(), 'nothing was sent');
+        }
+    }
+
+    /**
+     * The job is the caller that can be delivered twice, so it has to stop before the
+     * service does — a second delivery must not even reach the lock.
+     */
+    public function test_a_redelivered_job_does_not_send_a_second_book(): void
+    {
+        $this->fakeBook(Http::response($this->fixture('book')));
+
+        $booking = $this->quoted();
+        $booking->hotel->update(['book_sent_at' => now()]);
+        $booking->forceFill(['status' => BookingStatus::Processing])->saveQuietly();
+
+        (new BookHotelJob($booking->getKey()))->handle(app(HotelBookingService::class));
+
+        $this->assertSame(0, $this->bookRequests(), 'nothing was sent');
+        $this->assertSame(BookingStatus::Processing, $booking->fresh()->status);
+    }
+
+    /**
+     * The send time is written before the request, not after: a worker that dies
+     * mid-call leaves a reservation we may own and no answer saying so.
+     */
+    public function test_the_send_is_recorded_before_the_answer_is_known(): void
+    {
+        $this->fakeBook(Http::response($this->fixture('book')));
+
+        $booking = $this->service()->book($this->quoted());
+
+        $this->assertNotNull($booking->hotel->fresh()->book_sent_at);
     }
 
     /**

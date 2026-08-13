@@ -202,9 +202,11 @@
 
                     <div class="flex items-center justify-between">
                         <button type="button" @click="step = 3" class="text-sm font-medium text-gray-500 hover:text-gray-700">Back to guests</button>
+                        {{-- This press is the whole transaction: it charges the agency
+                             and takes the room. Worded as the flight wizard words it. --}}
                         <x-primary-button type="button" @click="submit()" ::disabled="loading || !canSubmit">
-                            <span x-show="!loading">Confirm booking</span>
-                            <span x-show="loading" x-cloak>Booking…</span>
+                            <span x-show="!loading">Complete booking</span>
+                            <span x-show="loading" x-cloak>Confirming…</span>
                         </x-primary-button>
                     </div>
                     <p x-show="error" x-cloak class="text-right text-sm text-red-600" x-text="error"></p>

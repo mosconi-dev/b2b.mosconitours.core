@@ -128,6 +128,10 @@ class HotelBookingController extends Controller
                 : $this->storeError($request, 'We could not confirm this rate with the hotel. Please try again.', 502);
         }
 
+        // Finishing the wizard is the whole transaction, as it is for flights: the Book
+        // goes out now and there is nothing further for the agent to press.
+        $this->queueBook($booking);
+
         if ($request->expectsJson()) {
             return response()->json([
                 'redirect' => route('bookings.show', $booking),
@@ -137,15 +141,34 @@ class HotelBookingController extends Controller
 
         return redirect()
             ->route('bookings.show', $booking)
-            ->with('status', "Booking {$booking->reference} created.");
+            ->with('status', "Booking {$booking->reference} created — confirming with the hotel now.");
     }
 
     /**
-     * Send the booking to TBO.
+     * Mark the booking as being worked on, then hand it to the queue.
      *
-     * The wallet was debited when the booking was created, so this is not a payment —
-     * it is the moment the room is actually taken. Queued because a Book is allowed 120
-     * seconds and the page should not hold that long; the booking page follows it.
+     * The status moves first and in the same breath as the dispatch, so the page never
+     * shows a booking as merely `quoted` — and offers a button to send it — while a job
+     * is already on its way to taking the room. What stops the two paths colliding is
+     * `book_sent_at`, not the status.
+     */
+    private function queueBook(Booking $booking): void
+    {
+        if ($booking->status === BookingStatus::Quoted) {
+            $booking->update(['status' => BookingStatus::Processing]);
+        }
+
+        BookHotelJob::dispatch($booking->getKey());
+    }
+
+    /**
+     * Resume a booking the queue never sent.
+     *
+     * Not the normal path and not a second purchase: finishing the wizard sends the
+     * Book. This is the recovery path for the one state that genuinely strands — the
+     * agency charged, the stay saved, and the job that should have taken the room lost
+     * to a dead worker before it ran. `quoted` is the only state that describes that,
+     * and `book_sent_at` stops it being used for anything already on the wire.
      */
     public function book(Request $request, Booking $booking): RedirectResponse
     {
@@ -156,11 +179,11 @@ class HotelBookingController extends Controller
 
         abort_unless($booking->product === BookingProduct::Hotel, 404);
 
-        if ($booking->status !== BookingStatus::Quoted) {
+        if ($booking->status !== BookingStatus::Quoted || $booking->hotel?->book_sent_at !== null) {
             return back()->with('error', "Booking {$booking->reference} is {$booking->status->value} and cannot be sent again.");
         }
 
-        BookHotelJob::dispatch($booking->getKey());
+        $this->queueBook($booking);
 
         return back()->with('status', "Confirming {$booking->reference} with the hotel now.");
     }

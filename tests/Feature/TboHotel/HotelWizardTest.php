@@ -4,6 +4,7 @@ namespace Tests\Feature\TboHotel;
 
 use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
+use App\Jobs\BookHotelJob;
 use App\Models\Agency;
 use App\Models\Booking;
 use App\Models\Hotel;
@@ -12,6 +13,7 @@ use App\Models\Wallet;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
@@ -28,6 +30,10 @@ class HotelWizardTest extends TestCase
         parent::setUp();
 
         $this->seed(PermissionSeeder::class);
+
+        // Finishing the wizard now sends the Book. Faked so these tests measure what
+        // was queued rather than talking to TBO.
+        Queue::fake();
 
         config([
             'tbohotel.default' => 'test',
@@ -226,10 +232,47 @@ class HotelWizardTest extends TestCase
         $booking = Booking::firstOrFail();
 
         $this->assertSame(BookingProduct::Hotel, $booking->product);
-        $this->assertSame(BookingStatus::Quoted, $booking->status);
         $this->assertSame('4036.02', $booking->total_amount);
         $this->assertSame(route('bookings.show', $booking), $response->json('redirect'));
         $this->assertSame('Jen s Comfy Home', $booking->hotel->hotel_name);
+    }
+
+    /**
+     * Finishing the wizard is the whole transaction, as it is for flights: the Book
+     * goes out now, with nothing further for the agent to press.
+     */
+    public function test_submitting_sends_the_booking_to_the_hotel(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->agent())
+            ->postJson('/hotels/bookings', $this->payload())
+            ->assertOk();
+
+        $booking = Booking::firstOrFail();
+
+        // Marked before the dispatch, so the page never offers to send a booking that
+        // is already on its way.
+        $this->assertSame(BookingStatus::Processing, $booking->status);
+        $this->assertNull($booking->hotel->book_sent_at, 'Nothing is on the wire until the job runs.');
+
+        Queue::assertPushed(BookHotelJob::class,
+            fn (BookHotelJob $job): bool => $job->bookingId === $booking->getKey());
+    }
+
+    /**
+     * A booking that could not be created must not queue a Book for a booking that
+     * does not exist.
+     */
+    public function test_a_refused_booking_queues_nothing(): void
+    {
+        $this->fakePreBook();
+
+        $this->actingAs($this->userWith(['hotel.view', 'hotel.search']))
+            ->postJson('/hotels/bookings', $this->payload())
+            ->assertForbidden();
+
+        Queue::assertNothingPushed();
     }
 
     public function test_storing_is_gated_on_booking(): void
@@ -359,12 +402,15 @@ class HotelWizardTest extends TestCase
             ->assertOk()
             ->assertSee('Jen s Comfy Home')
             ->assertSee('Check-in')
-            ->assertSee('Not yet confirmed')
+            // Already on its way to the hotel, so the page follows it rather than
+            // offering a button the wizard has just pressed on the agent's behalf.
+            ->assertSee('Confirming with the hotel')
+            ->assertDontSee('Send to hotel')
             ->assertSee('Guests')
             // Its reference is a confirmation number, and it has no trace or fare type.
             ->assertSee('Confirmation no.')
             ->assertDontSee('Not yet ticketed')
-            ->assertDontSee('Complete booking')
+            ->assertDontSee('Contacting the airline')
             ->assertDontSee('Fare type')
             ->assertDontSee('>Trace<', false)
             ->assertDontSee('>PNR<', false)
@@ -390,7 +436,10 @@ class HotelWizardTest extends TestCase
             ->post(route('bookings.fulfil', $booking))
             ->assertNotFound();
 
-        $this->assertSame(BookingStatus::Quoted, $booking->fresh()->status);
+        // Untouched by the airline route: still the hotel's own chain, and nothing of
+        // this booking has been handed to it.
+        $this->assertSame(BookingStatus::Processing, $booking->fresh()->status);
+        $this->assertNull($booking->fresh()->pnr);
     }
 
     /**

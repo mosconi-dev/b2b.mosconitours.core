@@ -93,9 +93,12 @@ class HotelVoucherTest extends TestCase
         return $user->fresh();
     }
 
-    // ---------------------------------------------------------------- confirm ----
+    // --------------------------------------------------------------- recovery ----
+    //
+    // The wizard sends the Book itself. What is left here is the stranded case: a stay
+    // charged for and saved whose job never ran.
 
-    public function test_confirming_queues_the_book(): void
+    public function test_sending_a_stranded_booking_queues_the_book(): void
     {
         $user = $this->agent();
         $booking = $this->booking($user);
@@ -104,8 +107,30 @@ class HotelVoucherTest extends TestCase
             ->post(route('hotels.bookings.book', $booking))
             ->assertRedirect();
 
+        // Marked before the dispatch, exactly as the wizard does it.
+        $this->assertSame(BookingStatus::Processing, $booking->fresh()->status);
+
         Queue::assertPushed(BookHotelJob::class,
             fn (BookHotelJob $job): bool => $job->bookingId === $booking->getKey());
+    }
+
+    /**
+     * The one thing that must never happen. A Book already on the wire is settled by
+     * reading the reference back, so a booking that carries a send time is refused
+     * whatever its status says.
+     */
+    public function test_a_booking_already_on_the_wire_is_never_sent_again(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user);
+        $booking->hotel->update(['book_sent_at' => now()]);
+
+        $this->actingAs($user)
+            ->post(route('hotels.bookings.book', $booking->fresh()))
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        Queue::assertNothingPushed();
     }
 
     public function test_confirming_needs_the_booking_permission(): void
@@ -150,15 +175,17 @@ class HotelVoucherTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_the_booking_page_offers_the_confirm_button(): void
+    public function test_the_booking_page_offers_to_send_a_stranded_stay(): void
     {
         $user = $this->agent();
 
         $this->actingAs($user)
             ->get(route('bookings.show', $this->booking($user)))
             ->assertOk()
-            ->assertSee('Confirm with hotel')
-            ->assertSee('Not yet confirmed');
+            ->assertSee('Send to hotel')
+            // Worded as the fault it is, not as a step the agent forgot to take.
+            ->assertSee('Not sent to the hotel')
+            ->assertSee('no room is being held');
     }
 
     public function test_an_agent_without_permission_is_not_offered_it(): void

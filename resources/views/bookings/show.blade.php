@@ -187,14 +187,16 @@
                 </p>
             </div>
         @elseif ($booking->status === $statuses::Quoted && $booking->isHotel())
-            {{-- Saved and paid for on our side, not yet sent. The flight panel below must
-                 never be offered here: its button runs Book → Ticket against TBO Air. --}}
+            {{-- Stranded, not normal: finishing the wizard sends the Book. A stay left
+                 here is one whose job never ran — the agency charged and no room taken.
+                 The flight panel below must never be offered instead: its button runs
+                 Book → Ticket against TBO Air. --}}
             @php $canBook = auth()->user()->can('hotel.book'); @endphp
-            <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 class="text-base font-semibold text-brand-900">Not yet confirmed</h2>
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                <h2 class="text-base font-semibold text-amber-900">Not sent to the hotel</h2>
                 {{-- A booker with no agency (platform staff) is never debited, so the
                      panel must not claim money that did not move. --}}
-                <p class="mt-2 text-sm text-gray-500">
+                <p class="mt-2 text-sm text-amber-800">
                     This stay is saved
                     @if ($booking->walletCharge())
                         and the agency has been charged
@@ -202,12 +204,12 @@
                     @else
                         at {{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }},
                     @endif
-                    but nothing has been sent to the hotel. Confirming takes the room.
+                    but it never reached the hotel and no room is being held. Sending it now takes the room.
                 </p>
 
                 @if ($booking->environment === 'live')
                     <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                        <strong>This is a LIVE booking.</strong> Confirming creates a real reservation the
+                        <strong>This is a LIVE booking.</strong> Sending it creates a real reservation the
                         hotel will hold, and cancelling it later may carry a charge.
                     </div>
                 @endif
@@ -220,14 +222,14 @@
                                 @class([
                                     'rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50',
                                     'bg-red-600 hover:bg-red-700' => $booking->environment === 'live',
-                                    'bg-blue-600 hover:bg-blue-700' => $booking->environment !== 'live',
+                                    'bg-amber-600 hover:bg-amber-700' => $booking->environment !== 'live',
                                 ])>
-                            <span x-show="! submitting">Confirm with hotel</span>
+                            <span x-show="! submitting">Send to hotel</span>
                             <span x-show="submitting" x-cloak>Sending…</span>
                         </button>
                     </form>
                 @else
-                    <p class="mt-3 text-sm text-gray-400">You do not have permission to confirm hotel bookings.</p>
+                    <p class="mt-3 text-sm text-amber-700">You do not have permission to confirm hotel bookings — ask someone who does.</p>
                 @endif
             </div>
         @elseif ($booking->status === $statuses::Quoted)

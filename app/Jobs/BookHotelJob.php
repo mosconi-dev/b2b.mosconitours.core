@@ -41,13 +41,17 @@ class BookHotelJob implements ShouldQueue
             return;
         }
 
-        // A second delivery must never send a second Book. Quoted is the only state
-        // this job may act on; Processing means one is already in flight or awaiting
-        // reconciliation, and anything else has reached an ending.
-        if ($booking->status !== BookingStatus::Quoted) {
+        // The booking is marked `processing` in the same breath as this job is queued,
+        // so both states mean "not sent yet" here. What separates a queued booking from
+        // one already on the wire is book_sent_at, and a second delivery of this job
+        // must never get past it.
+        $sent = $booking->hotel?->book_sent_at !== null;
+
+        if ($sent || ! in_array($booking->status, [BookingStatus::Quoted, BookingStatus::Processing], true)) {
             Log::info('BookHotelJob skipped: booking is not awaiting a Book', [
                 'booking' => $booking->reference,
                 'status' => $booking->status->value,
+                'alreadySent' => $sent,
             ]);
 
             return;

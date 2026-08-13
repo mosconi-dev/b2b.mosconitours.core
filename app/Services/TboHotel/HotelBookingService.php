@@ -269,6 +269,11 @@ class HotelBookingService
             $booking = $this->transitionTo($booking, BookingStatus::Processing);
         }
 
+        // Stamped before the call, not after. If the worker dies mid-request there is
+        // a reservation we may own and no answer saying so; the only safe record is one
+        // written before the risk was taken. guardBookable() refuses on it from here on.
+        $booking->hotel?->forceFill(['book_sent_at' => now()])->save();
+
         try {
             $response = $this->tbo->bookRaw($payload);
         } catch (TboHotelException $e) {
@@ -390,6 +395,16 @@ class HotelBookingService
 
         if (! in_array($booking->status, [BookingStatus::Quoted, BookingStatus::Processing], true)) {
             throw new BookingException("Booking {$booking->reference} is {$booking->status->value} and cannot be booked.");
+        }
+
+        // The rule the whole phase is built on, enforced where every caller passes
+        // rather than in one job's guard. A Book that went out and was not answered may
+        // well have taken the room; it is settled by reading the reference back, never
+        // by asking again.
+        if ($booking->hotel?->book_sent_at !== null) {
+            throw new BookingException(
+                "Booking {$booking->reference} has already been sent to the hotel and is awaiting an answer."
+            );
         }
     }
 }

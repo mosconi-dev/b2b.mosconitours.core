@@ -32,6 +32,7 @@ class HotelBooking extends Model
             'supplements' => 'array',
             'rate_conditions' => 'array',
             'amenities' => 'array',
+            'book_sent_at' => 'datetime',
             'hcn_attempts' => 'integer',
             'hcn_next_attempt_at' => 'datetime',
             'cancellation_charge' => 'decimal:2',
