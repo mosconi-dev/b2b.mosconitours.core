@@ -52,9 +52,10 @@
         <x-hotel-stepper :current="2" />
     </div>
 
-    {{-- Selected property, with the one way back — same shape and same place as the
-         flight wizard's "Change flight". --}}
-    <div class="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+    {{-- Selected property. Sticky under the app bar, because it carries the way back
+         and the section tabs — both of which are wanted from anywhere on a long page.
+         z-10 keeps it beneath the app header rather than over it. --}}
+    <div x-data="hotelSections()" class="sticky top-16 z-10 mb-6 rounded-xl border border-gray-200 bg-white shadow-sm">
         <div class="flex items-start justify-between gap-4 p-4">
             <div class="min-w-0">
                 <p class="truncate text-sm font-semibold text-brand-900">{{ $hotel->name }}</p>
@@ -76,6 +77,18 @@
                 <a href="{{ $backUrl }}" class="text-xs font-medium text-blue-600 hover:text-blue-700">Change hotel</a>
             </div>
         </div>
+
+        {{-- Jump links. Only the sections this property actually has: a tab pointing at
+             an empty page is worse than a missing tab. --}}
+        <nav class="flex gap-1 overflow-x-auto border-t border-gray-100 px-2">
+            @foreach ($sections as $id => $label)
+                <a href="#{{ $id }}" @click.prevent="goTo('{{ $id }}')"
+                   class="-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition"
+                   :class="active === '{{ $id }}' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    {{ $label }}
+                </a>
+            @endforeach
+        </nav>
     </div>
 
     <x-admin.flash />
@@ -99,7 +112,22 @@
                 </div>
             @endif
 
+            {{-- Sanitised server-side; TBO writes it as HTML. --}}
+            @if (filled($hotel->description))
+                <div id="overview" data-section="overview" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm" x-data="{ expanded: false }">
+                    <h2 class="text-base font-semibold text-brand-900">Overview</h2>
+                    <div class="supplier-prose mt-3 text-sm text-gray-600"
+                         :class="expanded ? '' : 'max-h-40 overflow-hidden'">
+                        {!! \App\Support\SupplierHtml::clean($hotel->description) !!}
+                    </div>
+                    <button type="button" @click="expanded = !expanded"
+                            class="mt-2 text-xs font-medium text-brand-700 hover:text-brand-900"
+                            x-text="expanded ? 'Show less' : 'Read more'"></button>
+                </div>
+            @endif
+
             {{-- Rooms --}}
+            <div id="rooms" data-section="rooms" class="scroll-mt-44">
             @if ($offer === null || empty($offer['rooms']))
                 <div class="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                     <p class="text-sm font-medium text-brand-900">No rooms available</p>
@@ -189,29 +217,80 @@
                     @endforeach
                 </div>
             @endif
-
-            {{-- About the property. Sanitised server-side; TBO writes it as HTML. --}}
-            @if (filled($hotel->description))
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" x-data="{ expanded: false }">
-                    <h2 class="text-base font-semibold text-brand-900">About this property</h2>
-                    <div class="supplier-prose mt-3 text-sm text-gray-600"
-                         :class="expanded ? '' : 'max-h-40 overflow-hidden'">
-                        {!! \App\Support\SupplierHtml::clean($hotel->description) !!}
-                    </div>
-                    <button type="button" @click="expanded = !expanded"
-                            class="mt-2 text-xs font-medium text-brand-700 hover:text-brand-900"
-                            x-text="expanded ? 'Show less' : 'Read more'"></button>
-                </div>
-            @endif
+            </div>
 
             @if (! empty($hotel->facilities))
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div id="facilities" data-section="facilities" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-base font-semibold text-brand-900">Facilities</h2>
                     <div class="mt-3 flex flex-wrap gap-1.5">
                         @foreach (array_slice($hotel->facilities, 0, 24) as $facility)
                             <span class="rounded bg-gray-50 px-2 py-0.5 text-xs text-gray-600 ring-1 ring-inset ring-gray-200">{{ $facility }}</span>
                         @endforeach
                     </div>
+                </div>
+            @endif
+
+            {{-- Where it is. No embedded map: a tile provider is an external request on
+                 every card view, and the address plus a link out answers the question
+                 an agent actually has. --}}
+            @if (filled($hotel->address) || $hotel->latitude)
+                <div id="location" data-section="location" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-base font-semibold text-brand-900">Location</h2>
+                    @if (filled($hotel->address))
+                        <p class="mt-2 text-sm text-gray-600">{{ $hotel->address }}</p>
+                    @endif
+                    @if ($hotel->latitude && $hotel->longitude)
+                        <a href="https://www.google.com/maps/search/?api=1&query={{ $hotel->latitude }},{{ $hotel->longitude }}"
+                           target="_blank" rel="noopener noreferrer"
+                           class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                            </svg>
+                            Open in Google Maps
+                        </a>
+                    @endif
+                </div>
+            @endif
+
+            {{-- What the property expects of the guest. Cancellation is deliberately not
+                 repeated here: it differs per rate, and a single figure on this page
+                 would contradict the rates above it. --}}
+            @if (filled($hotel->checkin_time) || filled($hotel->checkout_time) || $payableAtProperty !== [])
+                <div id="policies" data-section="policies" class="scroll-mt-44 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-base font-semibold text-brand-900">Policies</h2>
+
+                    <dl class="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                        @if (filled($hotel->checkin_time))
+                            <div>
+                                <dt class="text-gray-500">Check-in from</dt>
+                                <dd class="font-medium text-brand-900">{{ $hotel->checkin_time }}</dd>
+                            </div>
+                        @endif
+                        @if (filled($hotel->checkout_time))
+                            <div>
+                                <dt class="text-gray-500">Check-out by</dt>
+                                <dd class="font-medium text-brand-900">{{ $hotel->checkout_time }}</dd>
+                            </div>
+                        @endif
+                    </dl>
+
+                    @if ($payableAtProperty !== [])
+                        <div class="mt-4 border-t border-gray-100 pt-4">
+                            <p class="text-sm font-medium text-brand-900">Payable at the hotel</p>
+                            <p class="mt-0.5 text-xs text-gray-500">Charges the guest settles on arrival, on top of the rate.</p>
+                            <ul class="mt-2 space-y-1 text-sm text-gray-600">
+                                @foreach ($payableAtProperty as $description)
+                                    <li>{{ $description }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
+                    <p class="mt-4 border-t border-gray-100 pt-4 text-xs text-gray-500">
+                        Cancellation terms differ by rate — each rate above states its own, and the
+                        one shown at payment is the one that governs the booking.
+                    </p>
                 </div>
             @endif
         </div>

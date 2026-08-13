@@ -2113,4 +2113,85 @@ Alpine.data('hotelBooking', (config = {}) => ({
     },
 }));
 
+/**
+ * The hotel page's section tabs.
+ *
+ * Highlights whichever section the reader is actually in, and scrolls to one when its
+ * tab is clicked. Sections mark themselves with data-section, so the tab strip and the
+ * page cannot drift apart — the server decides which exist.
+ */
+Alpine.data('hotelSections', () => ({
+    active: '',
+    sections: [],
+
+    // Roughly the app bar plus this sticky header: the line below which content is
+    // actually readable rather than hidden behind them.
+    line: 190,
+
+    // Set while a click is being honoured. A tab the reader just pressed must stay lit
+    // even when the page is too short for its section to reach the top — otherwise
+    // clicking Location lights Facilities, which reads as a broken tab.
+    locked: false,
+
+    init() {
+        this.sections = [...document.querySelectorAll('[data-section]')];
+
+        if (this.sections.length === 0) return;
+
+        this.sync();
+        this.onScroll = () => requestAnimationFrame(() => this.sync());
+        window.addEventListener('scroll', this.onScroll, { passive: true });
+
+        // A real gesture, unlike the scroll events smooth-scrolling emits, so this is
+        // what tells us the reader has taken over again.
+        this.release = () => { this.locked = false; };
+        this.gestures = ['wheel', 'touchmove', 'keydown'];
+        this.gestures.forEach((event) => window.addEventListener(event, this.release, { passive: true }));
+    },
+
+    destroy() {
+        window.removeEventListener('scroll', this.onScroll);
+        this.gestures.forEach((event) => window.removeEventListener(event, this.release));
+    },
+
+    /**
+     * The last section whose top has passed under the header is the one being read.
+     *
+     * Deliberately not "the largest visible section": a long room list would then stay
+     * lit while the reader is well into Facilities.
+     */
+    sync() {
+        if (this.locked) return;
+
+        // At the foot of the page nothing below can ever reach the line, so the last
+        // section actually on screen is the one being read.
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+            const onScreen = this.sections.filter((s) => s.getBoundingClientRect().top < window.innerHeight);
+            this.active = (onScreen.pop() || this.sections[0]).dataset.section;
+
+            return;
+        }
+
+        let current = this.sections[0];
+
+        for (const section of this.sections) {
+            if (section.getBoundingClientRect().top <= this.line) current = section;
+        }
+
+        this.active = current.dataset.section;
+    },
+
+    goTo(id) {
+        const target = document.getElementById(id);
+
+        if (!target) return;
+
+        // Lit immediately rather than after the scroll settles — the click was the
+        // answer to "where am I going", and waiting for it reads as a dead tab.
+        this.active = id;
+        this.locked = true;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+}));
+
 Alpine.start();

@@ -429,6 +429,70 @@ class HotelWizardTest extends TestCase
     }
 
     /**
+     * The tabs are built from what the property actually has, so a tab never points at
+     * a section that was not rendered.
+     */
+    public function test_the_section_tabs_match_the_sections_rendered(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        Hotel::where('code', '1022346')->update([
+            'description' => '<p>A nice place.</p>',
+            'facilities' => ['Pool', 'Wi-Fi'],
+            'address' => '1 Somewhere Street',
+            'latitude' => 14.55, 'longitude' => 121.02,
+            'checkin_time' => '2:00 PM',
+            'detailed_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->assertSee('Overview')
+            ->assertSee('Policies')
+            // Renamed from "About this property".
+            ->assertDontSee('About this property');
+
+        $this->assertSame(
+            ['overview', 'rooms', 'facilities', 'location', 'policies'],
+            array_keys($response->viewData('sections')),
+        );
+    }
+
+    /**
+     * A property with nothing but rates gets one tab, not five dead ones.
+     */
+    public function test_a_bare_property_offers_only_the_tabs_it_has(): void
+    {
+        Http::fake([
+            self::BASE.'/Search' => Http::response($this->fixture('search')),
+            self::BASE.'/HotelDetails' => Http::response(['Status' => ['Code' => 500, 'Description' => 'nope']]),
+        ]);
+
+        Hotel::where('code', '1022346')->update([
+            'description' => null, 'facilities' => null, 'address' => null,
+            'latitude' => null, 'longitude' => null,
+            'checkin_time' => null, 'checkout_time' => null,
+            'detailed_at' => now(),
+        ]);
+
+        $sections = $this->actingAs($this->agent())
+            ->get('/hotels/1022346/rooms?'.http_build_query($this->roomsQuery()))
+            ->assertOk()
+            ->viewData('sections');
+
+        // Rooms always, plus policies only because the fixture's rates carry
+        // at-property charges.
+        $this->assertContains('rooms', array_keys($sections));
+        $this->assertNotContains('overview', array_keys($sections));
+        $this->assertNotContains('facilities', array_keys($sections));
+        $this->assertNotContains('location', array_keys($sections));
+    }
+
+    /**
      * Leaving a property and coming back has to land on the search the agent ran, not
      * an empty form — that is the whole point of the step being its own page.
      */

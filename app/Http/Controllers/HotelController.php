@@ -136,7 +136,59 @@ class HotelController extends Controller
             ],
             'backUrl' => $this->backToResults($data),
             'images' => array_slice($hotel->images ?? [], 0, 6),
+            'payableAtProperty' => $this->payableAtProperty($payload['offers'][0] ?? null),
+            // Decided here so the tab strip and the page cannot disagree: a tab
+            // pointing at a section that was not rendered is worse than no tab.
+            'sections' => $this->sections($hotel, $payload['offers'][0] ?? null),
         ]);
+    }
+
+    /**
+     * The jump links, in page order, limited to sections this property actually has.
+     *
+     * @param  array<string, mixed>|null  $offer
+     * @return array<string, string>
+     */
+    private function sections(Hotel $hotel, ?array $offer): array
+    {
+        $hasRooms = $offer !== null && ! empty($offer['rooms']);
+
+        return array_filter([
+            'overview' => filled($hotel->description) ? 'Overview' : null,
+            'rooms' => $hasRooms ? 'Rooms' : null,
+            'facilities' => ! empty($hotel->facilities) ? 'Facilities' : null,
+            'location' => filled($hotel->address) || $hotel->latitude ? 'Location' : null,
+            'policies' => filled($hotel->checkin_time) || filled($hotel->checkout_time)
+                || $this->payableAtProperty($offer) !== []
+                    ? 'Policies'
+                    : null,
+        ]);
+    }
+
+    /**
+     * Every distinct charge the guest settles at the desk, across this property's rates.
+     *
+     * Deduplicated by description: the same deposit repeated once per rate is one fact
+     * about the hotel, not four about the booking.
+     *
+     * @param  array<string, mixed>|null  $offer
+     * @return array<int, string>
+     */
+    private function payableAtProperty(?array $offer): array
+    {
+        $descriptions = [];
+
+        foreach ($offer['rooms'] ?? [] as $room) {
+            foreach ($room['payableAtProperty'] ?? [] as $supplement) {
+                $label = trim((string) ($supplement['description'] ?? ''));
+
+                if ($label !== '') {
+                    $descriptions[$label] = true;
+                }
+            }
+        }
+
+        return array_keys($descriptions);
     }
 
     /**
