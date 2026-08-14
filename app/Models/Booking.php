@@ -7,6 +7,7 @@ use App\Enums\BookingStatus;
 use App\Enums\Supplier;
 use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -93,6 +94,67 @@ class Booking extends Model
     public function isHotel(): bool
     {
         return $this->product === BookingProduct::Hotel;
+    }
+
+    /**
+     * Free-text lookup over the identifiers an agent actually has to hand: the
+     * reference they were given, the supplier's own number, the traveller's name,
+     * the property.
+     *
+     * Traveller names are matched against the `pax` JSON as text rather than through
+     * JSON paths — the array is small, and a path match would have to walk an unknown
+     * number of passenger indexes to reach the same strings. The stored quote is
+     * deliberately left out: it is a large blob on every row, and scanning it to find
+     * an airport code would cost the whole list its speed.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeSearch(Builder $query, string $term): void
+    {
+        $like = '%'.$term.'%';
+
+        $query->where(fn (Builder $q) => $q
+            ->whereAny(['reference', 'pnr', 'supplier_reference', 'booking_id', 'pax'], 'like', $like)
+            ->orWhereHas('hotel', fn ($hotel) => $hotel->whereAny(['hotel_name', 'city'], 'like', $like)));
+    }
+
+    /**
+     * The one line that says what was bought, for a list that mixes products.
+     *
+     * A flight is its route and a hotel is its property; neither is on the shared
+     * spine, so the caller would otherwise have to know which half to read.
+     */
+    public function itinerarySummary(): ?string
+    {
+        if ($this->isHotel()) {
+            return $this->hotel?->hotel_name;
+        }
+
+        // One leg per trip: an agent scanning the list wants "MNL → CEB", not every
+        // stop of a two-connection itinerary.
+        $legs = collect(data_get($this->quote, 'trips', []))
+            ->map(fn (array $trip) => collect($trip['segments'] ?? []))
+            ->reject->isEmpty()
+            ->map(fn ($segments) => [
+                data_get($segments->first(), 'origin.code'),
+                data_get($segments->last(), 'destination.code'),
+            ]);
+
+        $line = '';
+        $arrivedAt = null;
+
+        foreach ($legs as [$from, $to]) {
+            // A return continues the line it came from — a round trip reads as
+            // "MNL → CEB → MNL". An open jaw resumes elsewhere, so it starts its own.
+            $line .= match (true) {
+                $line === '' => "{$from} → {$to}",
+                $arrivedAt === $from => " → {$to}",
+                default => " · {$from} → {$to}",
+            };
+            $arrivedAt = $to;
+        }
+
+        return $line === '' ? null : $line;
     }
 
     /**

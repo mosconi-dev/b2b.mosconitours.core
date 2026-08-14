@@ -28,15 +28,46 @@ class BookingController extends Controller
      * A user's own bookings. The agency scope is applied on top of ownership: it is
      * redundant today (your own booking is always your agency's) but keeps the list
      * correct if visibility is ever widened to "everyone in my agency".
+     *
+     * Flights and hotels share this list, so it filters by product and searches by
+     * reference/name. An unknown `product` falls back to all rather than failing
+     * validation: this is a link someone can edit in the address bar, and a list is
+     * the wrong place to answer with an error page.
      */
     public function index(Request $request): View
     {
-        $bookings = Booking::visibleTo($request->user())
-            ->where('user_id', $request->user()->id)
-            ->latest()
-            ->paginate(20);
+        $product = BookingProduct::tryFrom((string) $request->query('product'));
+        $term = trim((string) $request->query('q'));
 
-        return view('bookings.index', compact('bookings'));
+        $matching = Booking::visibleTo($request->user())
+            ->where('user_id', $request->user()->id)
+            ->when($term !== '', fn ($query) => $query->search($term));
+
+        // The tab counts describe the search, not the tab: switching to Hotels must
+        // show the number that was on the tab before it was pressed.
+        $counts = (clone $matching)->toBase()
+            ->selectRaw('product, count(*) as aggregate')
+            ->groupBy('product')
+            ->pluck('aggregate', 'product');
+
+        $bookings = $matching
+            ->when($product, fn ($query) => $query->where('product', $product))
+            // The list reads the hotel name off each row; without this the page runs a
+            // query per hotel booking on it.
+            ->with('hotel:id,booking_id,hotel_name,city,check_in,check_out')
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('bookings.index', [
+            'bookings' => $bookings,
+            'filters' => ['product' => $product, 'q' => $term],
+            'counts' => [
+                'all' => (int) $counts->sum(),
+                BookingProduct::Flight->value => (int) $counts->get(BookingProduct::Flight->value, 0),
+                BookingProduct::Hotel->value => (int) $counts->get(BookingProduct::Hotel->value, 0),
+            ],
+        ]);
     }
 
     public function show(Request $request, Booking $booking, HotelBookingService $hotels): View
