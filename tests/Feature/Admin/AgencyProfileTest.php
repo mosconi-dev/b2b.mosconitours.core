@@ -89,6 +89,32 @@ class AgencyProfileTest extends TestCase
         $this->assertStringContainsString('agency-logos/', $agency->logo_path);
     }
 
+    public function test_the_logo_url_is_origin_relative(): void
+    {
+        // Storage::url() reads config, not the request, so an absolute URL built from
+        // APP_URL renders a broken <img> on any host or port APP_URL does not name —
+        // which is every environment where the two drift. A relative path cannot.
+        $agency = Agency::factory()->create(['logo_path' => 'agency-logos/brand.png']);
+
+        $this->assertSame('/storage/agency-logos/brand.png', $agency->logoUrl());
+    }
+
+    public function test_an_uploaded_logo_is_served_back_on_the_page(): void
+    {
+        $this->actingAs($this->admin())
+            ->post(route('admin.agencies.store'), $this->payload([
+                'logo' => UploadedFile::fake()->image('brand.png', 300, 300),
+            ]))
+            ->assertRedirect();
+
+        $agency = Agency::where('name', 'Acme Travel')->first();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.agencies.show', $agency))
+            ->assertOk()
+            ->assertSee('src="'.$agency->logoUrl().'"', escape: false);
+    }
+
     public function test_the_stored_name_does_not_reuse_the_uploaded_filename(): void
     {
         // The original name is attacker-controlled and must never reach the filesystem.

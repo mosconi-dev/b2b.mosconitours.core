@@ -191,13 +191,14 @@ class BookingWalletChargeTest extends TestCase
         $this->fakeQuote();
         $this->fund('10000.00');
         $agent = $this->agencyUserWith($this->agency, [
-            'flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue', 'wallet.view',
+            'flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue',
+            'wallet.view', 'agency.view',
         ]);
 
         $this->actingAs($agent)->post(route('flights.bookings.store'), $this->payload())->assertRedirect();
 
         $this->actingAs($agent)
-            ->get(route('wallet.index'))
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'wallet']))
             ->assertOk()
             ->assertSee('3,600.00')
             ->assertSee(Booking::firstOrFail()->reference);

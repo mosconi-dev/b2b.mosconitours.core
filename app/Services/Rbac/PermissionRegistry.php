@@ -31,6 +31,11 @@ class PermissionRegistry
                 'section' => 'travel_operations',
                 'group' => null,
                 'route' => null,
+                // 'all' = everyone who holds the permission gets a sidebar link;
+                // 'platform' = only users with no agency of their own, because the
+                // page is already reachable as a tab on My Agency; 'none' = no link
+                // at all, the page is reached from somewhere else entirely.
+                'nav' => 'all',
                 'icon' => null,
                 'enabled' => true,
                 'actions' => [],
@@ -106,6 +111,19 @@ class PermissionRegistry
             $ability = $this->primaryAbility($key);
 
             if ($user === null || ! $user->can($ability)) {
+                continue;
+            }
+
+            // A member reaches these from My Agency; only platform staff, who have
+            // no such page, still need the link. The permission is unchanged either
+            // way — this hides a door, it does not lock one.
+            $linked = match ($module['nav']) {
+                'platform' => $user->isPlatformStaff(),
+                'none' => false,
+                default => true,
+            };
+
+            if (! $linked) {
                 continue;
             }
 

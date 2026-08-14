@@ -129,15 +129,24 @@
                 <main class="flex-1 px-4 py-8 sm:px-6 lg:px-8">
                     <div class="mx-auto">
                         <!-- Back link (left) and page actions (right) -->
-                        @if (isset($back) || isset($actions))
+                        @php
+                            // A page declares these slots once and fills them conditionally, so
+                            // isset() is always true and says nothing about whether anything is
+                            // in there. hasActualContent() looks at what actually rendered —
+                            // otherwise a page whose every action is gated away still reserves
+                            // an empty row above its content.
+                            $hasBack = isset($back) && $back->hasActualContent();
+                            $hasActions = isset($actions) && $actions->hasActualContent();
+                        @endphp
+                        @if ($hasBack || $hasActions)
                             <div class="mb-6 flex flex-wrap items-center gap-3">
-                                @isset($back)
+                                @if ($hasBack)
                                     <div class="mr-auto min-w-0">{{ $back }}</div>
-                                @endisset
+                                @endif
 
-                                @isset($actions)
+                                @if ($hasActions)
                                     <div class="ml-auto flex flex-wrap items-center gap-2">{{ $actions }}</div>
-                                @endisset
+                                @endif
                             </div>
                         @endif
 

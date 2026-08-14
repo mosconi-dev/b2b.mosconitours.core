@@ -191,11 +191,17 @@ return [
         // The wallet belongs to the agency, so these permissions say what a member
         // may do with THEIR agency's balance. Who may approve is decided purely by
         // ticking wallet.load.approve on a role — there is no privileged agency type.
+        //
+        // Both live as tabs on My Agency, so neither needs a sidebar link of its own.
+        // The wallet has no page of its own at all: wallet.view gates the tab, which a
+        // member opens from the balance in the top bar and platform staff reach through
+        // any agency. Load requests keep a link for platform staff, who have no My
+        // Agency page and review every agency's queue from there.
         'wallet' => [
             'label' => 'Wallet',
             'section' => 'travel_operations',
             'group' => 'Wallet',
-            'route' => 'wallet.index',
+            'route' => null,
             'icon' => 'wallet',
             // adjust = post a manual correction, or reverse an entry made in error.
             // Effectively the right to move money without a request, so it belongs on
@@ -207,6 +213,7 @@ return [
             'section' => 'travel_operations',
             'group' => 'Wallet',
             'route' => 'wallet.requests.index',
+            'nav' => 'platform',
             'icon' => 'wallet',
             // create = raise a top-up request; approve = decide it (approve or reject);
             // cancel = withdraw a pending one.

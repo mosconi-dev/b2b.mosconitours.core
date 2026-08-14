@@ -48,7 +48,7 @@ class AgencyProvisioningTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin)
-            ->get(route('admin.agencies.show', $this->acme))
+            ->get(route('admin.agencies.show', ['agency' => $this->acme, 'tab' => 'users']))
             ->assertOk()
             ->assertSee(route('admin.agencies.users.create', $this->acme), escape: false);
 

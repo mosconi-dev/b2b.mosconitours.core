@@ -56,6 +56,31 @@ class WalletBalance extends Component
     }
 
     /**
+     * Whether the figure is also a way in.
+     *
+     * The wallet is a tab on My Agency and that page is gated on agency.view, which
+     * wallet.view does not imply. Someone who may read the balance but not open the
+     * agency still needs to see it — knowing you are short is the point — so they
+     * get the number without the link rather than a link that only 403s.
+     */
+    public function linked(): bool
+    {
+        return (bool) Auth::user()?->can('agency.view');
+    }
+
+    /**
+     * Where the chip goes: the wallet as a tab on My Agency, the only page that
+     * shows it — ledger, adjustments and load requests all in one place.
+     */
+    public function url(): string
+    {
+        return route('admin.agencies.show', [
+            'agency' => Auth::user()->agency_id,
+            'tab' => 'wallet',
+        ]);
+    }
+
+    /**
      * Manual adjustments may take a wallet below zero, so this is a real state.
      */
     public function isNegative(): bool
