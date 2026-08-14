@@ -13,6 +13,8 @@
             suggestUrl: '{{ route('hotels.suggest') }}',
             searchUrl: '{{ route('hotels.search') }}',
             roomsUrl: '{{ route('hotels.rooms', ['code' => '__CODE__']) }}',
+            recentUrl: '{{ route('hotels.recent') }}',
+            recent: @js($recent),
          })"
          {{-- gap, not space-y: the search form above is display:none once collapsed but
               still counts as a sibling, so space-y put 20px of nothing above the summary

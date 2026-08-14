@@ -67,6 +67,26 @@ class HotelRecentSearchesTest extends TestCase
         $this->assertSame('2-0', $stored[0]['rooms']);
     }
 
+    /**
+     * Every field hotelSearch.recordRecent() sends has to survive validated(), which
+     * keeps only the keys the rules name. A field dropped here is not an error anyone
+     * sees — it is a shortcut that quietly restores the wrong search.
+     */
+    public function test_no_field_the_client_sends_is_dropped_on_the_way_into_the_cache(): void
+    {
+        $user = $this->hotelUser();
+        $sent = $this->sampleRecent()[0];
+
+        $this->actingAs($user)
+            ->postJson(route('hotels.recent'), ['recent' => [$sent]])
+            ->assertNoContent();
+
+        $stored = app(HotelRecentSearches::class)->get($user->id)[0];
+
+        $this->assertSame([], array_diff(array_keys($sent), array_keys($stored)));
+        $this->assertSame($sent, $stored);
+    }
+
     public function test_cached_recent_searches_are_handed_to_the_hotels_page(): void
     {
         $user = $this->hotelUser();
@@ -76,7 +96,11 @@ class HotelRecentSearchesTest extends TestCase
             ->get(route('hotels'))
             ->assertOk()
             ->assertViewHas('recent', fn (array $recent): bool => count($recent) === 1
-                && $recent[0]['locationLabel'] === 'Cebu, Philippines');
+                && $recent[0]['locationLabel'] === 'Cebu, Philippines')
+            // ...and reaches the component, rather than stopping at the controller:
+            // the x-data config is the only thing that turns the feature on.
+            ->assertSee(route('hotels.recent'))
+            ->assertSee('Cebu, Philippines');
     }
 
     public function test_stays_whose_check_in_has_passed_are_left_off_the_page(): void
