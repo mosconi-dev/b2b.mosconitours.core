@@ -12,6 +12,7 @@ use App\Services\TboAir\TboAirService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 class FlightController extends Controller
@@ -19,8 +20,40 @@ class FlightController extends Controller
     public function index(Request $request, FlightRecentSearches $recent): View
     {
         return view('flights', [
-            'recent' => $recent->get($request->user()->id),
+            'recent' => $this->upcoming($recent->get($request->user()->id)),
         ]);
+    }
+
+    /**
+     * Drop the searches whose departure has already been and gone.
+     *
+     * A search needs a departure of today or later, so an entry that has aged past its
+     * own dates can only be refused — and it fails silently rather than loudly: the date
+     * picker will not display a date below its minimum, so restoring one hands back a
+     * form with an empty departure field and no word about why.
+     *
+     * Filtered on the way out rather than rejected on the way in, because the list is
+     * written as a whole and one leg that expired since should not cost the agent the
+     * five beside it that are still good.
+     *
+     * @param  array<int, array<string, mixed>>  $recent
+     * @return array<int, array<string, mixed>>
+     */
+    private function upcoming(array $recent): array
+    {
+        $today = Carbon::today()->toDateString();
+
+        return array_values(array_filter($recent, function (array $entry) use ($today): bool {
+            foreach ($entry['segments'] ?? [] as $segment) {
+                // ISO dates, so string order is date order. Every leg, not just the
+                // first: a multi-city trip is only bookable if all of it still lies ahead.
+                if (($segment['departure'] ?? '') < $today) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
     }
 
     /**
