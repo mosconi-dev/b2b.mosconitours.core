@@ -1,6 +1,6 @@
 {{-- The hotel search form. Occupancy is per room, because that is how TBO prices. --}}
 <div x-show="!collapsed" x-cloak class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-    <form @submit.prevent="search()" class="space-y-4">
+    <form x-ref="form" @submit.prevent="search()" class="space-y-4">
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
 

@@ -159,6 +159,11 @@ return [
 
     'search_cache_ttl' => (int) env('TBOHOTEL_SEARCH_CACHE_TTL', 600), // 10 min
 
+    // How long a user's recent-search shortcuts are kept (seconds). Per-user, in the
+    // cache rather than a table — the same arrangement, and the same default, as the
+    // flight list's tboair.recent_ttl.
+    'recent_ttl' => (int) env('TBOHOTEL_RECENT_TTL', 86400), // 1 day
+
     // §10 makes this mandatory and names the number: after a Book that timed out or
     // errored, BookingDetail must be called by BookingReferenceId 120 seconds later.
     'reconcile_delay' => (int) env('TBOHOTEL_RECONCILE_DELAY', 120),

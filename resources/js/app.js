@@ -1582,6 +1582,9 @@ Alpine.data('hotelSearch', (config = {}) => ({
     suggestUrl: config.suggestUrl,
     searchUrl: config.searchUrl,
     roomsUrlFor: config.roomsUrl,
+    // Absent on the rooms page's embedded form, which never records: an empty URL
+    // is what turns the whole feature off for that copy of the component.
+    recentUrl: config.recentUrl ?? '',
 
     // Embedded on the rooms page, where the same form partial appears above the
     // stepper: submitting hands the edited search to /hotels instead of rendering
@@ -1607,6 +1610,10 @@ Alpine.data('hotelSearch', (config = {}) => ({
     selecting: null,
     error: '',
     result: null,
+
+    // Recent searches — real per-user history, seeded from the server-side cache
+    // and pushed back to it whenever the list changes.
+    recent: config.recent ?? [],
 
     // Client-side view controls
     sort: 'price',
@@ -1650,18 +1657,40 @@ Alpine.data('hotelSearch', (config = {}) => ({
 
         if ((!city && !hotel) || !q.get('checkIn')) return;
 
-        this.checkIn = q.get('checkIn');
-        this.checkOut = q.get('checkOut') || this.checkOutMin;
-        this.guestNationality = q.get('guestNationality') || this.guestNationality;
-        this.locationType = hotel ? 'hotel' : 'city';
-        this.locationCode = hotel || city;
-        this.locationLabel = q.get('label') || '';
-
-        const rooms = this.decodeRooms(q.get('rooms') || '');
-        if (rooms.length) this.rooms = rooms;
+        this.applySearch({
+            locationType: hotel ? 'hotel' : 'city',
+            locationCode: hotel || city,
+            locationLabel: q.get('label'),
+            checkIn: q.get('checkIn'),
+            checkOut: q.get('checkOut'),
+            guestNationality: q.get('guestNationality'),
+            rooms: q.get('rooms'),
+        });
 
         // Straight back to the results the agent left, rather than to the form.
         this.$nextTick(() => this.search());
+    },
+
+    /**
+     * Fill the form from a saved search.
+     *
+     * A URL's worth of parameters and a recent-search card are the same handful of
+     * facts, so both arrive here rather than each setting the seven fields itself.
+     * Anything missing keeps what the form already had — a half-written URL degrades
+     * to a partial restore instead of wiping the defaults.
+     */
+    applySearch(entry) {
+        this.locationType = entry.locationType;
+        this.locationCode = entry.locationCode;
+        this.locationLabel = entry.locationLabel || '';
+        this.checkIn = entry.checkIn;
+        // Reads checkIn, so it has to be set first.
+        this.checkOut = entry.checkOut || this.checkOutMin;
+        this.guestNationality = entry.guestNationality || this.guestNationality;
+        this.refundableOnly = entry.refundableOnly ?? false;
+
+        const rooms = this.decodeRooms(entry.rooms || '');
+        if (rooms.length) this.rooms = rooms;
     },
 
     /**
@@ -1928,11 +1957,104 @@ Alpine.data('hotelSearch', (config = {}) => ({
             this.result = body;
             this.collapsed = true;
             this.rememberInUrl();
+            this.recordRecent();
         } catch {
             this.error = 'The search could not be completed. Please try again.';
         } finally {
             this.loading = false;
         }
+    },
+
+    // ----- recent searches (per-user history in the server cache) -----
+
+    /**
+     * Put a saved search back in the form, and stop there.
+     *
+     * The card does not search on the agent's behalf. Dates and occupancy are the
+     * things most often adjusted on the way back to a stay, and a search that fires
+     * on the click spends twenty-odd seconds at the supplier before anyone can touch
+     * them. Same bargain the flight list makes: the form is filled, Search is one
+     * click away. (restore() is the exception, and stays one: arriving with a search
+     * already in the URL is the agent asking for those results, not for the form.)
+     */
+    applyRecent(entry) {
+        this.applySearch(entry);
+        // A failed search leaves its message up with no results beside it, which is
+        // exactly when the list is on screen to be clicked.
+        this.error = '';
+        this.$refs.form?.scrollIntoView({ behavior: 'smooth' });
+    },
+
+    removeRecent(id) {
+        this.recent = this.recent.filter((r) => r.id !== id);
+        this.saveRecent();
+    },
+
+    clearRecent() {
+        this.recent = [];
+        this.saveRecent();
+    },
+
+    // Persist the list to the per-user cache (fire-and-forget — history is a
+    // best-effort convenience, so a failed write is silently ignored).
+    saveRecent() {
+        if (! this.recentUrl) return;
+        postJson(this.recentUrl, { recent: this.recent }).catch(() => {});
+    },
+
+    /**
+     * Snapshot the search that just succeeded and push it to the top of the list.
+     * The dedup key doubles as the entry id, so re-running an identical search bumps
+     * it rather than adding a second copy.
+     */
+    recordRecent() {
+        if (! this.recentUrl || ! this.locationCode) return;
+
+        const entry = {
+            locationType: this.locationType,
+            locationCode: this.locationCode,
+            locationLabel: this.locationLabel,
+            checkIn: this.checkIn,
+            checkOut: this.checkOut,
+            guestNationality: this.guestNationality,
+            // The token, not the array: the same encoding the URL and the rooms page
+            // already use, and the shape applySearch() decodes on the way back in.
+            rooms: this.roomsToken,
+            refundableOnly: this.refundableOnly,
+        };
+
+        entry.id = this.recentKey(entry);
+        entry.dateText = `${formatDay(this.checkIn)} → ${formatDay(this.checkOut)} · ${this.plural(this.nights, 'night')}`;
+        entry.metaText = this.recentMeta();
+
+        this.recent = [entry, ...this.recent.filter((r) => r.id !== entry.id)].slice(0, RECENT_MAX);
+        this.saveRecent();
+    },
+
+    // Every field that makes one search different from another, so a changed
+    // nationality or a dropped room is a new entry rather than a silent overwrite.
+    recentKey(entry) {
+        return [
+            entry.locationType,
+            entry.locationCode,
+            entry.checkIn,
+            entry.checkOut,
+            entry.guestNationality,
+            entry.rooms,
+            entry.refundableOnly ? 'refundable' : '',
+        ].join('~');
+    },
+
+    // Read off the form rather than the response, so the line does not depend on
+    // having been called after result was assigned.
+    recentMeta() {
+        const guests = this.rooms.reduce((n, r) => n + Number(r.adults || 0) + Number(r.children || 0), 0);
+
+        return `${this.plural(this.rooms.length, 'room')}, ${this.plural(guests, 'guest')} · ${this.guestNationality}`;
+    },
+
+    plural(count, noun) {
+        return `${count} ${noun}${count === 1 ? '' : 's'}`;
     },
 }));
 
