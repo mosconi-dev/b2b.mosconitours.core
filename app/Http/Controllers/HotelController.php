@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BookingProduct;
 use App\Http\Requests\SearchHotelsRequest;
 use App\Http\Requests\StoreRecentHotelSearchesRequest;
+use App\Models\Booking;
 use App\Models\Hotel;
 use App\Models\HotelCountry;
 use App\Services\Search\HotelRecentSearches;
@@ -31,6 +33,7 @@ class HotelController extends Controller
             // nationality codes it accepts, and it is already synced locally.
             'countries' => HotelCountry::orderBy('name')->get(['code', 'name']),
             'recent' => $this->upcoming($recent->get($request->user()->id)),
+            'recentBookings' => Booking::recentFor($request->user(), BookingProduct::Hotel),
         ]);
     }
 
