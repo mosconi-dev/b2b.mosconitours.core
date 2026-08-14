@@ -15,6 +15,51 @@ textarea::placeholder {
     opacity: 1;
 }
 
+/* Supplier prose (see App\Support\SupplierHtml). Preflight strips list markers and
+   paragraph margins from everything, so the handful of tags we allow through have to
+   be given their formatting back — otherwise a hotel description renders as one
+   undifferentiated block with invisible bullets. */
+.supplier-prose > :first-child {
+    margin-top: 0;
+}
+.supplier-prose > :last-child {
+    margin-bottom: 0;
+}
+.supplier-prose p {
+    margin-bottom: 0.75em;
+}
+.supplier-prose b,
+.supplier-prose strong {
+    font-weight: 600;
+    color: theme('colors.brand.900');
+}
+.supplier-prose ul,
+.supplier-prose ol {
+    margin: 0.5em 0 0.75em;
+    padding-left: 1.25rem;
+}
+.supplier-prose ul {
+    list-style: disc;
+}
+.supplier-prose ol {
+    list-style: decimal;
+}
+.supplier-prose li {
+    margin-bottom: 0.25em;
+}
+
+/* The hotel page's rhythm: one gap between blocks, and the same gap wherever something
+   sits below the sticky header. --hotel-header is written by the hotelSections
+   component from the header's real height; the fallback covers the first paint before
+   Alpine boots. */
+:root {
+    --hotel-gap: 1.5rem;
+}
+
+[data-section] {
+    scroll-margin-top: calc(var(--hotel-header, 12rem) + var(--hotel-gap));
+}
+
 /* Slim, subtle scrollbar for the navy sidebar */
 .sidebar-scroll {
     scrollbar-width: thin;

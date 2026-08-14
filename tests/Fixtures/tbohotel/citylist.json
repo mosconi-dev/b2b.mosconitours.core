@@ -1,0 +1,24 @@
+{
+    "Status": {
+        "Code": 200,
+        "Description": "Success"
+    },
+    "CityList": [
+        {
+            "Code": "100834",
+            "Name": "Alcoy"
+        },
+        {
+            "Code": "109722",
+            "Name": "Baguio"
+        },
+        {
+            "Code": "114570",
+            "Name": "Cebu City"
+        },
+        {
+            "Code": "127116",
+            "Name": "Manila"
+        }
+    ]
+}

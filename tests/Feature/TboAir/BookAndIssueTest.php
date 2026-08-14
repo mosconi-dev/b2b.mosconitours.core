@@ -72,6 +72,9 @@ class BookAndIssueTest extends TestCase
 
         $this->assertSame(BookingStatus::Ticketed, $booking->status);
         $this->assertSame('QWER12', $booking->pnr);
+        // The same value under the product-neutral name the bookings list reads,
+        // so a hotel's ConfirmationNumber can sit in the same column.
+        $this->assertSame('QWER12', $booking->supplier_reference);
         $this->assertSame('884213', $booking->booking_id);
         Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Booking/Book'));
     }

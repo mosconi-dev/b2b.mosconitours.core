@@ -1,0 +1,212 @@
+{
+    "Status": {
+        "Code": 200,
+        "Description": "Successful"
+    },
+    "HotelResult": [
+        {
+            "HotelCode": "1014904",
+            "Currency": "PHP",
+            "Rooms": [
+                {
+                    "Name": [
+                        "Fairmont, Room, 1 King Bed",
+                        "Fairmont, Room, 1 King Bed"
+                    ],
+                    "BookingCode": "1014904!TB!1!TB!29f104a3-96c0-11f1-9662-f6aeeb585c2c!TB!N!TB!AFF!",
+                    "Inclusion": "Free self parking",
+                    "DayRates": [
+                        [
+                            {
+                                "BasePrice": 5190.97
+                            },
+                            {
+                                "BasePrice": 10993.07
+                            }
+                        ],
+                        [
+                            {
+                                "BasePrice": 5190.97
+                            },
+                            {
+                                "BasePrice": 10993.07
+                            }
+                        ]
+                    ],
+                    "TotalFare": 40203.88,
+                    "TotalTax": 7835.78,
+                    "CancelPolicies": [
+                        {
+                            "FromDate": "12-08-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 0
+                        },
+                        {
+                            "FromDate": "11-09-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 14948.421053379
+                        }
+                    ],
+                    "MealType": "Room_Only",
+                    "IsRefundable": true,
+                    "Supplements": [
+                        [
+                            {
+                                "Index": 1,
+                                "Type": "AtProperty",
+                                "Description": "Deposit Fee per night ",
+                                "Price": 5000,
+                                "Currency": "PHP"
+                            }
+                        ],
+                        [
+                            {
+                                "Index": 2,
+                                "Type": "AtProperty",
+                                "Description": "Deposit Fee per night ",
+                                "Price": 5000,
+                                "Currency": "PHP"
+                            }
+                        ]
+                    ],
+                    "WithTransfers": false,
+                    "Amenities": [
+                        "Wheelchair-width doorways",
+                        "Premium bedding",
+                        "In-room climate control (air conditioning)",
+                        "Blackout drapes/curtains",
+                        "Bidet",
+                        "Desk",
+                        "Designer toiletries",
+                        "Premium TV channels",
+                        "Toilet grab bar height (inches) - 33",
+                        "Eco-friendly cleaning products provided",
+                        "Recycling",
+                        "LED light bulbs",
+                        "Toilet grab bar height (centimeters) - 84",
+                        "Accessible bathtub",
+                        "Connecting/adjoining rooms available",
+                        "Visual fire alarm",
+                        "Slippers",
+                        "Visual doorbell/knocker notification",
+                        "Wheelchair accessible",
+                        "Cable/satellite TV service",
+                        "Rollaway/extra beds (surcharge)",
+                        "Alarm clock",
+                        "Cable TV service",
+                        "Free newspaper",
+                        "Room service (limited hours)",
+                        "Non-Smoking",
+                        "Television",
+                        "High pile carpet in room",
+                        "Desk chair",
+                        "Turndown service",
+                        "Grab bar - near toilet",
+                        "Pillow menu",
+                        "Change of bed sheets (on request)",
+                        "Grab bar - in bathtub",
+                        "Laptop-friendly workspace",
+                        "Refrigerator",
+                        "Separate bathtub and shower",
+                        "Wardrobe or closet",
+                        "Coffee/tea maker",
+                        "Individually decorated",
+                        "Free WiFi",
+                        "Change of towels (on request)",
+                        "Phone",
+                        "Dial-up internet access",
+                        "Towels provided",
+                        "Bedsheets provided",
+                        "Lowered peephole/view port in door",
+                        "LED TV",
+                        "Wireless internet access",
+                        "TV size measurement: inch",
+                        "Private bathroom",
+                        "Bathrobes",
+                        "Free toiletries",
+                        "Hair dryer",
+                        "Iron/ironing board",
+                        "Rainfall showerhead",
+                        "In-room safe",
+                        "Deep soaking bathtub",
+                        "Free bottled water",
+                        "Free cribs/infant beds",
+                        "Wheelchair-width doorways",
+                        "Premium bedding",
+                        "In-room climate control (air conditioning)",
+                        "Blackout drapes/curtains",
+                        "Bidet",
+                        "Desk",
+                        "Designer toiletries",
+                        "Premium TV channels",
+                        "Toilet grab bar height (inches) - 33",
+                        "Eco-friendly cleaning products provided",
+                        "Recycling",
+                        "LED light bulbs",
+                        "Toilet grab bar height (centimeters) - 84",
+                        "Accessible bathtub",
+                        "Connecting/adjoining rooms available",
+                        "Visual fire alarm",
+                        "Slippers",
+                        "Visual doorbell/knocker notification",
+                        "Wheelchair accessible",
+                        "Cable/satellite TV service",
+                        "Rollaway/extra beds (surcharge)",
+                        "Alarm clock",
+                        "Cable TV service",
+                        "Free newspaper",
+                        "Room service (limited hours)",
+                        "Non-Smoking",
+                        "Television",
+                        "High pile carpet in room",
+                        "Desk chair",
+                        "Turndown service",
+                        "Grab bar - near toilet",
+                        "Pillow menu",
+                        "Change of bed sheets (on request)",
+                        "Grab bar - in bathtub",
+                        "Laptop-friendly workspace",
+                        "Refrigerator",
+                        "Separate bathtub and shower",
+                        "Wardrobe or closet",
+                        "Coffee/tea maker",
+                        "Individually decorated",
+                        "Free WiFi",
+                        "Change of towels (on request)",
+                        "Phone",
+                        "Dial-up internet access",
+                        "Towels provided",
+                        "Bedsheets provided",
+                        "Lowered peephole/view port in door",
+                        "LED TV",
+                        "Wireless internet access",
+                        "TV size measurement: inch",
+                        "Private bathroom",
+                        "Bathrobes",
+                        "Free toiletries",
+                        "Hair dryer",
+                        "Iron/ironing board",
+                        "Rainfall showerhead",
+                        "In-room safe",
+                        "Deep soaking bathtub",
+                        "Free bottled water",
+                        "Free cribs/infant beds"
+                    ]
+                }
+            ],
+            "RateConditions": [
+                "Early check out will attract full cancellation charge unless otherwise specified",
+                "CheckIn Time-Begin: 3:00 PM ",
+                " CheckIn Time-End: anytime",
+                "CheckOut Time: 11:00 AM",
+                "CheckIn Instructions: &lt;ul&gt;  &lt;li&gt;Extra-person charges may apply and vary depending on property policy&lt;/li&gt;&lt;li&gt;Government-issued photo identification and a credit card, debit card, or cash deposit may be required at check-in for incidental charges&lt;/li&gt;&lt;li&gt;Special requests are subject to availability upon check-in and may incur additional charges; special requests cannot be guaranteed&lt;/li&gt;&lt;li&gt;The name on the credit card used at check-in to pay for incidentals must be the primary name on the guestroom reservation&lt;/li&gt;&lt;li&gt;This property accepts credit cards, debit cards, and cash&lt;/li&gt;&lt;li&gt;Cashless transactions are available&lt;/li&gt;&lt;li&gt;Safety features at this property include a carbon monoxide detector, a fire extinguisher, a smoke detector, a security system, a first aid kit, and window guards&lt;/li&gt;&lt;li&gt;Please note that cultural norms and guest policies may differ by country and by property; the policies listed are provided by the property&lt;/li&gt;  &lt;/ul&gt; ",
+                " Special Instructions : This property offers transfers from the airport (surcharges may apply). To arrange pick-up, guests must contact the property 24 hours prior to arrival, using the contact information on the booking confirmation. To make arrangements for check-in please contact the property at least 48 hours before arrival using the information on the booking confirmation. Guests will receive an email within 48 hours before arrival with check-in instructions. Front desk staff will greet guests on arrival at the property. For any questions, please contact the property using the information on the booking confirmation. Information provided by the property may be translated using automated translation tools. Customers may be requested by the property to provide documentation of recent travel history (such as showing passport immigration stamps) and/or complete a health declaration.",
+                "Minimum CheckIn Age : 21",
+                "Mandatory Fees: &lt;p&gt;You'll be asked to pay the following charges at the property. Fees may include applicable taxes:&lt;/p&gt; &lt;ul&gt;&lt;li&gt;Deposit: PHP 5000 per night&lt;/li&gt;&lt;/ul&gt; &lt;p&gt;We have included all charges provided to us by the property. &lt;/p&gt; ",
+                " Optional Fees: &lt;ul&gt; &lt;li&gt;Fee for buffet breakfast: approximately PHP 1900 to 1900 for adults, and PHP 950 to 1900 for children&lt;/li&gt;&lt;li&gt;Airport shuttle fee: PHP 4397.25 per vehicle (one-way, maximum occupancy 3)&lt;/li&gt;&lt;li&gt;Early check-in is available for a fee (subject to availability)&lt;/li&gt;&lt;li&gt;Late check-out is available for a fee (subject to availability)&lt;/li&gt;&lt;li&gt;Rollaway bed fee: PHP 1839.0 per stay&lt;/li&gt;&lt;/ul&gt; &lt;p&gt;The above list may not be comprehensive. Fees and deposits may not include tax and are subject to change. &lt;/p&gt;",
+                "Cards Accepted: Visa,Diners Club,Debit cards,Cash,American Express,JCB International,Mastercard,UnionPay",
+                "&lt;ul&gt;  &lt;li&gt;Up to 2 children 17 years old and younger stay free when occupying the parent or guardian's room, using existing bedding. &lt;/li&gt;&lt;li&gt;Only registered guests are allowed in the guestrooms. &lt;/li&gt; &lt;li&gt;The property has connecting/adjoining rooms, which are subject to availability and can be requested by contacting the property using the number on the booking confirmation. &lt;/li&gt;&lt;li&gt;Cashless payment methods are available for all transactions.&lt;/li&gt; &lt;/ul&gt;,Service animals are allowed,Service animals are exempt from fees/restrictions,Pets not allowed,Property does not require health documentation at check-in,Professional property host/manager,Green Globe,Cashless transactions are available,Essential workers only - NO,Guest will receive an email before arrival 48 hours,Guests will receive an email with special check-in instructions,Property does not offer onsite COVID-19 testing"
+            ]
+        }
+    ]
+}

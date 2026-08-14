@@ -2,14 +2,18 @@
 
 namespace App\Providers;
 
+use App\Enums\Supplier;
 use App\Services\Rbac\AuditLogger;
 use App\Services\Rbac\PermissionRegistry;
 use App\Services\Settings\Settings;
+use App\Services\Supplier\SupplierEnvironmentResolver;
 use App\Services\TboAir\FlightSearchCache;
 use App\Services\TboAir\RecentSearchStore;
 use App\Services\TboAir\TboAirClient;
 use App\Services\TboAir\TboAirConfig;
-use App\Services\TboAir\TboEnvironmentResolver;
+use App\Services\TboHotel\HotelSearchCache;
+use App\Services\TboHotel\TboHotelClient;
+use App\Services\TboHotel\TboHotelConfig;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Facades\Event;
@@ -27,14 +31,27 @@ class AppServiceProvider extends ServiceProvider
         // Resolved per request so the client always reflects the current
         // environment (global setting / per-user override), not a boot-time value.
         $this->app->bind(TboAirClient::class, function ($app) {
-            $env = $app->make(TboEnvironmentResolver::class)->resolve();
+            $env = $app->make(SupplierEnvironmentResolver::class)->resolve(Supplier::TboAir);
 
             return new TboAirClient(TboAirConfig::for($env));
+        });
+
+        // Same per-request resolution for hotels. No token to cache here — Basic Auth
+        // rides on every call — so the client is nothing but its environment.
+        $this->app->bind(TboHotelClient::class, function ($app) {
+            $env = $app->make(SupplierEnvironmentResolver::class)->resolve(Supplier::TboHotel);
+
+            return new TboHotelClient(TboHotelConfig::for($env));
         });
 
         $this->app->singleton(FlightSearchCache::class, fn () => new FlightSearchCache((int) config('tboair.search_cache_ttl')));
 
         $this->app->singleton(RecentSearchStore::class, fn () => new RecentSearchStore((int) config('tboair.recent_ttl')));
+
+        $this->app->singleton(HotelSearchCache::class, fn ($app) => new HotelSearchCache(
+            (int) config('tbohotel.search_cache_ttl'),
+            $app->make(Settings::class),
+        ));
 
         // One registry instance per request so its normalized module cache is shared.
         $this->app->singleton(PermissionRegistry::class);

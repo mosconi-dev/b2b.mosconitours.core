@@ -89,6 +89,38 @@ class BookingTest extends TestCase
     }
 
     /**
+     * Completing the wizard issues a real ticket and spends real money, and it is the
+     * only press that does. The warning belongs at that press, not on a later page the
+     * agent has no reason to open.
+     */
+    public function test_the_wizard_warns_before_a_live_ticket(): void
+    {
+        $this->fakeQuote();
+        config(['tboair.default' => 'live']);
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk()
+            ->assertSee('This is a LIVE booking.')
+            ->assertSee('issues a real ticket with the airline');
+    }
+
+    /**
+     * And says nothing on test. A warning shown on every press is one nobody reads on
+     * the day it counts.
+     */
+    public function test_the_wizard_does_not_cry_wolf_on_test(): void
+    {
+        $this->fakeQuote();
+        config(['tboair.default' => 'test']);
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk()
+            ->assertDontSee('This is a LIVE booking.');
+    }
+
+    /**
      * The wizard's summary card can expand into the same leg-by-leg itinerary the
      * results page shows, plus the fare conditions — so a client re-checking the
      * flight doesn't have to go back and lose the wizard.

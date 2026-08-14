@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\TboAirApiLog;
+use App\Enums\Supplier;
+use App\Models\SupplierApiLog;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,9 +61,9 @@ class ApiLogTest extends TestCase
 
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
 
-        $this->assertDatabaseCount('tbo_air_api_logs', 2);
-        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'authenticate', 'successful' => true, 'user_id' => $user->id]);
-        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'successful' => true, 'status_code' => 200]);
+        $this->assertDatabaseCount('supplier_api_logs', 2);
+        $this->assertDatabaseHas('supplier_api_logs', ['type' => 'authenticate', 'successful' => true, 'user_id' => $user->id]);
+        $this->assertDatabaseHas('supplier_api_logs', ['type' => 'search', 'successful' => true, 'status_code' => 200]);
     }
 
     public function test_auth_password_is_masked(): void
@@ -71,7 +72,7 @@ class ApiLogTest extends TestCase
 
         $this->actingAs($this->apiUser())->postJson('/flights/search', $this->payload())->assertOk();
 
-        $auth = TboAirApiLog::where('type', 'authenticate')->firstOrFail();
+        $auth = SupplierApiLog::where('type', 'authenticate')->firstOrFail();
         $this->assertSame('********', $auth->request['Password']);
     }
 
@@ -84,7 +85,7 @@ class ApiLogTest extends TestCase
 
         $this->actingAs($this->apiUser())->postJson('/flights/search', $this->payload())->assertStatus(502);
 
-        $this->assertDatabaseHas('tbo_air_api_logs', ['type' => 'search', 'successful' => false, 'status_code' => 500]);
+        $this->assertDatabaseHas('supplier_api_logs', ['type' => 'search', 'successful' => false, 'status_code' => 500]);
     }
 
     public function test_logs_page_renders_with_entries(): void
@@ -111,13 +112,56 @@ class ApiLogTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_flight_calls_are_stamped_with_their_supplier(): void
+    {
+        $this->fakeOk();
+        $this->actingAs($this->apiUser())->postJson('/flights/search', $this->payload())->assertOk();
+
+        $this->assertSame(
+            [Supplier::TboAir],
+            SupplierApiLog::pluck('supplier')->unique()->values()->all(),
+        );
+    }
+
+    public function test_logs_page_filters_by_supplier(): void
+    {
+        $this->fakeOk();
+        $user = $this->apiUser();
+        $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
+
+        // Stand in for the hotel calls Phase 1 will make: the filter has to exclude
+        // one supplier's traffic before there is a second supplier to prove it on.
+        SupplierApiLog::create([
+            'supplier' => Supplier::TboHotel,
+            'type' => 'prebook',
+            'environment' => 'test',
+            'endpoint' => 'https://api.tbotechnology.in/HotelAPI/PreBook',
+            'status_code' => 200,
+            'successful' => true,
+            'duration_ms' => 12,
+            'user_id' => $user->id,
+            'agency_id' => $user->agency_id,
+            'request' => [],
+        ]);
+
+        $this->actingAs($user)->get('/api-logs?supplier=tbohotel')
+            ->assertOk()
+            ->assertSee('Prebook')
+            ->assertDontSee('MNL → MPH');
+
+        $this->actingAs($user)->get('/api-logs?supplier=tboair')
+            ->assertOk()
+            ->assertSee('MNL → MPH')
+            ->assertDontSee('Prebook');
+    }
+
     public function test_log_detail_returns_response_json(): void
     {
         $this->fakeOk();
         $user = $this->apiUser();
         $this->actingAs($user)->postJson('/flights/search', $this->payload())->assertOk();
 
-        $log = TboAirApiLog::where('type', 'search')->firstOrFail();
+        $log = SupplierApiLog::where('type', 'search')->firstOrFail();
 
         $this->actingAs($user)->getJson("/api-logs/{$log->id}")
             ->assertOk()

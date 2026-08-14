@@ -5,7 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Models\Agency;
 use App\Models\AuditLog;
 use App\Models\Booking;
-use App\Models\TboAirApiLog;
+use App\Models\SupplierApiLog;
 use App\Models\User;
 use App\Services\Rbac\AuditLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -88,9 +88,9 @@ class AgencyActivityScopingTest extends TestCase
     {
         $mine = $this->agencyUserWith($this->acme, ['apilog.view']);
 
-        $ours = TboAirApiLog::create($this->logAttributes('/ours', $mine->id, $this->acme->id));
-        $theirs = TboAirApiLog::create($this->logAttributes('/theirs', null, $this->rival->id));
-        $platform = TboAirApiLog::create($this->logAttributes('/platform', null, null));
+        $ours = SupplierApiLog::create($this->logAttributes('/ours', $mine->id, $this->acme->id));
+        $theirs = SupplierApiLog::create($this->logAttributes('/theirs', null, $this->rival->id));
+        $platform = SupplierApiLog::create($this->logAttributes('/platform', null, null));
 
         $ids = $this->actingAs($mine)
             ->get(route('api-logs'))
@@ -107,8 +107,8 @@ class AgencyActivityScopingTest extends TestCase
     {
         $mine = $this->agencyUserWith($this->acme, ['apilog.view']);
 
-        $ours = TboAirApiLog::create($this->logAttributes('/ours', $mine->id, $this->acme->id));
-        $theirs = TboAirApiLog::create($this->logAttributes('/theirs', null, $this->rival->id));
+        $ours = SupplierApiLog::create($this->logAttributes('/ours', $mine->id, $this->acme->id));
+        $theirs = SupplierApiLog::create($this->logAttributes('/theirs', null, $this->rival->id));
 
         // Holding apilog.view is not permission to read ANY row's raw response.
         $this->actingAs($mine)->get(route('api-logs.show', $ours))->assertOk();
@@ -117,7 +117,7 @@ class AgencyActivityScopingTest extends TestCase
 
     public function test_platform_staff_can_read_any_api_log(): void
     {
-        $log = TboAirApiLog::create($this->logAttributes('/anything', null, $this->rival->id));
+        $log = SupplierApiLog::create($this->logAttributes('/anything', null, $this->rival->id));
 
         $this->actingAs($this->admin())->get(route('api-logs.show', $log))->assertOk();
     }

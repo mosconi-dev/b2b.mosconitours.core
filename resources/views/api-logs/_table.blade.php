@@ -1,13 +1,13 @@
 @php
     $showUser = $showUser ?? true;
-    $cols = $showUser ? 7 : 6;
+    $cols = $showUser ? 8 : 7;
 @endphp
 
 <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
     @if ($logs->isEmpty())
         <div class="p-12 text-center">
             <p class="text-sm font-medium text-brand-900">No API calls logged yet</p>
-            <p class="mt-1 text-sm text-gray-500">TBO Air authentication &amp; search requests and responses will appear here.</p>
+            <p class="mt-1 text-sm text-gray-500">Requests and responses to every supplier will appear here.</p>
         </div>
     @else
         <div class="overflow-x-auto">
@@ -15,6 +15,7 @@
                 <thead>
                     <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <th class="px-5 py-3">When</th>
+                        <th class="px-5 py-3">Supplier</th>
                         <th class="px-5 py-3">Type</th>
                         <th class="px-5 py-3">Status</th>
                         <th class="px-5 py-3">Time</th>
@@ -35,6 +36,9 @@
                         $typeClass = $log->type === 'search'
                             ? 'bg-blue-50 text-blue-700 ring-blue-600/20'
                             : 'bg-indigo-50 text-indigo-700 ring-indigo-600/20';
+                        $supplierClass = $log->supplier === \App\Enums\Supplier::TboHotel
+                            ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
+                            : 'bg-sky-50 text-sky-700 ring-sky-600/20';
                     @endphp
                     <tbody x-data="{
                             open: false,
@@ -56,6 +60,9 @@
                         }" class="divide-y divide-gray-100 border-t border-gray-100">
                         <tr class="cursor-pointer transition hover:bg-gray-50" @click="toggle()">
                             <td class="whitespace-nowrap px-5 py-3 text-gray-500">{{ $log->created_at->format('M j, H:i:s') }}</td>
+                            <td class="whitespace-nowrap px-5 py-3">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ $supplierClass }}">{{ $log->supplier?->label() ?? '—' }}</span>
+                            </td>
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-1.5">
                                     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset {{ $typeClass }}">{{ $log->type }}</span>

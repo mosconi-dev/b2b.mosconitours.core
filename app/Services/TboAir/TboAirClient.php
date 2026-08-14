@@ -2,7 +2,8 @@
 
 namespace App\Services\TboAir;
 
-use App\Models\TboAirApiLog;
+use App\Enums\Supplier;
+use App\Models\SupplierApiLog;
 use App\Services\TboAir\Exceptions\TboAirException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Auth;
@@ -204,7 +205,8 @@ class TboAirClient
         }
 
         try {
-            TboAirApiLog::create([
+            SupplierApiLog::create([
+                'supplier' => Supplier::TboAir,
                 'type' => $type,
                 'environment' => $this->environment(),
                 'endpoint' => $url,

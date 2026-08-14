@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\AgencyController;
 use App\Http\Controllers\Admin\AgencyRoleController;
 use App\Http\Controllers\Admin\AgencyUserController;
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\HotelCatalogueController;
+use App\Http\Controllers\Admin\HotelSettingController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingController;
@@ -12,6 +14,9 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\FlightController;
+use App\Http\Controllers\HotelBookingController;
+use App\Http\Controllers\HotelController;
+use App\Http\Controllers\HotelSuggestController;
 use App\Http\Controllers\LoadRequestController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WalletAdjustmentController;
@@ -34,6 +39,38 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/flights/fare-quote', [FlightController::class, 'fareQuote'])->name('flights.fare-quote')->middleware('can:flight.search');
     Route::post('/flights/fare-rule', [FlightController::class, 'fareRule'])->name('flights.fare-rule')->middleware('can:flight.search');
     Route::post('/flights/ssr', [FlightController::class, 'ssr'])->name('flights.ssr')->middleware('can:flight.search');
+
+    Route::get('/hotels', [HotelController::class, 'index'])->name('hotels')->middleware('can:hotel.view');
+    // Registered before /hotels/{code} so the literal segment wins the match.
+    Route::get('/hotels/suggest', HotelSuggestController::class)->name('hotels.suggest')
+        ->middleware('can:hotel.search');
+    Route::post('/hotels/search', [HotelController::class, 'search'])->name('hotels.search')
+        ->middleware('can:hotel.search');
+    // Steps 3–5 of the wizard. Also before /hotels/{code}, which matches numbers only
+    // but would still be the more confusing failure if it ever widened.
+    Route::get('/hotels/book', [HotelBookingController::class, 'create'])->name('hotels.book')
+        ->middleware('can:hotel.book');
+    Route::post('/hotels/bookings', [HotelBookingController::class, 'store'])->name('hotels.bookings.store')
+        ->middleware('can:hotel.book');
+    // The money step. Separate from store(): creating the booking takes the agency's
+    // money, this takes the room.
+    Route::post('/hotels/bookings/{booking}/book', [HotelBookingController::class, 'book'])
+        ->name('hotels.bookings.book')->whereNumber('booking')->middleware('can:hotel.book');
+    Route::get('/hotels/bookings/{booking}/voucher', [HotelBookingController::class, 'voucher'])
+        ->name('hotels.bookings.voucher')->whereNumber('booking')->middleware('can:booking.view');
+    // A read, but a POST: it writes down what TBO answers, and a link a browser can
+    // prefetch is not the right shape for something that corrects a booking's status.
+    Route::post('/hotels/bookings/{booking}/refresh', [HotelBookingController::class, 'refresh'])
+        ->name('hotels.bookings.refresh')->whereNumber('booking')->middleware('can:hotel.view');
+    // Its own right, not part of hotel.book: this moves money back out of a confirmed
+    // booking, and the charge for doing it is rarely nothing.
+    Route::post('/hotels/bookings/{booking}/cancel', [HotelBookingController::class, 'cancel'])
+        ->name('hotels.bookings.cancel')->whereNumber('booking')->middleware('can:hotel.cancel');
+    // Step 2 on its own page, the way a fare gets one on the flight side.
+    Route::get('/hotels/{code}/rooms', [HotelController::class, 'rooms'])->name('hotels.rooms')
+        ->whereNumber('code')->middleware('can:hotel.search');
+    Route::get('/hotels/{code}', [HotelController::class, 'show'])->name('hotels.show')
+        ->whereNumber('code')->middleware('can:hotel.view');
 
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');
@@ -156,6 +193,37 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     });
 
     Route::get('audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index')->middleware('can:audit.view');
+
+    /*
+    | The hotel catalogue. TBO's Search takes hotel codes and nothing else, so this
+    | is not a cache — it is curated inventory someone has to keep current.
+    */
+    Route::prefix('hotel-catalogue')->name('hotel-catalogue.')->group(function () {
+        Route::get('/', [HotelCatalogueController::class, 'index'])->name('index')
+            ->middleware('can:supplier.tbohotel.view');
+        Route::patch('/cities/{city}', [HotelCatalogueController::class, 'toggleCity'])->name('cities.toggle')
+            ->whereNumber('city')->middleware('can:supplier.tbohotel.sync');
+        // Many at once, or every city a filter matches. One country is 194 rows at 25
+        // to a page, and carrying a dozen destinations one click at a time is how a
+        // catalogue stays at two cities.
+        Route::post('/cities/carry', [HotelCatalogueController::class, 'carryCities'])->name('cities.carry')
+            ->middleware('can:supplier.tbohotel.sync');
+        Route::post('/sync', [HotelCatalogueController::class, 'sync'])->name('sync')
+            ->middleware('can:supplier.tbohotel.sync');
+    });
+
+    /*
+    | TBO Hotel's own settings. Separate from admin/settings, which is TBO Air's and
+    | is mostly token management — hotels have no token to manage.
+    */
+    Route::prefix('tbo-hotel')->name('tbo-hotel.')->group(function () {
+        Route::get('settings', [HotelSettingController::class, 'index'])->name('settings')
+            ->middleware('can:supplier.tbohotel.view');
+        Route::put('settings', [HotelSettingController::class, 'update'])->name('settings.update')
+            ->middleware('can:supplier.tbohotel.manage');
+        Route::post('cache/flush', [HotelSettingController::class, 'flushCache'])->name('cache.flush')
+            ->middleware('can:supplier.tbohotel.manage');
+    });
 
     Route::prefix('settings')->name('settings.')->group(function () {
         Route::get('/', [SettingController::class, 'index'])->name('index')->middleware('can:setting.view');

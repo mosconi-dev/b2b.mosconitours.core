@@ -123,9 +123,11 @@ return [
         'hotel' => [
             'label' => 'Hotels',
             'section' => 'travel_operations',
-            'route' => null, // not built yet — permission stub
+            'route' => 'hotels',
             'icon' => 'building',
-            'actions' => ['view', 'search', 'book'],
+            // cancel is the hotel equivalent of the flight money step's aftermath —
+            // it moves money back out of a confirmed booking, so it is its own right.
+            'actions' => ['view', 'search', 'book', 'cancel'],
         ],
         'booking' => [
             'label' => 'Bookings',
@@ -142,6 +144,23 @@ return [
             'icon' => 'server',
             // manage = edit the TBO environment/cache settings; live = may use the live environment
             'actions' => ['view', 'sync', 'manage', 'live'],
+        ],
+        'supplier.tbohotel' => [
+            'label' => 'TBO Hotel',
+            'section' => 'travel_operations',
+            'group' => 'Suppliers',
+            'route' => 'admin.hotel-catalogue.index',
+            'icon' => 'server',
+            // sync = refresh the local hotel catalogue (countries, cities, properties);
+            // manage = edit the environment/cache settings; live = may use live.
+            'actions' => ['view', 'sync', 'manage', 'live'],
+            // The supplier's own settings — test/live and the search cache. A second
+            // nav entry rather than a second module: same permissions, another door.
+            // Admin → Settings is TBO Air's and says nothing about hotels, so without
+            // this the page can only be found by opening the catalogue first.
+            'links' => [
+                ['label' => 'TBO Hotel Settings', 'route' => 'admin.tbo-hotel.settings', 'icon' => 'cog'],
+            ],
         ],
         'supplier.amadeus' => [
             'label' => 'Amadeus',

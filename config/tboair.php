@@ -9,7 +9,7 @@ return [
     |
     | The app-wide default TBO environment ("test" or "live"). This is only the
     | fallback — an admin can override it globally via the Settings page, and a
-    | per-user override can take precedence (see TboEnvironmentResolver).
+    | per-user override can take precedence (see SupplierEnvironmentResolver).
     |
     */
 

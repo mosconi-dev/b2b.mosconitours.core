@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BookingProduct;
 use App\Enums\BookingStatus;
 use App\Http\Requests\StoreBookingRequest;
 use App\Jobs\FulfilBookingJob;
@@ -15,6 +16,7 @@ use App\Services\Booking\Exceptions\BookingException;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\TboAirService;
+use App\Services\TboHotel\HotelBookingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,14 +39,22 @@ class BookingController extends Controller
         return view('bookings.index', compact('bookings'));
     }
 
-    public function show(Request $request, Booking $booking): View
+    public function show(Request $request, Booking $booking, HotelBookingService $hotels): View
     {
         abort_unless(
             $booking->user_id === $request->user()->id && $booking->isVisibleTo($request->user()),
             403,
         );
 
-        return view('bookings.show', compact('booking'));
+        return view('bookings.show', [
+            'booking' => $booking,
+            // What cancelling would cost if the agent pressed it now. Computed here so
+            // the figure they are shown is the one the service would charge, rather
+            // than a second reading of the same policy done in a template.
+            'cancellationCharge' => $booking->isHotel() && $booking->status === BookingStatus::Confirmed
+                ? $hotels->cancellationCharge($booking)
+                : null,
+        ]);
     }
 
     /**
@@ -119,6 +129,10 @@ class BookingController extends Controller
                 'from' => (string) $request->query('from', ''),
                 'to' => (string) $request->query('to', ''),
             ],
+            // Completing the wizard issues a real ticket, so the Payment step has to
+            // say so. Read from the supplier rather than from config: it is the same
+            // answer that gets stamped on the booking.
+            'isLive' => $service->environment() === 'live',
             // Lets the Payment step warn about a shortfall before the agent submits.
             // Advisory only — BookingService re-checks under lock at submit, because
             // a colleague may spend the balance while this page is open.
@@ -209,6 +223,11 @@ class BookingController extends Controller
             403,
         );
 
+        // This chain is Book → Ticket against TBO Air. A hotel booking carries a
+        // BookingCode and no result index, so running it here would send a hotel's
+        // stored quote to the airline API and fail somewhere expensive.
+        abort_unless($booking->product === BookingProduct::Flight, 404);
+
         if (! $booking->status->isInFlight() && $booking->status !== BookingStatus::Quoted) {
             return back()->with(
                 'error',
@@ -236,6 +255,9 @@ class BookingController extends Controller
             'label' => $booking->status->label(),
             'inFlight' => $booking->status->isInFlight(),
             'pnr' => $booking->pnr,
+            // Hotels have no PNR; their reference is TBO's confirmation number, and the
+            // page polling this needs whichever the product actually has.
+            'reference' => $booking->supplier_reference ?? $booking->pnr,
         ]);
     }
 

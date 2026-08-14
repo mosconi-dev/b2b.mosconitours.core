@@ -16,11 +16,13 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
     // Usage: x-flatpickr="{ model: 'segment.departure' }"
     //        x-flatpickr="{ model: 'returnDate', min: 'segment.departure' }"
     // `model` is the Alpine property this picker reads/writes (replaces x-model
-    // so we can keep flatpickr's display in sync). `min` is an optional reactive
-    // path whose value becomes this picker's minimum (departure -> return).
+    // so we can keep flatpickr's display in sync). `min` and `max` are optional
+    // reactive paths whose values bound this picker (departure -> return, or
+    // check-in -> the last night of a capped stay).
     const cfg = expression ? evaluate(expression) : {};
     const modelPath = cfg.model ?? null;
     const minPath = cfg.min ?? null;
+    const maxPath = cfg.max ?? null;
     const placeholderPath = cfg.placeholder ?? null;
 
     // Static bounds. Travel dates are always ahead of today, so that stays the
@@ -46,6 +48,16 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
 
     if (fp.altInput && el.placeholder) {
         fp.altInput.placeholder = el.placeholder;
+    }
+
+    // altInput is a visible copy; flatpickr hides the original. An id has to
+    // travel with it, or the <label for> above points at a hidden field and
+    // clicking the label opens nothing.
+    const id = el.id;
+
+    if (fp.altInput && id) {
+        el.removeAttribute('id');
+        fp.altInput.id = id;
     }
 
     // Reactive placeholder. The field the user actually sees is flatpickr's
@@ -82,7 +94,22 @@ Alpine.directive('flatpickr', (el, { expression }, { evaluate, evaluateLater, ef
         });
     }
 
-    cleanup(() => fp.destroy());
+    // Reactive maximum, same idea at the other end. Note that flatpickr only
+    // redraws on a bounds change — it will not clear a selection that has just
+    // fallen outside them, so a component with moving bounds has to keep its own
+    // model honest rather than assume the picker did it.
+    if (maxPath) {
+        const readMax = evaluateLater(maxPath);
+        effect(() => {
+            readMax((value) => fp.set('maxDate', value || maxDate));
+        });
+    }
+
+    cleanup(() => {
+        fp.destroy();
+
+        if (id) el.id = id;
+    });
 });
 
 const CABIN_LABELS = {
@@ -178,6 +205,32 @@ function formatDate(iso) {
     if (! iso) return '';
     const d = new Date(iso);
     return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * A calendar day a person can read: "2026-09-04" -> "4 Sept 2026".
+ *
+ * Day-first with a named month, because an all-numeric date means two different
+ * days either side of the Pacific and the ones shown here are deadlines. Accepts a
+ * date or a datetime, and keeps the time when there is one — a refund window that
+ * shuts at 2pm must not be shown as if it lasted all day.
+ */
+function formatDay(value) {
+    if (! value) return '';
+
+    // Two parsing traps. "2026-09-04 00:00:00" is not a form every browser accepts,
+    // and a bare "2026-09-04" is defined as UTC midnight — which is mid-morning in
+    // Manila, so it would report a time on a date that never carried one.
+    const text = String(value).trim().replace(' ', 'T');
+    const d = new Date(text.length === 10 ? `${text}T00:00:00` : text);
+
+    if (isNaN(d)) return String(value);
+
+    const day = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    return d.getHours() || d.getMinutes()
+        ? `${day}, ${formatTime(d)}`
+        : day;
 }
 
 function formatDuration(mins) {
@@ -1513,6 +1566,716 @@ Alpine.data('bookingWizard', (config = {}) => ({
         // Replace, not push: the booking exists now, so Confirmation must not
         // become a history entry the user can Back into and re-submit.
         this.syncUrl(false);
+    },
+}));
+
+/**
+ * Hotel search.
+ *
+ * Simpler than flightSearch because the server does the hard part: one POST comes
+ * back with every property that has availability, already joined to the catalogue
+ * and sorted. What lives here is the form, the client-side sort/filter, and the
+ * property panel — which fetches a hotel's description and photos the first time it
+ * is opened, since most of the catalogue has never been enriched.
+ */
+Alpine.data('hotelSearch', (config = {}) => ({
+    suggestUrl: config.suggestUrl,
+    searchUrl: config.searchUrl,
+    roomsUrlFor: config.roomsUrl,
+
+    // Embedded on the rooms page, where the same form partial appears above the
+    // stepper: submitting hands the edited search to /hotels instead of rendering
+    // results in place. Mirrors flightSearch's redirectUrl.
+    redirectUrl: config.redirectUrl ?? '',
+
+    // Form
+    locationLabel: '',
+    locationType: '',
+    locationCode: '',
+    suggestions: [],
+    checkIn: '',
+    checkOut: '',
+    guestNationality: 'PH',
+    rooms: [{ adults: 2, children: 0, childrenAges: [] }],
+    refundableOnly: false,
+
+    // State
+    loading: false,
+    collapsed: config.embedded ?? false,
+    // Which property is being opened, so its Select button can say so. The rooms page
+    // prices the hotel on the way in, which is a second or two of nothing otherwise.
+    selecting: null,
+    error: '',
+    result: null,
+
+    // Client-side view controls
+    sort: 'price',
+    onlyRefundable: false,
+    onlyBreakfast: false,
+    onlyTransfers: false,
+    minRating: 0,
+
+    init() {
+        this.checkIn = this.shift(this.today, 30);
+        this.checkOut = this.shift(this.checkIn, 2);
+
+        this.restore();
+
+        // flatpickr redraws on a bounds change but keeps whatever was selected,
+        // so moving the check-in has to carry the check-out with it. Left alone,
+        // the agent sees a calendar that greys out the date its own field still
+        // shows, and the server rejects the pair a round trip later.
+        this.$watch('checkIn', () => {
+            if (!this.checkIn) return;
+
+            if (!this.checkOut || this.checkOut <= this.checkIn) {
+                this.checkOut = this.checkOutMin;
+            } else if (this.checkOut > this.checkOutMax) {
+                this.checkOut = this.checkOutMax;
+            }
+        });
+    },
+
+    /**
+     * Come back from a property with the search intact.
+     *
+     * "Back to results" carries the criteria in the query string, so returning re-runs
+     * the search instead of dropping the agent on an empty form. Nothing is restored
+     * when the parameters are absent, which is the ordinary first visit.
+     */
+    restore() {
+        const q = new URLSearchParams(window.location.search);
+        const city = q.get('city');
+        const hotel = q.get('hotel');
+
+        if ((!city && !hotel) || !q.get('checkIn')) return;
+
+        this.checkIn = q.get('checkIn');
+        this.checkOut = q.get('checkOut') || this.checkOutMin;
+        this.guestNationality = q.get('guestNationality') || this.guestNationality;
+        this.locationType = hotel ? 'hotel' : 'city';
+        this.locationCode = hotel || city;
+        this.locationLabel = q.get('label') || '';
+
+        const rooms = this.decodeRooms(q.get('rooms') || '');
+        if (rooms.length) this.rooms = rooms;
+
+        // Straight back to the results the agent left, rather than to the form.
+        this.$nextTick(() => this.search());
+    },
+
+    /**
+     * The inverse of roomsToken. Ages are the truth where a count disagrees with them.
+     */
+    decodeRooms(token) {
+        return token.split(';').filter(Boolean).map((part) => {
+            const [adults, rest = '0'] = part.split('-');
+            const [children = '0', ages = ''] = String(rest).split('x');
+            const childrenAges = ages.split(',').filter((a) => a !== '').map(Number);
+
+            return {
+                adults: Math.min(8, Math.max(1, Number(adults) || 2)),
+                children: childrenAges.length || Math.min(4, Math.max(0, Number(children) || 0)),
+                childrenAges,
+            };
+        });
+    },
+
+    /**
+     * The local calendar date. toISOString() is UTC, so anywhere east of
+     * Greenwich it hands back yesterday for most of the working day — in Manila
+     * "today" would be wrong until 8am, and with it every default and minimum.
+     */
+    iso(date) {
+        return [
+            date.getFullYear(),
+            String(date.getMonth() + 1).padStart(2, '0'),
+            String(date.getDate()).padStart(2, '0'),
+        ].join('-');
+    },
+
+    shift(date, days) {
+        const moved = new Date(`${date}T00:00:00`);
+        moved.setDate(moved.getDate() + days);
+
+        return this.iso(moved);
+    },
+
+    get today() {
+        return this.iso(new Date());
+    },
+
+    // A stay is at least one night, and TBO prices per night up to the thirty
+    // the server enforces — beyond that it is a series of bookings.
+    get checkOutMin() {
+        return this.shift(this.checkIn || this.today, 1);
+    },
+
+    get checkOutMax() {
+        return this.shift(this.checkIn || this.today, 30);
+    },
+
+    get nights() {
+        if (!this.checkIn || !this.checkOut) return 0;
+
+        const from = new Date(`${this.checkIn}T00:00:00`);
+        const to = new Date(`${this.checkOut}T00:00:00`);
+
+        return Math.max(0, Math.round((to - from) / 86400000));
+    },
+
+    formatDay,
+
+    get summary() {
+        if (!this.result) return '';
+        const guests = this.result.guests;
+        return `${this.locationLabel} · ${formatDay(this.checkIn)} → ${formatDay(this.checkOut)} · ` +
+            `${this.result.rooms} room${this.result.rooms === 1 ? '' : 's'}, ` +
+            `${guests} guest${guests === 1 ? '' : 's'}`;
+    },
+
+    get filtered() {
+        if (!this.result) return [];
+
+        const rows = this.result.offers.filter((o) =>
+            (!this.onlyRefundable || o.hasRefundable) &&
+            (!this.onlyBreakfast || o.hasBreakfast) &&
+            (!this.onlyTransfers || o.hasTransfers) &&
+            (!this.minRating || (o.rating || 0) >= this.minRating));
+
+        const by = {
+            price: (a, b) => a.lowestFare - b.lowestFare,
+            price_desc: (a, b) => b.lowestFare - a.lowestFare,
+            rating: (a, b) => (b.rating || 0) - (a.rating || 0),
+            name: (a, b) => a.name.localeCompare(b.name),
+        };
+
+        return rows.sort(by[this.sort] || by.price);
+    },
+
+    money(amount, currency) {
+        return `${currency || ''} ${Number(amount).toLocaleString(undefined, {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        })}`.trim();
+    },
+
+    /**
+     * Step 1 → step 2. Occupancy rides along encoded as "2-0;2-1x8,10": the rooms page
+     * re-prices this one hotel and needs the exact occupancy that was searched.
+     *
+     * `from` and `label` are what "back to results" reads, so leaving a property and
+     * returning lands on the search the agent ran rather than an empty form.
+     */
+    roomsUrl(offer) {
+        const params = new URLSearchParams({
+            checkIn: this.checkIn,
+            checkOut: this.checkOut,
+            guestNationality: this.guestNationality,
+            rooms: this.roomsToken,
+            from: this.locationType === 'city' ? this.locationCode : '',
+            label: this.locationLabel,
+        });
+
+        return `${this.roomsUrlFor.replace('__CODE__', offer.hotelCode)}?${params}`;
+    },
+
+    /**
+     * The latest date any of this property's rates can still be cancelled free.
+     *
+     * The latest rather than the cheapest room's: the card is an invitation to look,
+     * and the best cancellation terms on offer are what make a property worth opening.
+     * The room page then shows which rate carries them.
+     */
+    freeCancellation(offer) {
+        return (offer.rooms || [])
+            .map((r) => r.freeCancellationUntil)
+            .filter(Boolean)
+            .sort()
+            .pop() || null;
+    },
+
+    /**
+     * Put the search in the address bar.
+     *
+     * Without it /hotels is the only page in the flow that cannot be reloaded, shared
+     * or bookmarked, and the browser's own back button loses the results. Written with
+     * the same parameter names the rooms page emits and restore() reads, rather than a
+     * second, opaque encoding of the same six facts.
+     *
+     * replaceState, not pushState: re-searching refines one intent rather than making a
+     * new place, and stacking history entries would mean pressing back five times to
+     * leave a page the agent visited once.
+     */
+    rememberInUrl() {
+        if (this.redirectUrl) return; // the embedded form navigates instead
+
+        const params = new URLSearchParams({
+            checkIn: this.checkIn,
+            checkOut: this.checkOut,
+            guestNationality: this.guestNationality,
+            rooms: this.roomsToken,
+            label: this.locationLabel,
+        });
+
+        params.set(this.locationType === 'hotel' ? 'hotel' : 'city', this.locationCode);
+
+        window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+    },
+
+    selectHotel(offer) {
+        this.selecting = offer.hotelCode;
+        window.location = this.roomsUrl(offer);
+    },
+
+    get roomsToken() {
+        return this.rooms
+            .map((r) => `${r.adults}-${r.children}` + (r.childrenAges.length ? `x${r.childrenAges.join(',')}` : ''))
+            .join(';');
+    },
+
+    async suggest() {
+        const term = this.locationLabel.trim();
+
+        if (term.length < 2) {
+            this.suggestions = [];
+            return;
+        }
+
+        try {
+            const res = await fetch(`${this.suggestUrl}?q=${encodeURIComponent(term)}`, {
+                headers: { Accept: 'application/json' },
+            });
+            this.suggestions = (await res.json()).results || [];
+        } catch {
+            this.suggestions = [];
+        }
+    },
+
+    choose(option) {
+        this.locationLabel = option.label;
+        this.locationType = option.type;
+        this.locationCode = option.code;
+        this.suggestions = [];
+    },
+
+    addRoom() {
+        this.rooms.push({ adults: 2, children: 0, childrenAges: [] });
+    },
+
+    removeRoom(i) {
+        this.rooms.splice(i, 1);
+    },
+
+    // One age per child, in the room that child sleeps in. TBO refuses the request
+    // when the counts disagree, so the form keeps them in step rather than letting
+    // the server explain it later.
+    syncAges(room) {
+        while (room.childrenAges.length < room.children) room.childrenAges.push(8);
+        room.childrenAges.length = room.children;
+    },
+
+    async search(retry = false) {
+        if (!this.locationCode) {
+            this.error = 'Choose a destination or property from the list.';
+            return;
+        }
+
+        // Embedded: the results belong on the results page, not under this form.
+        if (this.redirectUrl) {
+            this.loading = true;
+            window.location = `${this.redirectUrl}?${new URLSearchParams({
+                checkIn: this.checkIn,
+                checkOut: this.checkOut,
+                guestNationality: this.guestNationality,
+                rooms: this.roomsToken,
+                city: this.locationType === 'city' ? this.locationCode : '',
+                label: this.locationLabel,
+            })}`;
+            return;
+        }
+
+        this.error = '';
+        this.loading = true;
+
+        try {
+            const res = await fetch(this.searchUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+                },
+                body: JSON.stringify({
+                    checkIn: this.checkIn,
+                    checkOut: this.checkOut,
+                    locationType: this.locationType,
+                    locationCode: this.locationCode,
+                    guestNationality: this.guestNationality,
+                    rooms: this.rooms,
+                    refundableOnly: this.refundableOnly,
+                }),
+            });
+
+            const body = await res.json();
+
+            if (!res.ok) {
+                // 422 is our own validation; anything else is the supplier speaking.
+                this.error = body.message || Object.values(body.errors || {}).flat()[0]
+                    || 'The search could not be completed.';
+                return;
+            }
+
+            this.result = body;
+            this.collapsed = true;
+            this.rememberInUrl();
+        } catch {
+            this.error = 'The search could not be completed. Please try again.';
+        } finally {
+            this.loading = false;
+        }
+    },
+}));
+
+/**
+ * The hotel booking wizard, steps 3–5.
+ *
+ * Step 1 is the results list and step 2 the property's own page, so this opens on
+ * Guest Details. The numbering is shared with the flights wizard deliberately — same
+ * stepper, same positions — so an agent who has learned one has learned both.
+ */
+Alpine.data('hotelBooking', (config = {}) => ({
+    storeUrl: config.storeUrl,
+    backUrl: config.backUrl,
+    bookingCode: config.bookingCode,
+    quote: config.quote || {},
+    stay: config.stay || {},
+    wallet: config.wallet,
+    shownFare: config.shownFare,
+    priceChanged: !!config.priceChanged,
+
+    step: 3,
+    guests: [],
+    contact: { email: config.contactEmail || '', phone: '' },
+    acceptPriceChange: false,
+    loading: false,
+    error: '',
+
+    formatDay,
+
+    init() {
+        this.guests = this.blankGuests();
+    },
+
+    get rooms() {
+        return this.stay.rooms || [];
+    },
+
+    /**
+     * One name field per occupant, in the room that occupant sleeps in. TBO prices per
+     * room and groups CustomerDetails the same way, so the form has to be built from
+     * the occupancy that was priced rather than from a free-form count.
+     */
+    blankGuests() {
+        const guests = [];
+
+        this.rooms.forEach((room, r) => {
+            for (let i = 0; i < room.adults; i++) {
+                guests.push(this.blank(r, 'Adult', guests.length));
+            }
+
+            for (let i = 0; i < room.children; i++) {
+                guests.push(this.blank(r, 'Child', guests.length));
+            }
+        });
+
+        // The lead is who the desk asks for: the first adult of the first room. The
+        // server enforces this too — the flag here is only so the agent can see it.
+        const lead = guests.find((g) => g.type === 'Adult' && g.roomIndex === 0);
+        if (lead) lead.isLead = true;
+
+        return guests;
+    },
+
+    blank(roomIndex, type, key) {
+        return { key, title: type === 'Child' ? 'Ms' : 'Mr', firstName: '', lastName: '', type, roomIndex, isLead: false };
+    },
+
+    guestsIn(roomIndex) {
+        return this.guests.filter((g) => g.roomIndex === roomIndex);
+    },
+
+    roomName(index) {
+        return (this.quote.names || [])[index] || '';
+    },
+
+    occupancyLabel(room) {
+        const parts = [`${room.adults} adult${room.adults === 1 ? '' : 's'}`];
+
+        if (room.children) {
+            parts.push(`${room.children} child${room.children === 1 ? '' : 'ren'}`);
+        }
+
+        return parts.join(' · ');
+    },
+
+    get nightsLabel() {
+        const from = new Date(`${this.stay.checkIn}T00:00:00`);
+        const to = new Date(`${this.stay.checkOut}T00:00:00`);
+        const nights = Math.max(1, Math.round((to - from) / 86400000));
+        const rooms = this.rooms.length;
+
+        return `${nights} night${nights === 1 ? '' : 's'} · ${rooms} room${rooms === 1 ? '' : 's'}`;
+    },
+
+    get delta() {
+        return Number(this.quote.totalFare || 0) - Number(this.shownFare || 0);
+    },
+
+    get shortfall() {
+        if (!this.wallet) return 0;
+
+        return Math.max(0, Number(this.quote.totalFare || 0) - Number(this.wallet.balance || 0));
+    },
+
+    get canSubmit() {
+        return !this.priceChanged || this.acceptPriceChange;
+    },
+
+    money(amount) {
+        return `${this.quote.currency || ''} ${Number(amount || 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        })}`.trim();
+    },
+
+    /**
+     * TBO states a charge either as an amount or as a percentage of the stay, and the
+     * two must not be printed the same way — "PHP 100" and "100%" are very different
+     * answers to "what does cancelling cost".
+     */
+    cancellationCharge(policy) {
+        if (!policy.charge) return 'no charge';
+
+        return policy.chargeType === 'Percentage'
+            ? `${policy.charge}% of the stay`
+            : this.money(policy.charge);
+    },
+
+    /**
+     * Checked here only to save a round trip. The server checks the same things again,
+     * and its answer is the one that counts.
+     */
+    toPayment() {
+        const missing = this.guests.find((g) => !g.firstName.trim() || !g.lastName.trim());
+
+        if (missing) {
+            this.error = `Room ${missing.roomIndex + 1} is missing a guest name.`;
+            return;
+        }
+
+        if (!this.contact.email.trim() || !this.contact.phone.trim()) {
+            this.error = 'An email and phone number are needed for the booking.';
+            return;
+        }
+
+        this.error = '';
+        this.step = 4;
+    },
+
+    async submit() {
+        if (this.loading || !this.canSubmit) return;
+
+        this.loading = true;
+        this.error = '';
+
+        try {
+            const res = await fetch(this.storeUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '',
+                },
+                body: JSON.stringify({
+                    bookingCode: this.bookingCode,
+                    checkIn: this.stay.checkIn,
+                    checkOut: this.stay.checkOut,
+                    locationCode: this.stay.locationCode,
+                    guestNationality: this.stay.guestNationality,
+                    rooms: this.rooms,
+                    guests: this.guests.map(({ key, ...g }) => g),
+                    contact: this.contact,
+                    shownFare: this.shownFare,
+                    acceptPriceChange: this.acceptPriceChange,
+                }),
+            });
+
+            const body = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                this.error = body.message || 'We could not complete this booking.';
+                this.loading = false;
+                return;
+            }
+
+            this.step = 5;
+            window.location = body.redirect;
+        } catch {
+            this.error = 'Something went wrong. Please try again.';
+            this.loading = false;
+        }
+    },
+}));
+
+/**
+ * The hotel page's section tabs.
+ *
+ * Highlights whichever section the reader is actually in, and scrolls to one when its
+ * tab is clicked. Sections mark themselves with data-section, so the tab strip and the
+ * page cannot drift apart — the server decides which exist.
+ */
+Alpine.data('hotelSections', () => ({
+    active: '',
+    sections: [],
+
+    // The line below which content is actually readable rather than hidden behind the
+    // app bar and this header. Measured, not guessed — see measure().
+    line: 190,
+
+    // Set while a click is being honoured. A tab the reader just pressed must stay lit
+    // even when the page is too short for its section to reach the top — otherwise
+    // clicking Location lights Facilities, which reads as a broken tab.
+    locked: false,
+
+    init() {
+        this.sections = [...document.querySelectorAll('[data-section]')];
+
+        if (this.sections.length === 0) return;
+
+        this.measure();
+        this.sync();
+
+        this.onScroll = () => requestAnimationFrame(() => this.sync());
+        window.addEventListener('scroll', this.onScroll, { passive: true });
+
+        // A narrower window can rewrap the header, and everything below is positioned
+        // off its height.
+        this.onResize = () => requestAnimationFrame(() => this.measure());
+        window.addEventListener('resize', this.onResize, { passive: true });
+
+        // A real gesture, unlike the scroll events smooth-scrolling emits, so this is
+        // what tells us the reader has taken over again.
+        this.release = () => { this.locked = false; };
+        this.gestures = ['wheel', 'touchmove', 'keydown'];
+        this.gestures.forEach((event) => window.addEventListener(event, this.release, { passive: true }));
+    },
+
+    destroy() {
+        window.removeEventListener('scroll', this.onScroll);
+        window.removeEventListener('resize', this.onResize);
+        this.gestures.forEach((event) => window.removeEventListener(event, this.release));
+    },
+
+    /**
+     * Publish where the pinned header ends.
+     *
+     * The sidebar sticks below it and the sections scroll clear of it, so both need its
+     * real height. Hard-coding the offset is wrong the day the header gains a line —
+     * which is exactly how the sidebar came to pin 112px inside it.
+     */
+    measure() {
+        const APP_BAR = 64; // the layout's sticky top bar
+        const bottom = APP_BAR + this.$el.offsetHeight;
+
+        document.documentElement.style.setProperty('--hotel-header', `${bottom}px`);
+        this.line = bottom + 24;
+    },
+
+    /**
+     * The last section whose top has passed under the header is the one being read.
+     *
+     * Deliberately not "the largest visible section": a long room list would then stay
+     * lit while the reader is well into Facilities.
+     */
+    sync() {
+        if (this.locked) return;
+
+        // At the foot of the page nothing below can ever reach the line, so the last
+        // section actually on screen is the one being read.
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+            const onScreen = this.sections.filter((s) => s.getBoundingClientRect().top < window.innerHeight);
+            this.active = (onScreen.pop() || this.sections[0]).dataset.section;
+
+            return;
+        }
+
+        let current = this.sections[0];
+
+        for (const section of this.sections) {
+            if (section.getBoundingClientRect().top <= this.line) current = section;
+        }
+
+        this.active = current.dataset.section;
+    },
+
+    goTo(id) {
+        const target = document.getElementById(id);
+
+        if (!target) return;
+
+        // Lit immediately rather than after the scroll settles — the click was the
+        // answer to "where am I going", and waiting for it reads as a dead tab.
+        this.active = id;
+        this.locked = true;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+}));
+
+/**
+ * The property photo viewer.
+ *
+ * TBO returns dozens of images per hotel; the page shows four and keeps the rest here.
+ * No library: a lightbox is a list, an index and two arrow keys.
+ */
+Alpine.data('photoViewer', (images = []) => ({
+    images,
+    open: false,
+    index: 0,
+
+    show(i) {
+        if (this.images.length === 0) return;
+
+        this.index = this.wrap(i);
+        this.open = true;
+        // The page behind must not scroll while a full-screen viewer is over it.
+        document.body.style.overflow = 'hidden';
+    },
+
+    close() {
+        this.open = false;
+        document.body.style.overflow = '';
+    },
+
+    // Restores the page if the component is torn down while still open.
+    destroy() {
+        document.body.style.overflow = '';
+    },
+
+    next() {
+        this.index = this.wrap(this.index + 1);
+    },
+
+    prev() {
+        this.index = this.wrap(this.index - 1);
+    },
+
+    /**
+     * Wraps rather than stopping at the ends. Someone paging through a hotel's
+     * photographs is browsing, not paginating, and a dead arrow reads as broken.
+     */
+    wrap(i) {
+        const n = this.images.length;
+
+        return ((i % n) + n) % n;
     },
 }));
 

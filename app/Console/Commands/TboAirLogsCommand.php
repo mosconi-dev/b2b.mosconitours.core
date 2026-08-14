@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\TboAirApiLog;
+use App\Enums\Supplier;
+use App\Models\SupplierApiLog;
 use Illuminate\Console\Command;
 
 class TboAirLogsCommand extends Command
@@ -21,7 +22,8 @@ class TboAirLogsCommand extends Command
             return $this->showDetail((int) $id);
         }
 
-        $logs = TboAirApiLog::query()
+        $logs = SupplierApiLog::query()
+            ->where('supplier', Supplier::TboAir)
             ->when($this->option('type'), fn ($q, $type) => $q->where('type', $type))
             ->when($this->option('failed'), fn ($q) => $q->where('successful', false))
             ->latest()
@@ -36,7 +38,7 @@ class TboAirLogsCommand extends Command
 
         $this->table(
             ['ID', 'When', 'Type', 'Status', 'ms', 'OK', 'Summary'],
-            $logs->map(fn (TboAirApiLog $log): array => [
+            $logs->map(fn (SupplierApiLog $log): array => [
                 $log->id,
                 $log->created_at->format('m-d H:i:s'),
                 $log->type,
@@ -54,7 +56,7 @@ class TboAirLogsCommand extends Command
 
     private function showDetail(int $id): int
     {
-        $log = TboAirApiLog::find($id);
+        $log = SupplierApiLog::where('supplier', Supplier::TboAir)->find($id);
 
         if (! $log) {
             $this->error("Log #{$id} not found.");

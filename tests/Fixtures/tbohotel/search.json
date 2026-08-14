@@ -1,0 +1,149 @@
+{
+    "Status": {
+        "Code": 200,
+        "Description": "Successful"
+    },
+    "HotelResult": [
+        {
+            "HotelCode": "1022346",
+            "Currency": "PHP",
+            "Rooms": [
+                {
+                    "Name": [
+                        "Deluxe Room,1 Double Bed"
+                    ],
+                    "BookingCode": "1022346!TB!1!TB!3d17627a-9645-11f1-9662-f6aeeb585c2c!TB!N!TB!AFF!",
+                    "Inclusion": "Free self parking",
+                    "DayRates": [
+                        [
+                            {
+                                "BasePrice": 1629.95
+                            },
+                            {
+                                "BasePrice": 1629.95
+                            }
+                        ]
+                    ],
+                    "TotalFare": 3790.37,
+                    "TotalTax": 530.47,
+                    "RoomPromotion": [
+                        "Save:23%"
+                    ],
+                    "CancelPolicies": [
+                        {
+                            "FromDate": "11-08-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 0
+                        },
+                        {
+                            "FromDate": "12-08-2026 00:00:00",
+                            "ChargeType": "Percentage",
+                            "CancellationCharge": 100
+                        }
+                    ],
+                    "MealType": "Room_Only",
+                    "IsRefundable": false,
+                    "Supplements": [
+                        [
+                            {
+                                "Index": 1,
+                                "Type": "AtProperty",
+                                "Description": "Deposit Fee per night ",
+                                "Price": 500,
+                                "Currency": "PHP"
+                            }
+                        ]
+                    ],
+                    "WithTransfers": false,
+                    "BeddingGroup": "Bedding type is not guaranteed and it will be allocated by hotel based on availability"
+                }
+            ]
+        },
+        {
+            "HotelCode": "1022350",
+            "Currency": "PHP",
+            "Rooms": [
+                {
+                    "Name": [
+                        "Superior Twin,2 Twin Beds"
+                    ],
+                    "BookingCode": "1022350!TB!1!TB!3d17627a-9645-11f1-9662-f6aeeb585c2c!TB!N!TB!AFF!",
+                    "Inclusion": "Free breakfast,Free self parking",
+                    "DayRates": [
+                        [
+                            {
+                                "BasePrice": 1956.57
+                            },
+                            {
+                                "BasePrice": 1956.57
+                            }
+                        ]
+                    ],
+                    "TotalFare": 4466.77,
+                    "TotalTax": 553.63,
+                    "RoomPromotion": [
+                        "Member\u2019s exclusive price"
+                    ],
+                    "CancelPolicies": [
+                        {
+                            "FromDate": "11-08-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 0
+                        },
+                        {
+                            "FromDate": "09-09-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 2417.3684211735
+                        }
+                    ],
+                    "MealType": "BreakFast",
+                    "IsRefundable": true,
+                    "WithTransfers": false
+                }
+            ]
+        },
+        {
+            "HotelCode": "1022324",
+            "Currency": "PHP",
+            "Rooms": [
+                {
+                    "Name": [
+                        "One Bedroom Executive Room,2 Twin Beds"
+                    ],
+                    "BookingCode": "1022324!TB!1!TB!3d17627a-9645-11f1-9662-f6aeeb585c2c!TB!N!TB!AFF!",
+                    "Inclusion": "Room Only",
+                    "DayRates": [
+                        [
+                            {
+                                "BasePrice": 1334.15
+                            },
+                            {
+                                "BasePrice": 1334.15
+                            }
+                        ]
+                    ],
+                    "TotalFare": 3393.56,
+                    "TotalTax": 725.26,
+                    "RoomPromotion": [
+                        "Save:26%"
+                    ],
+                    "CancelPolicies": [
+                        {
+                            "FromDate": "11-08-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 0
+                        },
+                        {
+                            "FromDate": "10-09-2026 00:00:00",
+                            "ChargeType": "Fixed",
+                            "CancellationCharge": 1798.4210527215
+                        }
+                    ],
+                    "MealType": "Room_Only",
+                    "IsRefundable": true,
+                    "WithTransfers": false
+                }
+            ]
+        }
+    ]
+}

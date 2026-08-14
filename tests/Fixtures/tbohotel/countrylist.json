@@ -1,0 +1,20 @@
+{
+    "Status": {
+        "Code": 200,
+        "Description": "Success"
+    },
+    "CountryList": [
+        {
+            "Code": "PH",
+            "Name": "Philippines"
+        },
+        {
+            "Code": "SG",
+            "Name": "Singapore"
+        },
+        {
+            "Code": "AE",
+            "Name": "United Arab Emirates"
+        }
+    ]
+}
