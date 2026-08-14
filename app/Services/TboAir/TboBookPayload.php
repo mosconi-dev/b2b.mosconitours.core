@@ -71,7 +71,7 @@ class TboBookPayload
                 'ParentBookingId' => 0,
 
                 'Origin' => self::endpointCode($segments, 'Origin', true),
-                'Destination' => self::endpointCode($segments, 'Destination', false),
+                'Destination' => self::outboundDestination($segments),
                 'TravelDate' => self::firstDeparture($segments),
                 'LastTicketDate' => data_get($result, 'LastTicketDate'),
                 'LastVoidDate' => self::NULL_DATE,
@@ -272,15 +272,15 @@ class TboBookPayload
                 ...self::documents($row, $isDomestic, $passportRequired, $index),
 
                 'Nationality' => [
-                    'CountryCode' => $row['nationality'] ?? $row['countryCode'] ?? null,
+                    'CountryCode' => self::countryCode($row['nationality'] ?? $row['countryCode'] ?? null),
                     'CountryName' => $row['countryName'] ?? null,
                 ],
                 'Country' => [
-                    'CountryCode' => $row['countryCode'] ?? null,
+                    'CountryCode' => self::countryCode($row['countryCode'] ?? null),
                     'CountryName' => $row['countryName'] ?? null,
                 ],
                 'City' => [
-                    'CountryCode' => $row['countryCode'] ?? null,
+                    'CountryCode' => self::countryCode($row['countryCode'] ?? null),
                     'CityCode' => null,
                     'CityName' => $row['city'] ?? null,
                 ],
@@ -328,7 +328,7 @@ class TboBookPayload
     {
         $number = $row['documentNumber'] ?? $row['passportNo'] ?? null;
         $expiry = self::dateTime($row['documentExpiry'] ?? $row['passportExpiry'] ?? null);
-        $country = $row['documentIssueCountry'] ?? $row['nationality'] ?? null;
+        $country = self::countryCode($row['documentIssueCountry'] ?? $row['nationality'] ?? null);
         $issued = self::dateTime($row['documentIssueDate'] ?? null);
 
         // A domestic ID often carries no expiry; TBO still wants one, and a date far
@@ -493,6 +493,46 @@ class TboBookPayload
         return $segment === null
             ? null
             : data_get($segment, "{$side}.Airport.AirportCode", data_get($segment, "{$side}.Airport.CityCode"));
+    }
+
+    /**
+     * An ISO-2 country code as TBO stores them: upper case, or absent.
+     *
+     * TBO matches these against its own country table by exact case and rejects a
+     * lower-case one with "Passenger Nationality should be accepted as per the
+     * country code setup in the Database configuration" — a Book-time failure for
+     * what is only how the agent typed it. Normalised here rather than at the form,
+     * because this is where the supplier's requirement lives and it also fixes
+     * bookings already stored with whatever was typed.
+     */
+    private static function countryCode(?string $code): ?string
+    {
+        $code = strtoupper(trim((string) $code));
+
+        return $code === '' ? null : $code;
+    }
+
+    /**
+     * Where the journey is going — which on a return trip is not where it ends.
+     *
+     * TBO validates this against Origin and rejects the booking outright with
+     * "Origin & Destination cannot be same", so a round trip cannot report the last
+     * segment's destination: that is the traveller coming home. MNL→CEB→MNL is a
+     * booking to CEB, and the outbound leg is the one that names it.
+     *
+     * Read from TBO's own TripIndicator (1 outbound, 2 return) — the same signal
+     * journeyType() uses to tell the two apart. A one-way carries 1 throughout, so
+     * this is the last segment either way; an itinerary without the field at all
+     * falls back to the old whole-journey reading.
+     */
+    private static function outboundDestination(array $segments): ?string
+    {
+        $outbound = array_values(array_filter(
+            $segments,
+            fn (array $s): bool => (int) data_get($s, 'TripIndicator', 1) === 1,
+        ));
+
+        return self::endpointCode($outbound === [] ? $segments : $outbound, 'Destination', false);
     }
 
     /**

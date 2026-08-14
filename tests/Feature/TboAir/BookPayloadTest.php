@@ -376,8 +376,90 @@ class BookPayloadTest extends TestCase
         $payload = $this->build($this->booking());
 
         $this->assertSame('MNL', $payload['Itinerary']['Origin']);
+        $this->assertSame('CEB', $payload['Itinerary']['Destination']);
         $this->assertSame('PH', $payload['PointOfSale']);
         $this->assertSame('Philippines', $payload['RequestOrigin']);
+    }
+
+    /**
+     * The same leg flown back, marked the way TBO marks it. Built from the one-way
+     * fixture so the two cases differ by exactly the return.
+     */
+    private function roundTripQuote(): array
+    {
+        $quote = $this->fixture('farequote.json');
+        $raw = $quote['Response']['Results']['Segments'];
+        $outbound = is_array($raw[0]) && array_is_list($raw[0]) ? $raw[0] : $raw;
+
+        $inbound = $outbound[count($outbound) - 1];
+        [$inbound['Origin'], $inbound['Destination']] = [$inbound['Destination'], $inbound['Origin']];
+        $inbound['TripIndicator'] = 2;
+
+        $quote['Response']['Results']['Segments'] = [...$outbound, $inbound];
+
+        return $quote;
+    }
+
+    /**
+     * A return trip ends where it started, so reading Destination off the last
+     * segment sent TBO MNL→MNL and it refused the booking outright: "Origin &
+     * Destination cannot be same." The destination is where the traveller is going.
+     */
+    public function test_a_return_trip_reports_the_outbound_destination_not_the_way_home(): void
+    {
+        $payload = $this->build($this->booking([
+            'quote_raw' => $this->roundTripQuote(),
+            'seats_available' => [9, 9],
+        ]));
+
+        $this->assertSame('MNL', $payload['Itinerary']['Origin']);
+        $this->assertSame('CEB', $payload['Itinerary']['Destination']);
+        $this->assertNotSame(
+            $payload['Itinerary']['Origin'],
+            $payload['Itinerary']['Destination'],
+            'TBO rejects a booking whose origin and destination match.',
+        );
+    }
+
+    public function test_it_marks_a_return_journey(): void
+    {
+        $payload = $this->build($this->booking([
+            'quote_raw' => $this->roundTripQuote(),
+            'seats_available' => [9, 9],
+        ]));
+
+        $this->assertSame(2, $payload['Itinerary']['SearchType']);
+    }
+
+    /**
+     * TBO matches country codes against its own table by exact case, and rejects a
+     * lower-case one at Book with "Passenger Nationality should be accepted as per
+     * the country code setup in the Database configuration". What the agent typed
+     * must not decide whether the booking succeeds.
+     */
+    public function test_it_upper_cases_country_codes_for_tbo(): void
+    {
+        $booking = $this->booking([
+            'pax' => [[
+                'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
+                'gender' => 'M', 'dateOfBirth' => '1990-04-05',
+                'nationality' => 'ph', 'countryCode' => 'ph', 'countryName' => 'Philippines',
+                'documentIssueCountry' => 'ph', 'documentNumber' => 'P1234567',
+                'documentExpiry' => '2034-03-12',
+                'isLeadPax' => true,
+                'email' => 'agent@example.com', 'mobile' => '09170000000', 'mobileCountryCode' => '63',
+                'addressLine1' => '123 Rizal Street', 'addressLine2' => null,
+                'city' => 'Makati',
+                'ssr' => ['baggage' => null, 'meal' => null],
+            ]],
+        ]);
+
+        $pax = $this->build($booking)['Itinerary']['Passenger'][0];
+
+        $this->assertSame('PH', $pax['Nationality']['CountryCode']);
+        $this->assertSame('PH', $pax['Country']['CountryCode']);
+        $this->assertSame('PH', $pax['City']['CountryCode']);
+        $this->assertSame('PH', $pax['PassengerIdIssueCountryCode']);
     }
 
     public function test_it_echoes_the_lead_passenger_as_user_data(): void
