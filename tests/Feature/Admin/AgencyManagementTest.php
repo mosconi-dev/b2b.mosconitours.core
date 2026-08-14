@@ -63,8 +63,10 @@ class AgencyManagementTest extends TestCase
         $mine = User::factory()->create(['agency_id' => $agency->id, 'name' => 'Inside Person']);
         $elsewhere = User::factory()->create(['name' => 'Outside Person']);
 
+        // Explicit tab: the page opens on Wallet, which is the first one a full
+        // permission set can see.
         $this->actingAs($this->admin())
-            ->get(route('admin.agencies.show', $agency))
+            ->get(route('admin.agencies.show', ['agency' => $agency, 'tab' => 'users']))
             ->assertOk()
             ->assertSee('Acme Travel')
             ->assertSee($mine->name)
@@ -182,6 +184,54 @@ class AgencyManagementTest extends TestCase
             ->assertOk()
             ->assertSee('Visible Role')
             ->assertDontSee('Hidden Person');
+    }
+
+    public function test_a_header_row_with_nothing_in_it_is_not_rendered(): void
+    {
+        $agency = Agency::factory()->create();
+
+        // A member gets no back link, and the wallet tab offers them no action, so
+        // the row above the content would otherwise be an empty band of margin.
+        $viewer = $this->agencyUserWith($agency, ['agency.view', 'user.view', 'wallet.view']);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.agencies.show', ['agency' => $agency, 'tab' => 'wallet']))
+            ->assertOk()
+            ->assertDontSee('ml-auto flex flex-wrap items-center gap-2', escape: false);
+    }
+
+    public function test_the_summary_tiles_fill_the_row_they_are_given(): void
+    {
+        $agency = Agency::factory()->create();
+
+        // Four tiles: Type, Reports to, Users, Roles.
+        $full = $this->agencyUserWith($agency, ['agency.view', 'user.view', 'role.view']);
+        $this->actingAs($full)
+            ->get(route('admin.agencies.show', $agency))
+            ->assertOk()
+            ->assertSee('lg:grid-cols-4', escape: false);
+
+        // Three, once roles are hidden — the track has to shrink with them.
+        $partial = $this->agencyUserWith($agency, ['agency.view', 'user.view']);
+        $this->actingAs($partial)
+            ->get(route('admin.agencies.show', $agency))
+            ->assertOk()
+            ->assertSee('lg:grid-cols-3', escape: false)
+            ->assertDontSee('lg:grid-cols-4', escape: false);
+    }
+
+    public function test_a_tab_the_viewer_may_not_see_gets_no_link(): void
+    {
+        $agency = Agency::factory()->create();
+
+        // Two visible tabs, so the strip renders — but roles is not one of them.
+        $viewer = $this->agencyUserWith($agency, ['agency.view', 'user.view', 'wallet.view']);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.agencies.show', $agency))
+            ->assertOk()
+            ->assertSee(route('admin.agencies.show', ['agency' => $agency, 'tab' => 'wallet']))
+            ->assertDontSee(route('admin.agencies.show', ['agency' => $agency, 'tab' => 'roles']));
     }
 
     public function test_an_agency_member_gets_no_back_to_agencies_link(): void

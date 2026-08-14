@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\UpdateAgencyRequest;
 use App\Models\Agency;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\WalletLoadRequest;
 use App\Models\WalletTransaction;
 use App\Services\Rbac\AgencyService;
 use App\Services\Wallet\WalletService;
@@ -47,10 +48,14 @@ class AgencyController extends Controller
         // agency.view lets you see the agency, not automatically its people or its
         // roles — those are gated by their own permissions, and the tab falls back to
         // whichever the viewer actually holds (or none at all).
+        // Money first, then the people: the balance is what an agency looks at daily,
+        // while users and roles are set up once and revisited rarely. The order is
+        // also the fallback order — $tabs[0] is where the page opens.
         $tabs = array_values(array_filter([
+            $actor->can('wallet.view') ? 'wallet' : null,
+            $actor->can('wallet.load.view') ? 'requests' : null,
             $actor->can('user.view') ? 'users' : null,
             $actor->can('role.view') ? 'roles' : null,
-            $actor->can('wallet.view') ? 'wallet' : null,
         ]));
 
         $requested = $request->query('tab');
@@ -70,8 +75,19 @@ class AgencyController extends Controller
         $roles = null;
         $wallet = null;
         $entries = null;
+        $loadRequests = null;
 
-        if ($tab === 'wallet') {
+        if ($tab === 'requests') {
+            // Scoped twice on purpose: to this agency because that is the page you
+            // opened, and through visibleTo() because platform staff may open any
+            // agency while a member may not.
+            $loadRequests = WalletLoadRequest::visibleTo($actor)
+                ->where('agency_id', $agency->id)
+                ->with(['agency:id,name,code', 'requester:id,name', 'reviewer:id,name'])
+                ->latest('id')
+                ->paginate(20)
+                ->withQueryString();
+        } elseif ($tab === 'wallet') {
             // Created on first view so the office always has something to adjust.
             $wallet = $this->wallets->for($agency);
             $entries = WalletTransaction::where('wallet_id', $wallet->id)
@@ -96,7 +112,7 @@ class AgencyController extends Controller
                 ->withQueryString();
         }
 
-        return view('admin.agencies.show', compact('agency', 'tab', 'tabs', 'users', 'roles', 'wallet', 'entries'));
+        return view('admin.agencies.show', compact('agency', 'tab', 'tabs', 'users', 'roles', 'wallet', 'entries', 'loadRequests'));
     }
 
     public function create(Request $request): View

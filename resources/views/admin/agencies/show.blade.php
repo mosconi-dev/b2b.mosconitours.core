@@ -25,6 +25,8 @@
 
     <x-slot name="actions">
         {{-- Contextual to the open tab, so the primary action always matches what you are looking at. --}}
+        {{-- Load requests have no action here: raising one belongs beside the balance
+             on the Wallet tab, and each row carries its own approve/reject/cancel. --}}
         @if ($tab === 'roles')
             @can('role.create')
                 <a href="{{ route('admin.agencies.roles.create', $agency) }}"
@@ -35,7 +37,7 @@
                     New Role
                 </a>
             @endcan
-        @else
+        @elseif ($tab === 'users')
             @can('user.create')
                 <a href="{{ route('admin.agencies.users.create', $agency) }}"
                    class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">
@@ -108,16 +110,25 @@
         </div>
 
         {{-- Summary --}}
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            @php
-                // Counts follow the same permissions as the tabs below them.
-                $facts = array_values(array_filter([
-                    ['label' => 'Type', 'value' => $agency->type->label()],
-                    ['label' => 'Reports to', 'value' => $agency->parent?->name ?? 'None (independent)'],
-                    in_array('users', $tabs, true) ? ['label' => 'Users', 'value' => $agency->users_count] : null,
-                    in_array('roles', $tabs, true) ? ['label' => 'Roles', 'value' => $agency->roles_count] : null,
-                ]));
-            @endphp
+        @php
+            // Counts follow the same permissions as the tabs below them.
+            $facts = array_values(array_filter([
+                ['label' => 'Type', 'value' => $agency->type->label()],
+                ['label' => 'Reports to', 'value' => $agency->parent?->name ?? 'None (independent)'],
+                in_array('users', $tabs, true) ? ['label' => 'Users', 'value' => $agency->users_count] : null,
+                in_array('roles', $tabs, true) ? ['label' => 'Roles', 'value' => $agency->roles_count] : null,
+            ]));
+
+            // The track has to follow the number of tiles: a viewer who cannot see
+            // users or roles gets two or three, and a fixed four-column grid would
+            // strand them on the left with the rest of the row empty.
+            $factColumns = match (count($facts)) {
+                2 => 'sm:grid-cols-2',
+                3 => 'sm:grid-cols-2 lg:grid-cols-3',
+                default => 'sm:grid-cols-2 lg:grid-cols-4',
+            };
+        @endphp
+        <div class="grid grid-cols-1 gap-4 {{ $factColumns }}">
             @foreach ($facts as $fact)
                 <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ $fact['label'] }}</p>
@@ -126,29 +137,27 @@
             @endforeach
         </div>
 
-        {{-- Tabs — only those the viewer holds the permission for. --}}
+        {{-- Tabs — driven off $tabs so a link only ever appears for a permission the
+             viewer actually holds. --}}
         @if (count($tabs) > 1)
+            @php
+                // Labels only; the order on screen is the order of $tabs.
+                $tabLabels = [
+                    'wallet' => 'Wallet',
+                    'requests' => 'Load Requests',
+                    'users' => 'Users',
+                    'roles' => 'Roles',
+                ];
+            @endphp
             <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-                <a href="{{ route('admin.agencies.show', $agency) }}"
-                   @class([
-                       'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
-                       'bg-brand-800 text-white shadow-sm' => $tab === 'users',
-                       'text-gray-500 hover:text-gray-700' => $tab !== 'users',
-                   ])>Users</a>
-                <a href="{{ route('admin.agencies.show', ['agency' => $agency, 'tab' => 'roles']) }}"
-                   @class([
-                       'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
-                       'bg-brand-800 text-white shadow-sm' => $tab === 'roles',
-                       'text-gray-500 hover:text-gray-700' => $tab !== 'roles',
-                   ])>Roles</a>
-                @if (in_array('wallet', $tabs, true))
-                    <a href="{{ route('admin.agencies.show', ['agency' => $agency, 'tab' => 'wallet']) }}"
+                @foreach ($tabs as $name)
+                    <a href="{{ route('admin.agencies.show', ['agency' => $agency, 'tab' => $name]) }}"
                        @class([
                            'rounded-md px-3.5 py-1.5 text-sm font-medium transition',
-                           'bg-brand-800 text-white shadow-sm' => $tab === 'wallet',
-                           'text-gray-500 hover:text-gray-700' => $tab !== 'wallet',
-                       ])>Wallet</a>
-                @endif
+                           'bg-brand-800 text-white shadow-sm' => $tab === $name,
+                           'text-gray-500 hover:text-gray-700' => $tab !== $name,
+                       ])>{{ $tabLabels[$name] }}</a>
+                @endforeach
             </div>
         @endif
 
@@ -159,13 +168,28 @@
             </div>
         @elseif ($tab === 'wallet')
             <div class="space-y-6">
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Wallet balance</p>
-                    <p class="mt-1 text-3xl font-semibold tracking-tight {{ bccomp((string) $wallet->balance, '0', 2) < 0 ? 'text-red-700' : 'text-brand-900' }}">
-                        <span class="text-lg font-medium text-gray-400">{{ $wallet->currency }}</span>
-                        {{ $wallet->formattedBalance() }}
-                    </p>
-                    <p class="mt-2 text-xs text-gray-500">Shared by everyone in {{ $agency->name }}.</p>
+                <div class="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div class="min-w-0">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Wallet balance</p>
+                        <p class="mt-1 text-3xl font-semibold tracking-tight {{ bccomp((string) $wallet->balance, '0', 2) < 0 ? 'text-red-700' : 'text-brand-900' }}">
+                            <span class="text-lg font-medium text-gray-400">{{ $wallet->currency }}</span>
+                            {{ $wallet->formattedBalance() }}
+                        </p>
+                        <p class="mt-2 text-xs text-gray-500">Shared by everyone in {{ $agency->name }}.</p>
+                    </div>
+
+                    {{-- Next to the balance, because whether to top up is a decision you
+                         make while looking at it. The policy denies platform staff, who
+                         have no wallet of their own to load. --}}
+                    @can('create', \App\Models\WalletLoadRequest::class)
+                        <a href="{{ route('wallet.requests.create') }}"
+                           class="inline-flex shrink-0 items-center gap-2 self-start rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:self-auto">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            Request Load
+                        </a>
+                    @endcan
                 </div>
 
                 @can('adjust', $wallet)
@@ -187,6 +211,16 @@
                         @include('wallet._ledger')
                     @endif
                 </div>
+            </div>
+        @elseif ($tab === 'requests')
+            <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-4">
+                    <h2 class="text-base font-semibold text-brand-900">Load requests</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Top-ups raised against this agency's wallet, newest first.</p>
+                </div>
+
+                {{-- Agency column dropped: every row belongs to the agency you are on. --}}
+                @include('wallet.requests._table', ['showAgency' => false])
             </div>
         @elseif ($tab === 'roles')
             <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

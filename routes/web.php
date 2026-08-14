@@ -20,7 +20,6 @@ use App\Http\Controllers\HotelSuggestController;
 use App\Http\Controllers\LoadRequestController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WalletAdjustmentController;
-use App\Http\Controllers\WalletController;
 use App\Models\WalletLoadRequest;
 use Illuminate\Support\Facades\Route;
 
@@ -114,7 +113,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | four-eyes on approval.
     */
     Route::prefix('wallet')->name('wallet.')->group(function () {
-        Route::get('/', [WalletController::class, 'index'])->name('index')->middleware('can:wallet.view');
+        // No index: the balance and its ledger are a tab on My Agency, gated there by
+        // wallet.view. These routes are the actions that page posts to.
 
         // Manual correction. Posts a new entry rather than editing history;
         // authorization is the wallet.adjust permission via policy.

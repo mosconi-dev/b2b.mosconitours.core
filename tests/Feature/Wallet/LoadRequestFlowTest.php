@@ -290,41 +290,58 @@ class LoadRequestFlowTest extends TestCase
         $this->assertSame(1, $response->viewData('pendingCount'), 'another agency\'s queue must not be counted');
     }
 
-    // ---- The wallet page -------------------------------------------------
+    // ---- The wallet, on My Agency ----------------------------------------
 
-    public function test_the_wallet_page_shows_the_agency_balance_and_ledger(): void
+    private function walletTab(Agency $agency): string
+    {
+        return route('admin.agencies.show', ['agency' => $agency, 'tab' => 'wallet']);
+    }
+
+    public function test_the_wallet_tab_shows_the_agency_balance_and_ledger(): void
     {
         $request = $this->raise($this->requester(), '1234.00');
         $this->actingAs($this->reviewer())->patch(route('wallet.requests.approve', $request))->assertRedirect();
 
-        $this->actingAs($this->requester())
-            ->get(route('wallet.index'))
+        $viewer = $this->agencyUserWith($this->acme, ['agency.view', 'wallet.view']);
+
+        $this->actingAs($viewer)
+            ->get($this->walletTab($this->acme))
             ->assertOk()
             ->assertSee('1,234.00')
             ->assertSee($request->reference);
     }
 
-    public function test_the_wallet_page_requires_the_view_permission(): void
+    public function test_the_wallet_tab_requires_the_view_permission(): void
     {
-        $this->actingAs($this->userWith(['flight.view']))
-            ->get(route('wallet.index'))
-            ->assertForbidden();
+        // Can open My Agency, but wallet.view is what puts the balance on it.
+        $viewer = $this->agencyUserWith($this->acme, ['agency.view', 'user.view']);
+
+        $this->actingAs($viewer)
+            ->get($this->walletTab($this->acme))
+            ->assertOk()
+            ->assertDontSee('Wallet balance')
+            ->assertDontSee($this->walletTab($this->acme));
     }
 
-    public function test_platform_staff_are_told_they_have_no_wallet(): void
+    public function test_platform_staff_read_an_agencys_wallet_through_that_agency(): void
     {
-        $staff = $this->userWith(['wallet.view', 'wallet.load.view']);
+        // They have no wallet of their own, so there is no page that would show them
+        // one — they open the agency whose balance they mean.
+        $request = $this->raise($this->requester(), '900.00');
+        $staff = $this->userWith(['agency.view', 'wallet.view', 'wallet.load.view', 'wallet.load.approve']);
+
+        $this->actingAs($staff)->patch(route('wallet.requests.approve', $request))->assertRedirect();
 
         $this->actingAs($staff)
-            ->get(route('wallet.index'))
+            ->get($this->walletTab($this->acme))
             ->assertOk()
-            ->assertSee('No wallet');
+            ->assertSee('900.00');
     }
 
     public function test_the_balance_is_shared_by_the_whole_agency(): void
     {
         $first = $this->requester();
-        $second = $this->agencyUserWith($this->acme, ['wallet.view', 'wallet.load.view', 'wallet.load.create']);
+        $second = $this->agencyUserWith($this->acme, ['agency.view', 'wallet.view', 'wallet.load.view', 'wallet.load.create']);
         $reviewer = $this->reviewer();
 
         $a = $this->raise($first, '300.00');
@@ -334,6 +351,6 @@ class LoadRequestFlowTest extends TestCase
         $this->actingAs($reviewer)->patch(route('wallet.requests.approve', $b))->assertRedirect();
 
         // Either member sees the same combined balance.
-        $this->actingAs($second)->get(route('wallet.index'))->assertOk()->assertSee('1,000.00');
+        $this->actingAs($second)->get($this->walletTab($this->acme))->assertOk()->assertSee('1,000.00');
     }
 }
