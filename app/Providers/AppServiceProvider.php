@@ -5,10 +5,11 @@ namespace App\Providers;
 use App\Enums\Supplier;
 use App\Services\Rbac\AuditLogger;
 use App\Services\Rbac\PermissionRegistry;
+use App\Services\Search\FlightRecentSearches;
+use App\Services\Search\HotelRecentSearches;
 use App\Services\Settings\Settings;
 use App\Services\Supplier\SupplierEnvironmentResolver;
 use App\Services\TboAir\FlightSearchCache;
-use App\Services\TboAir\RecentSearchStore;
 use App\Services\TboAir\TboAirClient;
 use App\Services\TboAir\TboAirConfig;
 use App\Services\TboHotel\HotelSearchCache;
@@ -46,7 +47,9 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(FlightSearchCache::class, fn () => new FlightSearchCache((int) config('tboair.search_cache_ttl')));
 
-        $this->app->singleton(RecentSearchStore::class, fn () => new RecentSearchStore((int) config('tboair.recent_ttl')));
+        $this->app->singleton(FlightRecentSearches::class, fn () => new FlightRecentSearches((int) config('tboair.recent_ttl')));
+
+        $this->app->singleton(HotelRecentSearches::class, fn () => new HotelRecentSearches((int) config('tbohotel.recent_ttl')));
 
         $this->app->singleton(HotelSearchCache::class, fn ($app) => new HotelSearchCache(
             (int) config('tbohotel.search_cache_ttl'),

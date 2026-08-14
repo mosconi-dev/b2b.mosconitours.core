@@ -12,7 +12,7 @@ use Illuminate\Validation\Rule;
  * is display-only (a shortcut back into the form), so the rules just keep the
  * structure sane and bounded — the real search is re-validated on submit.
  */
-class StoreRecentSearchesRequest extends FormRequest
+class StoreRecentFlightSearchesRequest extends FormRequest
 {
     public function authorize(): bool
     {

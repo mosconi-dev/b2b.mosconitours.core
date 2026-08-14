@@ -3,13 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\TboAir\RecentSearchStore;
+use App\Services\Search\FlightRecentSearches;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithRbac;
 use Tests\TestCase;
 
-class RecentSearchesTest extends TestCase
+class FlightRecentSearchesTest extends TestCase
 {
     use InteractsWithRbac, RefreshDatabase;
 
@@ -50,7 +50,7 @@ class RecentSearchesTest extends TestCase
             ->postJson(route('flights.recent'), ['recent' => $this->sampleRecent()])
             ->assertNoContent();
 
-        $stored = app(RecentSearchStore::class)->get($user->id);
+        $stored = app(FlightRecentSearches::class)->get($user->id);
 
         $this->assertCount(1, $stored);
         $this->assertSame('Manila (MNL) → Cebu (CEB)', $stored[0]['routeText']);
@@ -59,7 +59,7 @@ class RecentSearchesTest extends TestCase
     public function test_cached_recent_searches_are_rendered_on_the_flights_page(): void
     {
         $user = $this->flightUser();
-        app(RecentSearchStore::class)->put($user->id, $this->sampleRecent());
+        app(FlightRecentSearches::class)->put($user->id, $this->sampleRecent());
 
         $this->actingAs($user)
             ->get(route('flights'))
@@ -71,10 +71,10 @@ class RecentSearchesTest extends TestCase
     {
         $owner = $this->flightUser();
         $other = $this->flightUser();
-        app(RecentSearchStore::class)->put($owner->id, $this->sampleRecent());
+        app(FlightRecentSearches::class)->put($owner->id, $this->sampleRecent());
 
-        $this->assertCount(1, app(RecentSearchStore::class)->get($owner->id));
-        $this->assertCount(0, app(RecentSearchStore::class)->get($other->id));
+        $this->assertCount(1, app(FlightRecentSearches::class)->get($owner->id));
+        $this->assertCount(0, app(FlightRecentSearches::class)->get($other->id));
     }
 
     public function test_storing_recent_searches_requires_flight_view_permission(): void
@@ -89,13 +89,13 @@ class RecentSearchesTest extends TestCase
     public function test_an_empty_list_clears_the_cached_history(): void
     {
         $user = $this->flightUser();
-        app(RecentSearchStore::class)->put($user->id, $this->sampleRecent());
+        app(FlightRecentSearches::class)->put($user->id, $this->sampleRecent());
 
         $this->actingAs($user)
             ->postJson(route('flights.recent'), ['recent' => []])
             ->assertNoContent();
 
-        $this->assertCount(0, app(RecentSearchStore::class)->get($user->id));
+        $this->assertCount(0, app(FlightRecentSearches::class)->get($user->id));
     }
 
     public function test_the_list_is_bounded_to_six_entries(): void

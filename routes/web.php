@@ -64,6 +64,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('can:hotel.search');
     Route::post('/hotels/search', [HotelController::class, 'search'])->name('hotels.search')
         ->middleware('can:hotel.search');
+    // Shortcuts back into the search form, so gated on seeing the page rather than on
+    // running a search — the same reading as flights.recent.
+    Route::post('/hotels/recent', [HotelController::class, 'recent'])->name('hotels.recent')
+        ->middleware('can:hotel.view');
     // Steps 3–5 of the wizard. Also before /hotels/{code}, which matches numbers only
     // but would still be the more confusing failure if it ever widened.
     Route::get('/hotels/book', [HotelBookingController::class, 'create'])->name('hotels.book')

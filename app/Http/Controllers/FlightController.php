@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\FareDetailRequest;
 use App\Http\Requests\SearchFlightsRequest;
-use App\Http\Requests\StoreRecentSearchesRequest;
+use App\Http\Requests\StoreRecentFlightSearchesRequest;
+use App\Services\Search\FlightRecentSearches;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\FlightSearchCache;
-use App\Services\TboAir\RecentSearchStore;
 use App\Services\TboAir\TboAirService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +16,7 @@ use Illuminate\View\View;
 
 class FlightController extends Controller
 {
-    public function index(Request $request, RecentSearchStore $recent): View
+    public function index(Request $request, FlightRecentSearches $recent): View
     {
         return view('flights', [
             'recent' => $recent->get($request->user()->id),
@@ -28,7 +28,7 @@ class FlightController extends Controller
      * client owns the list shape (dedup/order/cap) and pushes the whole array on
      * each change; we validate and store it.
      */
-    public function recent(StoreRecentSearchesRequest $request, RecentSearchStore $store): Response
+    public function recent(StoreRecentFlightSearchesRequest $request, FlightRecentSearches $store): Response
     {
         $store->put($request->user()->id, $request->validated()['recent']);
 

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SearchHotelsRequest;
+use App\Http\Requests\StoreRecentHotelSearchesRequest;
 use App\Models\Hotel;
 use App\Models\HotelCountry;
+use App\Services\Search\HotelRecentSearches;
 use App\Services\TboHotel\CatalogueSyncService;
 use App\Services\TboHotel\DTO\PaxRoom;
 use App\Services\TboHotel\DTO\SearchInput;
@@ -15,19 +17,56 @@ use App\Support\SupplierHtml;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class HotelController extends Controller
 {
-    public function index(): View
+    public function index(Request $request, HotelRecentSearches $recent): View
     {
         return view('hotels', [
             // TBO's own country list, not an ICU one: these are exactly the
             // nationality codes it accepts, and it is already synced locally.
             'countries' => HotelCountry::orderBy('name')->get(['code', 'name']),
+            'recent' => $this->upcoming($recent->get($request->user()->id)),
         ]);
+    }
+
+    /**
+     * Persist the user's recent-search shortcuts (cached, per-user, ~1 day). The
+     * client owns the list shape (dedup/order/cap) and pushes the whole array on
+     * each change; we validate and store it.
+     */
+    public function recent(StoreRecentHotelSearchesRequest $request, HotelRecentSearches $store): Response
+    {
+        $store->put($request->user()->id, $request->validated()['recent']);
+
+        return response()->noContent();
+    }
+
+    /**
+     * Drop the stays whose check-in has already been and gone.
+     *
+     * A search needs a check-in of today or later, so an entry that has aged past its
+     * own dates is a shortcut that can only produce a validation error — worse than
+     * no shortcut at all. Filtered on the way out rather than rejected on the way in,
+     * because the list is written as a whole and one expired stay should not cost the
+     * agent the five beside it that are still good.
+     *
+     * @param  array<int, array<string, mixed>>  $recent
+     * @return array<int, array<string, mixed>>
+     */
+    private function upcoming(array $recent): array
+    {
+        $today = Carbon::today()->toDateString();
+
+        return array_values(array_filter(
+            $recent,
+            // ISO dates, so string order is date order.
+            fn (array $entry): bool => ($entry['checkIn'] ?? '') >= $today,
+        ));
     }
 
     public function search(SearchHotelsRequest $request, TboHotelService $service, HotelSearchCache $cache): JsonResponse

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\TboAir;
+namespace App\Services\Search;
 
 use Illuminate\Support\Facades\Cache;
 
@@ -9,10 +9,17 @@ use Illuminate\Support\Facades\Cache;
  * list follows a user across devices without needing a table. The list itself
  * (dedup, ordering, cap, display strings) is shaped client-side; this seam only
  * stores and retrieves the already-shaped array.
+ *
+ * One subclass per product rather than one store taking a prefix: the two lists
+ * hold different shapes, and a controller asking for its own type cannot be handed
+ * the other product's history by accident.
  */
-class RecentSearchStore
+abstract class RecentSearchStore
 {
     public function __construct(private readonly int $ttl) {}
+
+    /** The cache key prefix, and with it which product's history this is. */
+    abstract protected function prefix(): string;
 
     /**
      * @return array<int, array<string, mixed>>
@@ -34,6 +41,6 @@ class RecentSearchStore
 
     public function key(int $userId): string
     {
-        return 'flight_recent:'.$userId;
+        return $this->prefix().':'.$userId;
     }
 }
