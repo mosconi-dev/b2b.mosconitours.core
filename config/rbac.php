@@ -76,10 +76,15 @@ return [
             'icon' => 'building',
             'actions' => ['view', 'create', 'update', 'delete'],
         ],
+        // An agency member's user and role lists are already scoped to their own
+        // agency, which is exactly what the My Agency tabs show — two doors into one
+        // room. Platform staff keep both links: theirs are the lists of everyone, and
+        // they have no My Agency page to reach them from.
         'user' => [
             'label' => 'Users',
             'section' => 'administration',
             'route' => 'admin.users.index',
+            'nav' => 'platform',
             'icon' => 'users',
             'actions' => ['view', 'create', 'update', 'delete'],
         ],
@@ -87,6 +92,7 @@ return [
             'label' => 'Roles',
             'section' => 'administration',
             'route' => 'admin.roles.index',
+            'nav' => 'platform',
             'icon' => 'shield',
             'actions' => ['view', 'create', 'update', 'delete'],
         ],

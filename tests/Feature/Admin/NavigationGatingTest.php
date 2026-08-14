@@ -61,6 +61,28 @@ class NavigationGatingTest extends TestCase
             ->assertSee('href="'.route('admin.agencies.index').'"', escape: false);
     }
 
+    public function test_an_agency_member_gets_no_users_or_roles_link_because_my_agency_has_the_tabs(): void
+    {
+        $agency = Agency::factory()->create();
+        $member = $this->agencyUserWith($agency, ['agency.view', 'user.view', 'role.view']);
+
+        $this->actingAs($member)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('My Agency')
+            ->assertDontSee('href="'.route('admin.users.index').'"', escape: false)
+            ->assertDontSee('href="'.route('admin.roles.index').'"', escape: false);
+    }
+
+    public function test_hiding_those_links_does_not_lock_the_pages(): void
+    {
+        $agency = Agency::factory()->create();
+        $member = $this->agencyUserWith($agency, ['user.view', 'role.view']);
+
+        $this->actingAs($member)->get('/admin/users')->assertOk();
+        $this->actingAs($member)->get('/admin/roles')->assertOk();
+    }
+
     public function test_nav_items_appear_per_permission(): void
     {
         $this->actingAs($this->userWith(['user.view']))
