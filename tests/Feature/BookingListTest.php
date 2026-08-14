@@ -269,6 +269,29 @@ class BookingListTest extends TestCase
     }
 
     /**
+     * The row an agent scans is the same one the search pages show above their form.
+     * A name is what they have in hand when they come looking, not a head count, and
+     * the environment is a fact about the reference rather than a column.
+     */
+    public function test_a_row_names_the_lead_traveller_beside_its_reference_and_environment(): void
+    {
+        $user = $this->agent();
+        $this->flight($user, ['environment' => 'live', 'pax' => [
+            ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Dela Cruz'],
+            ['type' => 'Adult', 'title' => 'Ms', 'firstName' => 'Anna', 'lastName' => 'Reyes'],
+        ]]);
+
+        $this->actingAs($user)
+            ->get(route('bookings.index'))
+            ->assertOk()
+            ->assertSee('Mr Juan Dela Cruz')
+            ->assertSee('+1 more')
+            ->assertSee('live')
+            // The environment moved into the booking cell; its column is gone.
+            ->assertDontSee('>Env<', escape: false);
+    }
+
+    /**
      * Connections are not stops worth listing here — a scan wants where the trip went,
      * and a return continues the line it came from rather than repeating the airport.
      */
