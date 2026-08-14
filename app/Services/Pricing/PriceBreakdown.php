@@ -25,23 +25,32 @@ final readonly class PriceBreakdown
         /** sell − the unrounded running total, when a rounding step moved it. */
         public Money $roundingDelta,
         public string $currency = 'PHP',
+        /**
+         * Where the booker sits on the ladder, taken from the CHAIN and not from the
+         * layers.
+         *
+         * These differ whenever a level contributes nothing, and reading it off the
+         * layers is wrong in a way that costs real money: an agency with no strategy of
+         * its own produces a single level-0 layer, so the deepest layer is the Main
+         * Office's, and cost would collapse to net — handing that agency the Main
+         * Office's markup for free on every booking.
+         */
+        public int $bookerLevel = 0,
     ) {}
 
     /** A ladder with no rungs — every level contributed nothing, which is legitimate. */
-    public static function unpriced(NetPrice $net, string $currency = 'PHP'): self
+    public static function unpriced(NetPrice $net, string $currency = 'PHP', int $bookerLevel = 0): self
     {
-        return new self($net, [], new SellPrice($net->amount), Money::zero(), $currency);
+        return new self($net, [], new SellPrice($net->amount), Money::zero(), $currency, $bookerLevel);
     }
 
     /** Everything above the booker's own level: what the booking's wallet is debited. */
     public function cost(): Money
     {
-        $ownLevel = $this->ownLevel();
-
         $cost = $this->net->amount;
 
         foreach ($this->layers as $layer) {
-            if ($layer->level < $ownLevel) {
+            if ($layer->level < $this->bookerLevel) {
                 $cost = $cost->plus($layer->markup);
             }
         }
@@ -55,12 +64,10 @@ final readonly class PriceBreakdown
         return $this->sell->amount->minus($this->net->amount);
     }
 
-    /** The booker's own margin — the deepest rung, which is theirs. */
+    /** The booker's own margin — their rung, or nothing when they added none. */
     public function ownMargin(): Money
     {
-        $deepest = $this->layers === [] ? null : $this->layers[array_key_last($this->layers)];
-
-        return $deepest?->markup ?? Money::zero();
+        return $this->layerAt($this->bookerLevel)?->markup ?? Money::zero();
     }
 
     public function layerAt(int $level): ?PricingLayer
@@ -72,18 +79,6 @@ final readonly class PriceBreakdown
         }
 
         return null;
-    }
-
-    /**
-     * The booker's own level — the deepest rung on the ladder.
-     *
-     * With no rungs at all there is nothing above the booker, so cost is net.
-     */
-    private function ownLevel(): int
-    {
-        return $this->layers === []
-            ? 0
-            : $this->layers[array_key_last($this->layers)]->level;
     }
 
     /**
@@ -123,12 +118,11 @@ final readonly class PriceBreakdown
             return $this->toArray();
         }
 
-        $ownLevel = $this->ownLevel();
-        $own = $this->layerAt($ownLevel);
+        $own = $this->layerAt($this->bookerLevel);
 
         // A Main Office member is at level 0 and has nothing above them, so their cost
         // is the net — which is theirs to see.
-        $seesNet = $ownLevel === 0;
+        $seesNet = $this->bookerLevel === 0;
 
         return [
             'currency' => $this->currency,

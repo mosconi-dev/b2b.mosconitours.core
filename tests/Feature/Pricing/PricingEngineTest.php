@@ -152,6 +152,14 @@ class PricingEngineTest extends TestCase
 
         $this->assertSame('5500.00', (string) $price->sell->amount);
         $this->assertCount(1, $price->layers);
+
+        // The rung that matters here is the one that ISN'T there. The agency is still
+        // at level 1, so the Main Office's 500 is inside its cost. Reading the booker's
+        // level off the layers instead would make the deepest layer the Main Office's,
+        // collapse cost to net, and hand this agency the office markup for free.
+        $this->assertSame(1, $price->bookerLevel);
+        $this->assertSame('5500.00', (string) $price->cost());
+        $this->assertSame('0.00', (string) $price->ownMargin());
     }
 
     public function test_a_paused_strategy_contributes_nothing_and_is_not_an_error(): void

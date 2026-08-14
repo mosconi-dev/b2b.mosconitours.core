@@ -658,7 +658,10 @@
                         <template x-for="(b, i) in quote.fareBreakdown" :key="i">
                             <div class="flex items-center justify-between px-3 py-2">
                                 <span class="text-gray-600"><span x-text="b.count"></span> × <span x-text="b.passengerType"></span></span>
-                                <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money((b.baseFare + b.tax) * b.count)"></span></span>
+                                {{-- `amountTotal` is the selling price allocated to this
+                                     passenger type. The baseFare+tax fallback is the raw
+                                     supplier split, kept for a viewer entitled to it. --}}
+                                <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money(b.amountTotal ?? ((b.baseFare + b.tax) * b.count))"></span></span>
                             </div>
                         </template>
                     </div>

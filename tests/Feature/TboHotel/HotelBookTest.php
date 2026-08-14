@@ -11,6 +11,8 @@ use App\Models\Hotel;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Pricing\PricingContextFactory;
+use App\Services\Pricing\PricingEngine;
 use App\Services\TboHotel\DTO\Guest;
 use App\Services\TboHotel\DTO\PaxRoom;
 use App\Services\TboHotel\DTO\SearchInput;
@@ -67,6 +69,8 @@ class HotelBookTest extends TestCase
         return new HotelBookingService(
             new TboHotelService(new TboHotelClient(TboHotelConfig::for('test'))),
             app(WalletService::class),
+            app(PricingEngine::class),
+            app(PricingContextFactory::class),
         );
     }
 

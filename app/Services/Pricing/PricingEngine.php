@@ -6,6 +6,7 @@ use App\Models\Agency;
 use App\Models\PricingRule;
 use App\Services\Pricing\Calculators\CalculatorRegistry;
 use App\Services\Pricing\Exceptions\PricingException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Turns a supplier's net rate into a selling price.
@@ -30,13 +31,48 @@ class PricingEngine
         private readonly CalculatorRegistry $calculators,
     ) {}
 
+    /**
+     * Quote, or sell at net when pricing has never been configured.
+     *
+     * `quote()` throws when no pricing root is set, and that is right for the admin
+     * screens: someone configuring pricing must be told it is not configured. It is the
+     * wrong answer for a search. An installation that has not set a root yet is one that
+     * behaves exactly as it did before pricing existed, and taking every search and
+     * booking down until an administrator visits a screen they may not know about is a
+     * far worse failure than the one it prevents.
+     *
+     * Only the unconfigured case falls through. A root that is set but points at a
+     * deleted agency is a broken configuration, not an absent one, and still throws.
+     *
+     * The warning is logged every time on purpose: this state means every booking is
+     * selling at cost, which is worth a noisy log until someone fixes it.
+     */
+    public function quoteOrNet(PricingContext $context, ?Agency $booker): PriceBreakdown
+    {
+        if (! $this->resolver->isConfigured()) {
+            Log::warning('Pricing is not configured — selling at supplier net.', [
+                'product' => $context->product->value,
+                'agency_id' => $booker?->getKey(),
+            ]);
+
+            return PriceBreakdown::unpriced($context->net, $context->currency, $booker === null ? 0 : 1);
+        }
+
+        return $this->quote($context, $booker);
+    }
+
     public function quote(PricingContext $context, ?Agency $booker): PriceBreakdown
     {
         $net = $context->net->amount;
         $running = $net;
         $layers = [];
+        $chain = $this->resolver->chain($booker);
 
-        foreach ($this->resolver->chain($booker) as $rung) {
+        // From the chain, not from the layers: a level that contributes nothing still
+        // sits above the booker, and its markup is still inside their cost.
+        $bookerLevel = $chain[array_key_last($chain)]['level'];
+
+        foreach ($chain as $rung) {
             $strategy = $rung['strategy'];
 
             // No strategy, or a paused one: this level contributes nothing. That is a
@@ -81,6 +117,7 @@ class PricingEngine
             sell: new SellPrice($sell),
             roundingDelta: $sell->minus($running),
             currency: $context->currency,
+            bookerLevel: $bookerLevel,
         );
     }
 

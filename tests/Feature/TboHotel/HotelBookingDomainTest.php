@@ -11,6 +11,8 @@ use App\Models\Hotel;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Pricing\PricingContextFactory;
+use App\Services\Pricing\PricingEngine;
 use App\Services\TboHotel\DTO\Guest;
 use App\Services\TboHotel\DTO\PaxRoom;
 use App\Services\TboHotel\DTO\SearchInput;
@@ -56,6 +58,8 @@ class HotelBookingDomainTest extends TestCase
         return new HotelBookingService(
             new TboHotelService(new TboHotelClient(TboHotelConfig::for('test'))),
             app(WalletService::class),
+            app(PricingEngine::class),
+            app(PricingContextFactory::class),
         );
     }
 
@@ -154,7 +158,7 @@ class HotelBookingDomainTest extends TestCase
 
         $booking = $this->service()->createFromQuote(
             $user, $this->search(), self::CODE, $this->guests(), $this->contact(),
-            shownNetFare: 4036.02,
+            shownSellFare: 4036.02,
         );
 
         $this->assertSame('4036.02', $booking->total_amount);
@@ -173,7 +177,7 @@ class HotelBookingDomainTest extends TestCase
         try {
             $this->service()->createFromQuote(
                 $user, $this->search(), self::CODE, $this->guests(), $this->contact(),
-                shownNetFare: 3500.00,
+                shownSellFare: 3500.00,
             );
             $this->fail('A re-price should have stopped the booking.');
         } catch (BookingException $e) {
@@ -192,7 +196,7 @@ class HotelBookingDomainTest extends TestCase
 
         $booking = $this->service()->createFromQuote(
             $user, $this->search(), self::CODE, $this->guests(), $this->contact(),
-            shownNetFare: 3500.00, acceptPriceChange: true,
+            shownSellFare: 3500.00, acceptPriceChange: true,
         );
 
         $this->assertSame('4036.02', $booking->total_amount);

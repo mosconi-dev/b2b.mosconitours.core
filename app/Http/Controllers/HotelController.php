@@ -8,6 +8,7 @@ use App\Http\Requests\StoreRecentHotelSearchesRequest;
 use App\Models\Booking;
 use App\Models\Hotel;
 use App\Models\HotelCountry;
+use App\Services\Pricing\OfferPricer;
 use App\Services\Search\HotelRecentSearches;
 use App\Services\TboHotel\CatalogueSyncService;
 use App\Services\TboHotel\DTO\PaxRoom;
@@ -72,7 +73,7 @@ class HotelController extends Controller
         ));
     }
 
-    public function search(SearchHotelsRequest $request, TboHotelService $service, HotelSearchCache $cache): JsonResponse
+    public function search(SearchHotelsRequest $request, TboHotelService $service, HotelSearchCache $cache, OfferPricer $pricer): JsonResponse
     {
         $input = $request->searchInput();
 
@@ -86,6 +87,15 @@ class HotelController extends Controller
         } catch (TboHotelException $e) {
             return $this->supplierError($e);
         }
+
+        // Priced on the way OUT of the cache — see FlightController::search().
+        $payload = $pricer->hotelSearch(
+            $payload,
+            $request->user(),
+            $input->nights(),
+            $input->roomCount(),
+            $input->checkIn,
+        );
 
         return response()->json($payload + [
             'nights' => $input->nights(),
@@ -112,6 +122,7 @@ class HotelController extends Controller
         TboHotelService $service,
         HotelSearchCache $cache,
         CatalogueSyncService $sync,
+        OfferPricer $pricer,
     ): View|RedirectResponse {
         $data = $request->validate([
             'checkIn' => ['required', 'date'],
@@ -145,6 +156,16 @@ class HotelController extends Controller
         } catch (TboHotelException $e) {
             return $this->roomsError($e, $data);
         }
+
+        // Every room on this page is a selling price from here down — the rate cards,
+        // the cheapest-room headline, and the `shownFare` each Book button carries.
+        $payload = $pricer->hotelSearch(
+            $payload,
+            $request->user(),
+            $input->nights(),
+            $input->roomCount(),
+            $input->checkIn,
+        );
 
         // The panel used to enrich on open; this page is that panel now.
         if ($hotel->detailed_at === null) {
