@@ -50,7 +50,7 @@
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <template x-for="item in recent" :key="item.id">
-                    <div @click="runRecent(item)"
+                    <div @click="applyRecent(item)"
                          class="group relative cursor-pointer rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow">
                         <button type="button" @click.stop="removeRecent(item.id)" title="Remove"
                                 class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-gray-300 transition hover:bg-gray-100 hover:text-gray-500">

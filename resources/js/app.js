@@ -1968,18 +1968,21 @@ Alpine.data('hotelSearch', (config = {}) => ({
     // ----- recent searches (per-user history in the server cache) -----
 
     /**
-     * Re-run a saved search.
+     * Put a saved search back in the form, and stop there.
      *
-     * A card goes straight to results rather than filling the form and waiting, which
-     * is where this parts company with the flight list. /hotels already searches on
-     * open when it is given a search in the URL — that is what "back to results" is —
-     * and a shortcut that behaved differently from the link beside it would be the
-     * odd one out. The form is still there, collapsed behind Modify, if the dates
-     * need changing after all.
+     * The card does not search on the agent's behalf. Dates and occupancy are the
+     * things most often adjusted on the way back to a stay, and a search that fires
+     * on the click spends twenty-odd seconds at the supplier before anyone can touch
+     * them. Same bargain the flight list makes: the form is filled, Search is one
+     * click away. (restore() is the exception, and stays one: arriving with a search
+     * already in the URL is the agent asking for those results, not for the form.)
      */
-    runRecent(entry) {
+    applyRecent(entry) {
         this.applySearch(entry);
-        this.$nextTick(() => this.search());
+        // A failed search leaves its message up with no results beside it, which is
+        // exactly when the list is on screen to be clicked.
+        this.error = '';
+        this.$refs.form?.scrollIntoView({ behavior: 'smooth' });
     },
 
     removeRecent(id) {
