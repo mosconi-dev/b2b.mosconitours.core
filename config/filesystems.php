@@ -41,7 +41,13 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            // Origin-relative on purpose. Storage::url() reads this config rather than
+            // the incoming request, so an absolute URL built from APP_URL points at the
+            // wrong host or port the moment the two disagree — and the only symptom is a
+            // broken <img>, since route()/asset() follow the request and keep working.
+            // Every consumer (agency logos, e-ticket and voucher mastheads) renders into
+            // HTML served over that same origin, so a relative path is always right.
+            'url' => '/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
