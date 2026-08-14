@@ -57,27 +57,36 @@
 
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <template x-for="item in recent" :key="item.id">
-                        <div @click="applySearch(item)"
-                             class="group relative cursor-pointer rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow">
-                            <button type="button" @click.stop="removeRecent(item.id)" title="Remove"
-                                    class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-gray-300 transition hover:bg-gray-100 hover:text-gray-500">
+                        {{-- The card body is a real button and the remove control its
+                             sibling, rather than a clickable div wrapping both. A button
+                             may not contain another, and only a button is in the tab
+                             order and answers Enter and Space for free. --}}
+                        <div class="group relative rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow">
+                            <button type="button" @click="applySearch(item)"
+                                    class="block w-full cursor-pointer rounded-xl p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+                                <div class="flex items-center gap-2 pr-6">
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                                        </svg>
+                                    </span>
+                                    <p class="truncate text-sm font-semibold text-brand-900" x-text="item.routeText"></p>
+                                </div>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <span x-text="item.dateText"></span>
+                                    <span class="mx-1 text-gray-300">·</span>
+                                    <span x-text="item.metaText"></span>
+                                </p>
+                            </button>
+
+                            {{-- aria-label, not title alone: a button whose only content is
+                                 an icon is announced as "button" and nothing else. --}}
+                            <button type="button" @click="removeRecent(item.id)" title="Remove" aria-label="Remove"
+                                    class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-gray-300 transition hover:bg-gray-100 hover:text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </button>
-                            <div class="flex items-center gap-2 pr-6">
-                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
-                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                                    </svg>
-                                </span>
-                                <p class="truncate text-sm font-semibold text-brand-900" x-text="item.routeText"></p>
-                            </div>
-                            <p class="mt-2 text-xs text-gray-500">
-                                <span x-text="item.dateText"></span>
-                                <span class="mx-1 text-gray-300">·</span>
-                                <span x-text="item.metaText"></span>
-                            </p>
                         </div>
                     </template>
                 </div>
