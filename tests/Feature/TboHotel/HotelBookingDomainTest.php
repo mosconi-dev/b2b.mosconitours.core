@@ -154,7 +154,7 @@ class HotelBookingDomainTest extends TestCase
 
         $booking = $this->service()->createFromQuote(
             $user, $this->search(), self::CODE, $this->guests(), $this->contact(),
-            shownFare: 4036.02,
+            shownNetFare: 4036.02,
         );
 
         $this->assertSame('4036.02', $booking->total_amount);
@@ -173,7 +173,7 @@ class HotelBookingDomainTest extends TestCase
         try {
             $this->service()->createFromQuote(
                 $user, $this->search(), self::CODE, $this->guests(), $this->contact(),
-                shownFare: 3500.00,
+                shownNetFare: 3500.00,
             );
             $this->fail('A re-price should have stopped the booking.');
         } catch (BookingException $e) {
@@ -192,7 +192,7 @@ class HotelBookingDomainTest extends TestCase
 
         $booking = $this->service()->createFromQuote(
             $user, $this->search(), self::CODE, $this->guests(), $this->contact(),
-            shownFare: 3500.00, acceptPriceChange: true,
+            shownNetFare: 3500.00, acceptPriceChange: true,
         );
 
         $this->assertSame('4036.02', $booking->total_amount);

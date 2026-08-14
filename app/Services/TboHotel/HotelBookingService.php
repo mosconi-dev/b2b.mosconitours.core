@@ -62,7 +62,7 @@ class HotelBookingService
         string $bookingCode,
         array $guests,
         array $contact,
-        ?float $shownFare = null,
+        ?float $shownNetFare = null,
         bool $acceptPriceChange = false,
     ): Booking {
         $quote = $this->tbo->preBook($bookingCode);
@@ -70,10 +70,17 @@ class HotelBookingService
         // A price move between Search and PreBook is normal. It is only an error if
         // nobody agreed to it — booking silently at the new price spends an agency's
         // money on a figure it never saw.
-        if ($shownFare !== null && $quote->priceChanged($shownFare) && ! $acceptPriceChange) {
+        //
+        // BOTH SIDES OF THIS COMPARISON ARE SUPPLIER NET. `PreBookResult::totalFare()`
+        // is TBO's rate, so the figure coming back from the browser has to be the same
+        // kind of number. Compare a marked-up price against a net one and the gate
+        // fires on every single booking — the markup alone reads as a re-price. When
+        // pricing goes live, convert on the way in or move both sides to sell; never
+        // one of each.
+        if ($shownNetFare !== null && $quote->priceChanged($shownNetFare) && ! $acceptPriceChange) {
             throw new BookingException(sprintf(
                 'The hotel re-priced this room from %s to %s. Confirm the new price to continue.',
-                number_format($shownFare, 2),
+                number_format($shownNetFare, 2),
                 number_format($quote->totalFare(), 2),
             ));
         }
@@ -96,7 +103,13 @@ class HotelBookingService
                 'environment' => $this->tbo->environment(),
                 'status' => BookingStatus::Quoted,
                 'currency' => $quote->currency,
+                // One figure three times, until Phase 4 puts an engine between them.
+                // Written out rather than left to defaults so the columns are never
+                // silently zero on a row that has a price.
+                'net_amount' => $total,
+                'cost_amount' => $total,
                 'total_amount' => $total,
+                'markup_total' => '0.00',
                 'quote' => $quote->toArray(),
                 // The browser-facing snapshot above cannot rebuild a Book payload —
                 // keep what TBO actually sent.

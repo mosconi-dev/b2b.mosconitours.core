@@ -147,7 +147,7 @@ class HotelBookTest extends TestCase
         $payload = TboHotelBookPayload::for($booking);
 
         $this->assertSame(self::CODE, $payload['BookingCode']);
-        $this->assertSame((float) $booking->total_amount, $payload['TotalFare']);
+        $this->assertSame((float) $booking->net_amount, $payload['TotalFare']);
         $this->assertSame('Voucher', $payload['BookingType']);
         $this->assertSame('Limit', $payload['PaymentMode']);
         $this->assertSame('agent@example.test', $payload['EmailId']);
@@ -156,6 +156,26 @@ class HotelBookTest extends TestCase
         // timed-out Book is read back by, so it cannot be anything TBO issues.
         $this->assertSame($booking->reference, $payload['ClientReferenceId']);
         $this->assertSame($booking->reference, $payload['BookingReferenceId']);
+    }
+
+    /**
+     * The supplier is sent the supplier's own number, never ours.
+     *
+     * TBO compares TotalFare against its own figure and refuses a mismatch, so a sell
+     * price in that field breaks every hotel booking. Today net and total are equal and
+     * the assertion above cannot tell them apart — this one forces them apart first.
+     */
+    public function test_the_payload_sends_net_not_the_marked_up_sell_price(): void
+    {
+        $this->fakeBook(Http::response($this->fixture('book')));
+        $booking = $this->quoted();
+
+        $booking->update(['total_amount' => '9999.00', 'markup_total' => '9999.00']);
+
+        $payload = TboHotelBookPayload::for($booking->fresh());
+
+        $this->assertSame((float) $booking->net_amount, $payload['TotalFare']);
+        $this->assertNotSame(9999.0, $payload['TotalFare'], 'our markup must never reach TBO');
     }
 
     /**

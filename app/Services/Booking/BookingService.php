@@ -92,7 +92,13 @@ class BookingService
                 'is_lcc' => $quote->isLcc,
                 'currency' => $quote->price['currency'],
                 'ancillary_total' => $ancillaryTotal,
+                // One figure three times, until Phase 4 puts an engine between them.
+                // Written out rather than left to defaults so the columns are never
+                // silently zero on a row that has a price.
+                'net_amount' => $total,
+                'cost_amount' => $total,
                 'total_amount' => $total,
+                'markup_total' => '0.00',
                 'quote' => $quote->toArray(),
                 // The lossy UI snapshot above is not enough to build a Book payload —
                 // keep the response TBO actually sent. See the quote_raw migration.

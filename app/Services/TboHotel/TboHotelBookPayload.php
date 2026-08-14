@@ -48,9 +48,10 @@ class TboHotelBookPayload
             'ClientReferenceId' => $booking->reference,
             'BookingReferenceId' => $booking->reference,
 
-            // PreBook's figure, which is what the agency was charged. Search's price
-            // has no standing by now and TBO refuses a mismatch.
-            'TotalFare' => (float) $booking->total_amount,
+            // PreBook's figure — the SUPPLIER's, not ours. TBO compares this against
+            // its own number and refuses a mismatch, so it must be the net rate and
+            // never `total_amount`, which carries our markup once pricing is live.
+            'TotalFare' => (float) $booking->net_amount,
 
             'EmailId' => (string) ($contact['email'] ?? ''),
             'PhoneNumber' => (string) ($contact['phone'] ?? ''),

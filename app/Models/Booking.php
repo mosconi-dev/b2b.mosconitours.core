@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -19,7 +20,8 @@ use RuntimeException;
 
 #[Fillable([
     'reference', 'product', 'supplier', 'user_id', 'agency_id', 'environment', 'status', 'trace_id',
-    'result_index', 'is_lcc', 'pnr', 'booking_id', 'supplier_reference', 'currency', 'total_amount',
+    'result_index', 'is_lcc', 'pnr', 'booking_id', 'supplier_reference', 'currency',
+    'net_amount', 'cost_amount', 'total_amount', 'markup_total',
     'ancillary_total', 'quote', 'quote_raw', 'seats_available', 'result_type', 'pax', 'contact',
 ])]
 class Booking extends Model
@@ -44,7 +46,10 @@ class Booking extends Model
             'supplier' => Supplier::class,
             'status' => BookingStatus::class,
             'is_lcc' => 'boolean',
+            'net_amount' => 'decimal:2',
+            'cost_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            'markup_total' => 'decimal:2',
             'ancillary_total' => 'decimal:2',
             'quote' => 'array',
             'quote_raw' => 'array',
@@ -213,6 +218,34 @@ class Booking extends Model
         }
 
         return $line === '' ? null : $line;
+    }
+
+    /**
+     * How this booking's price was arrived at, one row per pricing level, cheapest
+     * rung first.
+     *
+     * Read these rather than recomputing from today's rules: each row carries a copy
+     * of the rule that produced it, and the rule itself may since have changed.
+     *
+     * @return HasMany<BookingPriceLayer, $this>
+     */
+    public function priceLayers(): HasMany
+    {
+        return $this->hasMany(BookingPriceLayer::class)->orderBy('level');
+    }
+
+    /**
+     * What the agency's own margin on this booking was — the rung it added itself.
+     *
+     * Zero for a booking made by the Main Office, which has no level above it to mark
+     * up against, and for any booking taken before pricing existed.
+     */
+    public function agencyMargin(): string
+    {
+        // Parenthesised: `(string) $x ?? '0.00'` casts the null to '' before ?? ever
+        // sees it, so the default never fires.
+        return (string) ($this->priceLayers
+            ->firstWhere('level', BookingPriceLayer::AGENCY)?->markup_amount ?? '0.00');
     }
 
     /**
