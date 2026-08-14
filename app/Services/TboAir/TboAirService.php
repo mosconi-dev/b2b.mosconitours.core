@@ -2,6 +2,7 @@
 
 namespace App\Services\TboAir;
 
+use App\Enums\TravelScope;
 use App\Enums\TripType;
 use App\Models\Booking;
 use App\Services\Settings\Settings;
@@ -14,7 +15,7 @@ use App\Services\TboAir\DTO\SearchInput;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\DTO\Ssr;
 use App\Services\TboAir\Exceptions\TboAirException;
-use App\Support\Airports;
+use App\Support\TravelScopeResolver;
 use Illuminate\Support\Facades\Cache;
 
 class TboAirService
@@ -350,7 +351,7 @@ class TboAirService
             'AdultCount' => $input->adults,
             'ChildCount' => $input->children,
             'InfantCount' => $input->infants,
-            'IsDomestic' => $this->isDomestic($effective),
+            'IsDomestic' => $this->scopeOf($effective)->isDomestic(),
             'BookingMode' => config('tboair.booking_mode'),
             'DirectFlight' => false,
             'OneStopFlight' => false,
@@ -373,24 +374,25 @@ class TboAirService
     }
 
     /**
-     * Domestic when every segment stays within the Philippines.
+     * The scope of a search, from the requested airports alone.
+     *
+     * This is the one moment the curated list has to answer on its own — the request
+     * has not been sent, so TBO has told us nothing yet. Delegated to the shared
+     * resolver so it cannot drift from the answer FareQuote and the Book payload give
+     * later on the same itinerary.
      *
      * @param  array<int, array{origin: string, destination: string, departure: string}>  $segments
      */
-    private function isDomestic(array $segments): bool
+    private function scopeOf(array $segments): TravelScope
     {
-        $domestic = array_column(
-            array_filter(Airports::all(), fn (array $a): bool => ($a['country'] ?? '') === 'Philippines'),
-            'code'
-        );
+        $codes = [];
 
         foreach ($segments as $s) {
-            if (! in_array($s['origin'], $domestic, true) || ! in_array($s['destination'], $domestic, true)) {
-                return false;
-            }
+            $codes[] = $s['origin'];
+            $codes[] = $s['destination'];
         }
 
-        return true;
+        return TravelScopeResolver::forAirports($codes);
     }
 
     /**

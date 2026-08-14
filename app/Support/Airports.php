@@ -7,11 +7,28 @@ class Airports
     /**
      * The full curated airport list.
      *
-     * @return array<int, array{code: string, city: string, country: string}>
+     * @return array<int, array{code: string, city: string, country: string, country_code: string}>
      */
     public static function all(): array
     {
         return config('airports', []);
+    }
+
+    /**
+     * The ISO country code an IATA code sits in, or null when we do not carry it.
+     *
+     * Null for an airport that is not on the curated list, and for one added without a
+     * `country_code`. Both are genuinely unknown rather than foreign, and the caller —
+     * TravelScopeResolver — is the one that decides what unknown means.
+     *
+     * Rebuilt per call rather than memoised in a static: the list comes from config,
+     * and a test that swaps it would otherwise get the previous test's answer.
+     */
+    public static function countryCode(string $iata): ?string
+    {
+        $map = array_column(self::all(), 'country_code', 'code');
+
+        return $map[strtoupper(trim($iata))] ?? null;
     }
 
     /**

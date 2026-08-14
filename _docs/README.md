@@ -15,3 +15,8 @@ Project documentation for `b2b.mosconitours.core`.
 - **[rbac/](rbac/00-overview.md)** — Role-Based Access Control: the `/admin` area, the permission
   registry, and the native-Laravel authorization layer (Gates + Policies) guarding every route,
   nav item, and action.
+- **[pricing/](pricing/00-overview.md)** — markup across products: identifying local vs international
+  flights and hotels, splitting the supplier's net rate from the price an agency pays, and the
+  **cumulative** two-level strategy model (Main Office + Agency). **Nothing is built yet.** [`00-overview.md`](pricing/00-overview.md) is the investigation of what exists today;
+  [`01-architecture.md`](pricing/01-architecture.md) is the domain model, schema, resolution
+  algorithm and the open business questions.

@@ -2,6 +2,7 @@
 
 namespace App\Services\TboAir\DTO;
 
+use App\Enums\TravelScope;
 use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
@@ -31,6 +32,15 @@ class FlightOffer implements Arrayable, JsonSerializable
         public readonly array $arrival,
         public readonly array $price,
         public readonly array $trips,
+        /**
+         * Whether this itinerary stays inside the country we sell from.
+         *
+         * Classified per offer rather than once per search: a search is stated in
+         * airport codes, but an offer is an actual routing, and the resolver reads the
+         * country TBO put on each leg. The two agree on ordinary itineraries and the
+         * offer is the one that is true.
+         */
+        public readonly TravelScope $scope = TravelScope::International,
     ) {}
 
     /**
@@ -55,6 +65,8 @@ class FlightOffer implements Arrayable, JsonSerializable
             'arrival' => $this->arrival,
             'price' => $this->price,
             'trips' => $this->trips,
+            'scope' => $this->scope->value,
+            'scopeLabel' => $this->scope->label(),
         ];
     }
 

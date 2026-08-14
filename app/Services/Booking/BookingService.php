@@ -54,8 +54,8 @@ class BookingService
         // An international itinerary always needs a passport; a domestic one needs a
         // government ID whenever TBO's flags ask for a document at all. The route
         // decides *which* document, TBO's flags decide *whether* — see TboBookPayload.
-        if ($quote->isPassportMandatory || ! $quote->isDomestic) {
-            $document = $quote->isDomestic ? 'ID number and expiry are' : 'Passport number and expiry are';
+        if ($quote->isPassportMandatory || ! $quote->scope->isDomestic()) {
+            $document = $quote->scope->isDomestic() ? 'ID number and expiry are' : 'Passport number and expiry are';
 
             foreach ($passengers as $passenger) {
                 if (! $passenger->hasDocument()) {
