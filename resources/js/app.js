@@ -2401,4 +2401,77 @@ Alpine.data('photoViewer', (images = []) => ({
     },
 }));
 
+/**
+ * ladderPreview — the Main Office's "what would this agency be charged?" panel.
+ *
+ * It POSTs to the server and renders what comes back rather than computing the ladder
+ * here. A second copy of the arithmetic in JavaScript would drift from the engine, and
+ * this panel exists so somebody can check a rule change before it reaches a booking — a
+ * preview that can disagree with the real price is worse than no preview.
+ */
+Alpine.data('ladderPreview', (config = {}) => ({
+    url: config.url,
+    loading: false,
+    error: '',
+    result: null,
+    form: { agency_id: '', net: '5000.00', product: 'flight', scope: 'domestic' },
+
+    init() {
+        // Start on whatever the select already shows, so the first Preview click works
+        // without the user touching the dropdown.
+        this.form.agency_id = this.$el.querySelector('#preview-agency')?.value ?? '';
+    },
+
+    money(value) {
+        return Number(value ?? 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    },
+
+    /** "(15%)" or "(fixed)" beside a rung, so the number is traceable to its rule. */
+    describe(layer) {
+        if (! layer.calcType) {
+            return '';
+        }
+
+        return layer.calcType === 'percentage_markup' ? `(${parseFloat(layer.value)}%)` : '(fixed)';
+    },
+
+    async run() {
+        this.loading = true;
+        this.error = '';
+
+        try {
+            const response = await fetch(this.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
+                body: JSON.stringify(this.form),
+            });
+
+            const body = await response.json();
+
+            if (! response.ok) {
+                // A misconfigured root answers 422 with the reason — show it rather than
+                // a generic failure, since the reason is the fix.
+                this.error = body.message ?? 'That could not be priced.';
+                this.result = null;
+
+                return;
+            }
+
+            this.result = body;
+        } catch (e) {
+            this.error = 'The preview could not reach the server.';
+            this.result = null;
+        } finally {
+            this.loading = false;
+        }
+    },
+}));
+
 Alpine.start();

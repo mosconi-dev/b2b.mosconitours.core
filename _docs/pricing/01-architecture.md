@@ -609,6 +609,7 @@ the specification and the existing application are both silent.
 | **D9** | **VAT treatment of markup** | Markup is service revenue and in PH very likely VATable; the supplier's net is not our sale. **[EXISTING]** the live system hardcodes `IsVATApplicable => true`. Is ₱500 VAT-inclusive or exclusive? Answer before rules are configured — reinterpreting live rules later reprices history | Phase 3 |
 | **D10** | **Zero / near-zero net amounts** | A ₱0 infant fare takes 10% of nothing. `min_markup` provides a floor — and is also how a free component acquires ₱1,500 of markup. Decide per product | Phase 3 |
 | **D11** | **Visibility** — is the model in §6 the intended boundary | Confirms an Agency may see its own markup but never net or the Main Office's markup separately | Phase 4 |
+| **D12** | **A percentage-on-net agency rule lets that agency derive the supplier net** | Found while building Phase 3, by the test that asserts the net never reaches an agency payload. If an Agency sets *"10% of net"* and is shown its own markup of ₱500 — which is theirs, and which §6 says they may see — then net = ₱5,000 falls straight out. The leak is arithmetic, not a bug, so no amount of redaction closes it. **Recommendation: agency-level rules use `basis: running`** — a percentage of *their cost*, which they already know, and which is also the more natural reading of "I add 10% to what I pay". Settle before Phase 5 opens rule editing to agencies | Phase 5 |
 
 ---
 

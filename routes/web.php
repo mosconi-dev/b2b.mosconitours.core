@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\HotelCatalogueController;
 use App\Http\Controllers\Admin\HotelSettingController;
 use App\Http\Controllers\Admin\PermissionController;
+use App\Http\Controllers\Admin\PricingController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\UserController;
@@ -205,6 +206,29 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     });
 
     Route::get('audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index')->middleware('can:audit.view');
+
+    /*
+    | Main Office pricing — the level every other agency's price is built on top of,
+    | which is why it is gated separately from an agency's own markup.
+    */
+    Route::prefix('pricing')->name('pricing.')->group(function () {
+        Route::get('/', [PricingController::class, 'index'])->name('index')
+            ->middleware('can:markup.office.view');
+        // The preview runs the real engine, so it is a read and needs only view rights.
+        Route::post('/preview', [PricingController::class, 'preview'])->name('preview')
+            ->middleware('can:markup.office.view');
+
+        Route::put('/main-office', [PricingController::class, 'setMainOffice'])->name('main-office')
+            ->middleware('can:markup.office.edit');
+        Route::patch('/toggle', [PricingController::class, 'toggleStrategy'])->name('toggle')
+            ->middleware('can:markup.office.edit');
+        Route::post('/rules', [PricingController::class, 'storeRule'])->name('rules.store')
+            ->middleware('can:markup.office.edit');
+        Route::put('/rules/{rule}', [PricingController::class, 'updateRule'])->name('rules.update')
+            ->middleware('can:markup.office.edit');
+        Route::delete('/rules/{rule}', [PricingController::class, 'destroyRule'])->name('rules.destroy')
+            ->middleware('can:markup.office.edit');
+    });
 
     /*
     | The hotel catalogue. TBO's Search takes hotel codes and nothing else, so this
