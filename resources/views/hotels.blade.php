@@ -50,36 +50,44 @@
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <template x-for="item in recent" :key="item.id">
-                    <div @click="applyRecent(item)"
-                         class="group relative cursor-pointer rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow">
-                        <button type="button" @click.stop="removeRecent(item.id)" title="Remove"
-                                class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-gray-300 transition hover:bg-gray-100 hover:text-gray-500">
+                    {{-- The card body is a real button and the remove control its sibling,
+                         rather than a clickable div wrapping both. A button may not contain
+                         another, and only a button is in the tab order and answers Enter and
+                         Space for free. Matches the flight list. --}}
+                    <div class="group relative rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow">
+                        <button type="button" @click="applyRecent(item)"
+                                class="block w-full cursor-pointer rounded-xl p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+                            <div class="flex items-center gap-2 pr-6">
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                                    {{-- "Cebu" and "Marriott Cebu" read alike at a glance; the
+                                         icon is what says which kind of search this was. --}}
+                                    <template x-if="item.locationType === 'hotel'">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21" />
+                                        </svg>
+                                    </template>
+                                    <template x-if="item.locationType !== 'hotel'">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                                        </svg>
+                                    </template>
+                                </span>
+                                <p class="truncate text-sm font-semibold text-brand-900" x-text="item.locationLabel"></p>
+                            </div>
+
+                            <p class="mt-2 text-xs text-gray-500" x-text="item.dateText"></p>
+                            <p class="mt-0.5 text-xs text-gray-500" x-text="item.metaText"></p>
+                        </button>
+
+                        {{-- aria-label, not title alone: a button whose only content is an
+                             icon is announced as "button" and nothing else. --}}
+                        <button type="button" @click="removeRecent(item.id)" title="Remove" aria-label="Remove"
+                                class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-gray-300 transition hover:bg-gray-100 hover:text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
-
-                        <div class="flex items-center gap-2 pr-6">
-                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
-                                {{-- "Cebu" and "Marriott Cebu" read alike at a glance; the
-                                     icon is what says which kind of search this was. --}}
-                                <template x-if="item.locationType === 'hotel'">
-                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21" />
-                                    </svg>
-                                </template>
-                                <template x-if="item.locationType !== 'hotel'">
-                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                                    </svg>
-                                </template>
-                            </span>
-                            <p class="truncate text-sm font-semibold text-brand-900" x-text="item.locationLabel"></p>
-                        </div>
-
-                        <p class="mt-2 text-xs text-gray-500" x-text="item.dateText"></p>
-                        <p class="mt-0.5 text-xs text-gray-500" x-text="item.metaText"></p>
                     </div>
                 </template>
             </div>
