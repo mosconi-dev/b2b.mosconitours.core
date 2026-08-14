@@ -270,7 +270,7 @@ Alpine.data('flightSearch', (config = {}) => ({
     // --- injected from the blade ---
     airports: config.airports ?? [],
     searchUrl: config.searchUrl ?? '',
-    bookingCreateUrl: config.bookingCreateUrl ?? '',
+    bookUrl: config.bookUrl ?? '',
     recentUrl: config.recentUrl ?? '',
     fareRuleUrl: config.fareRuleUrl ?? '',
     // Embedded mode (booking wizard's inline "Modify"): pre-fill from
@@ -508,7 +508,7 @@ Alpine.data('flightSearch', (config = {}) => ({
             seats: (offer.trips ?? []).flatMap((t) => t.segments ?? []).map((s) => s.seats ?? '').join(','),
             resultType: this.resultType ?? '',
         });
-        window.location = `${this.bookingCreateUrl}?${params.toString()}`;
+        window.location = `${this.bookUrl}?${params.toString()}`;
     },
 
     // ----- fare rules -----

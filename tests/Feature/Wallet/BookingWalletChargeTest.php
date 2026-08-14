@@ -100,7 +100,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fund('10000.00');
 
         $this->actingAs($this->agent())
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertRedirect();
 
         $this->assertSame('3600.00', $this->balance());
@@ -118,7 +118,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fund('10000.00');
         $agent = $this->agent();
 
-        $this->actingAs($agent)->post(route('bookings.store'), $this->payload())->assertRedirect();
+        $this->actingAs($agent)->post(route('flights.bookings.store'), $this->payload())->assertRedirect();
 
         $charge = Booking::firstOrFail()->walletCharge();
         $this->assertSame($this->agency->id, $charge->agency_id);
@@ -131,7 +131,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fund('100.00');
 
         $this->actingAs($this->agent())
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertSessionHasErrors('booking');
 
         // The whole thing rolls back: no booking, no ledger entry, balance untouched.
@@ -145,7 +145,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->agent())
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertSessionHasErrors('booking');
 
         $this->assertSame(0, Booking::count());
@@ -157,7 +157,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fund('100.00');
 
         $this->actingAs($this->agent())
-            ->postJson(route('bookings.store'), $this->payload())
+            ->postJson(route('flights.bookings.store'), $this->payload())
             ->assertStatus(422)
             ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'Insufficient wallet balance'));
     }
@@ -168,7 +168,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fund(self::FARE);
 
         $this->actingAs($this->agent())
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertRedirect();
 
         $this->assertSame('0.00', $this->balance());
@@ -180,7 +180,7 @@ class BookingWalletChargeTest extends TestCase
         $this->fakeQuote();
         $staff = $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue']);
 
-        $this->actingAs($staff)->post(route('bookings.store'), $this->payload())->assertRedirect();
+        $this->actingAs($staff)->post(route('flights.bookings.store'), $this->payload())->assertRedirect();
 
         $this->assertSame(1, Booking::count());
         $this->assertNull(Booking::firstOrFail()->walletCharge());
@@ -194,7 +194,7 @@ class BookingWalletChargeTest extends TestCase
             'flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue', 'wallet.view',
         ]);
 
-        $this->actingAs($agent)->post(route('bookings.store'), $this->payload())->assertRedirect();
+        $this->actingAs($agent)->post(route('flights.bookings.store'), $this->payload())->assertRedirect();
 
         $this->actingAs($agent)
             ->get(route('wallet.index'))
@@ -209,7 +209,7 @@ class BookingWalletChargeTest extends TestCase
     {
         $this->fakeQuote();
         $this->fund('10000.00');
-        $this->actingAs($this->agent())->post(route('bookings.store'), $this->payload())->assertRedirect();
+        $this->actingAs($this->agent())->post(route('flights.bookings.store'), $this->payload())->assertRedirect();
 
         return Booking::firstOrFail();
     }
@@ -279,7 +279,7 @@ class BookingWalletChargeTest extends TestCase
         // Platform-staff booking: never charged, so nothing to give back.
         $this->fakeQuote();
         $staff = $this->userWith(['flight.view', 'flight.search', 'booking.view', 'booking.create', 'flight.issue']);
-        $this->actingAs($staff)->post(route('bookings.store'), $this->payload())->assertRedirect();
+        $this->actingAs($staff)->post(route('flights.bookings.store'), $this->payload())->assertRedirect();
 
         $booking = Booking::firstOrFail();
         app(BookingService::class)->transitionTo($booking, BookingStatus::Cancelled);

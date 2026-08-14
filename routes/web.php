@@ -39,6 +39,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/flights/fare-quote', [FlightController::class, 'fareQuote'])->name('flights.fare-quote')->middleware('can:flight.search');
     Route::post('/flights/fare-rule', [FlightController::class, 'fareRule'])->name('flights.fare-rule')->middleware('can:flight.search');
     Route::post('/flights/ssr', [FlightController::class, 'ssr'])->name('flights.ssr')->middleware('can:flight.search');
+    // Steps 2–5 of the wizard, on the flights prefix for the same reason the hotel
+    // wizard sits on /hotels: what is being booked belongs in the URL until there is
+    // a booking. Only the record that comes out of it is product-agnostic, and that
+    // stays at /bookings/{booking}.
+    //
+    // Completing a booking now issues the ticket, so the wizard itself requires the
+    // ability to spend — better to refuse at the door than after ten minutes of
+    // passenger entry.
+    Route::get('/flights/book', [BookingController::class, 'create'])->name('flights.book')
+        ->middleware(['can:booking.create', 'can:flight.issue']);
+    Route::post('/flights/bookings', [BookingController::class, 'store'])->name('flights.bookings.store')
+        ->middleware(['can:booking.create', 'can:flight.issue']);
+    // The money step, and the only one. There is no hold: this queues Book → Ticket
+    // as a single act, exactly as the system live today does it. Both abilities are
+    // required because it always ends in a ticket.
+    Route::post('/flights/bookings/{booking}/fulfil', [BookingController::class, 'fulfil'])
+        ->name('flights.bookings.fulfil')->whereNumber('booking')
+        ->middleware(['can:flight.book', 'can:flight.issue']);
 
     Route::get('/hotels', [HotelController::class, 'index'])->name('hotels')->middleware('can:hotel.view');
     // Registered before /hotels/{code} so the literal segment wins the match.
@@ -72,15 +90,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/hotels/{code}', [HotelController::class, 'show'])->name('hotels.show')
         ->whereNumber('code')->middleware('can:hotel.view');
 
+    // What a booking is once it exists, whatever product made it: flights and hotels
+    // both end up here. The steps that create one are product-specific and live on
+    // /flights and /hotels respectively.
     Route::prefix('bookings')->name('bookings.')->group(function () {
         Route::get('/', [BookingController::class, 'index'])->name('index')->middleware('can:booking.view');
-        // Completing a booking now issues the ticket, so the wizard itself requires the
-        // ability to spend — better to refuse at the door than after ten minutes of
-        // passenger entry.
-        Route::get('/create', [BookingController::class, 'create'])->name('create')
-            ->middleware(['can:booking.create', 'can:flight.issue']);
-        Route::post('/', [BookingController::class, 'store'])->name('store')
-            ->middleware(['can:booking.create', 'can:flight.issue']);
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show')->whereNumber('booking')->middleware('can:booking.view');
         // The printable document. Read-only and offline — it renders from what we
         // already stored, so a passenger at a check-in desk never depends on TBO.
@@ -89,12 +103,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Where the booking page follows a queued Book/Ticket to its ending.
         Route::get('/{booking}/status', [BookingController::class, 'status'])->name('status')
             ->whereNumber('booking')->middleware('can:booking.view');
-
-        // The money step, and the only one. There is no hold: this queues Book →
-        // Ticket as a single act, exactly as the system live today does it. Both
-        // abilities are required because it always ends in a ticket.
-        Route::post('/{booking}/fulfil', [BookingController::class, 'fulfil'])->name('fulfil')
-            ->whereNumber('booking')->middleware(['can:flight.book', 'can:flight.issue']);
     });
     /*
     | Wallet — the agency e-wallet and its load-request cycle. Every step is

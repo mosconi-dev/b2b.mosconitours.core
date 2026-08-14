@@ -189,7 +189,7 @@
                     was not issued. The reservation will be released by the airline if it stays unticketed.
                 </p>
                 @if ($canRetry)
-                    <form method="POST" action="{{ route('bookings.fulfil', $booking) }}" class="mt-4"
+                    <form method="POST" action="{{ route('flights.bookings.fulfil', $booking) }}" class="mt-4"
                           x-data="{ submitting: false }" @submit="submitting = true">
                         @csrf
                         <button type="submit" :disabled="submitting"
@@ -309,7 +309,7 @@
                     Completing it creates a real ticket and spends real money.
                 </x-live-warning>
                 @if ($canRetry)
-                    <form method="POST" action="{{ route('bookings.fulfil', $booking) }}" class="mt-4"
+                    <form method="POST" action="{{ route('flights.bookings.fulfil', $booking) }}" class="mt-4"
                           x-data="{ submitting: false }" @submit="submitting = true">
                         @csrf
                         <button type="submit" :disabled="submitting"

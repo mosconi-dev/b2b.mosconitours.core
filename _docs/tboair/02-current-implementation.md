@@ -30,11 +30,11 @@ flights.blade.php (Alpine: flightSearch)
 **Select → price → book** (wizard). "Select" carries `{traceId, resultIndex, oldFare, q, …}` to the wizard:
 
 ```
-GET /bookings/create  (can:booking.create)
+GET /flights/book  (can:booking.create, can:flight.issue)
    └─ BookingController::create → TboAirService::fareQuote(SelectionInput)   // the single re-price
         └─ (LCC) TboAirService::ssr(SelectionInput)                          // baggage/meal options
         └─ view bookings/create (Alpine: bookingWizard)  — price-change gate only if the fare moved
-POST /bookings  (can:booking.create)
+POST /flights/bookings  (can:booking.create, can:flight.issue)
    └─ StoreBookingRequest → BookingService::createFromQuote(user, selection, passengers, contact)
         └─ re-prices server-side (FareQuote) → persists a `quoted` Booking, no TBO commitment
 ```

@@ -79,7 +79,7 @@ class TicketingRoutesTest extends TestCase
         $user = $this->agent(['flight.book']);
 
         $this->actingAs($user)
-            ->post(route('bookings.fulfil', $this->booking($user)))
+            ->post(route('flights.bookings.fulfil', $this->booking($user)))
             ->assertForbidden();
 
         Queue::assertNothingPushed();
@@ -92,7 +92,7 @@ class TicketingRoutesTest extends TestCase
         $user = $this->agent(['flight.issue']);
 
         $this->actingAs($user)
-            ->post(route('bookings.fulfil', $this->booking($user)))
+            ->post(route('flights.bookings.fulfil', $this->booking($user)))
             ->assertForbidden();
 
         Queue::assertNothingPushed();
@@ -105,7 +105,7 @@ class TicketingRoutesTest extends TestCase
         $other = $this->agent(['flight.book', 'flight.issue']);
 
         $this->actingAs($other)
-            ->post(route('bookings.fulfil', $this->booking($owner)))
+            ->post(route('flights.bookings.fulfil', $this->booking($owner)))
             ->assertForbidden();
 
         Queue::assertNothingPushed();
@@ -118,7 +118,7 @@ class TicketingRoutesTest extends TestCase
     public function test_the_wizard_is_closed_to_an_agent_who_cannot_issue(): void
     {
         $this->actingAs($this->agent())
-            ->get(route('bookings.create', ['resultIndex' => 'x', 'traceId' => 'y']))
+            ->get(route('flights.book', ['resultIndex' => 'x', 'traceId' => 'y']))
             ->assertForbidden();
     }
 
@@ -136,7 +136,7 @@ class TicketingRoutesTest extends TestCase
         $booking = $this->booking($user);
 
         $this->actingAs($user)
-            ->post(route('bookings.fulfil', $booking))
+            ->post(route('flights.bookings.fulfil', $booking))
             ->assertRedirect()
             ->assertSessionHas('status', fn (string $s): bool => str_contains($s, 'contacting the airline'));
 
@@ -153,7 +153,7 @@ class TicketingRoutesTest extends TestCase
         $booking = $this->booking($user, ['status' => BookingStatus::Ticketed, 'pnr' => 'QWER12']);
 
         $this->actingAs($user)
-            ->post(route('bookings.fulfil', $booking))
+            ->post(route('flights.bookings.fulfil', $booking))
             ->assertRedirect()
             ->assertSessionHas('error', fn (string $s): bool => str_contains($s, 'cannot be completed'));
 
@@ -169,7 +169,7 @@ class TicketingRoutesTest extends TestCase
             'is_lcc' => false, 'status' => BookingStatus::Booked, 'pnr' => 'QWER12',
         ]);
 
-        $this->actingAs($user)->post(route('bookings.fulfil', $booking))->assertRedirect();
+        $this->actingAs($user)->post(route('flights.bookings.fulfil', $booking))->assertRedirect();
 
         Queue::assertPushed(FulfilBookingJob::class);
         $this->assertSame(BookingStatus::Booked, $booking->fresh()->status); // the job moves it, not the request
