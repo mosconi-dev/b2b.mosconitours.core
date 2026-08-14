@@ -2474,4 +2474,59 @@ Alpine.data('ladderPreview', (config = {}) => ({
     },
 }));
 
+/**
+ * agencyMarkupPreview — an agency's own "what do I sell this for?" panel.
+ *
+ * The same server round-trip as the office ladder, and deliberately so: the response is
+ * PriceBreakdown::forViewer(), which is what decides that this page never receives the
+ * supplier net or the office's margin. Computing it here would mean sending the pieces.
+ */
+Alpine.data('agencyMarkupPreview', (config = {}) => ({
+    url: config.url,
+    loading: false,
+    error: '',
+    result: null,
+    form: { net: '5000.00', product: 'flight', scope: 'domestic' },
+
+    money(value) {
+        return Number(value ?? 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    },
+
+    async run() {
+        this.loading = true;
+        this.error = '';
+
+        try {
+            const response = await fetch(this.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
+                body: JSON.stringify(this.form),
+            });
+
+            const body = await response.json();
+
+            if (! response.ok) {
+                this.error = body.message ?? 'That could not be priced.';
+                this.result = null;
+
+                return;
+            }
+
+            this.result = body;
+        } catch (e) {
+            this.error = 'The preview could not reach the server.';
+            this.result = null;
+        } finally {
+            this.loading = false;
+        }
+    },
+}));
+
 Alpine.start();

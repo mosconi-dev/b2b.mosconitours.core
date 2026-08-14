@@ -254,8 +254,9 @@ return [
             'icon' => 'briefcase',
             'actions' => ['view', 'manage'],
         ],
-        // An agency's own markup — the rung it adds on top of the Main Office's. Still
-        // route-less: Phase 5 builds the My Agency screen behind it.
+        // An agency's own markup — the rung it adds on top of the Main Office's. It has
+        // no nav entry of its own: it is a tab on the agency hub, reached where an
+        // agency already reaches its wallet, its users and its roles.
         'markup' => [
             'label' => 'Markups',
             'section' => 'travel_operations',

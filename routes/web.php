@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AgencyController;
+use App\Http\Controllers\Admin\AgencyPricingController;
 use App\Http\Controllers\Admin\AgencyRoleController;
 use App\Http\Controllers\Admin\AgencyUserController;
 use App\Http\Controllers\Admin\AuditLogController;
@@ -171,6 +172,22 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
         Route::get('/{agency}/roles/create', [AgencyRoleController::class, 'create'])->name('roles.create')
             ->middleware(['can:role.create', 'can:view,agency']);
         Route::post('/{agency}/roles', [AgencyRoleController::class, 'store'])->name('roles.store');
+
+        // An agency's OWN markup, reached from its hub. `markup.*` here, never
+        // `markup.office.*` — that governs the level everyone builds on top of, and
+        // PricingStrategyPolicy refuses the pricing root through this path outright.
+        Route::prefix('{agency}/markup')->name('markup.')->middleware('can:view,agency')->group(function () {
+            Route::post('/preview', [AgencyPricingController::class, 'preview'])->name('preview')
+                ->middleware('can:markup.view');
+            Route::post('/rules', [AgencyPricingController::class, 'storeRule'])->name('rules.store')
+                ->middleware('can:markup.edit');
+            Route::put('/rules/{rule}', [AgencyPricingController::class, 'updateRule'])->name('rules.update')
+                ->middleware('can:markup.edit');
+            Route::delete('/rules/{rule}', [AgencyPricingController::class, 'destroyRule'])->name('rules.destroy')
+                ->middleware('can:markup.edit');
+            Route::patch('/toggle', [AgencyPricingController::class, 'toggle'])->name('toggle')
+                ->middleware('can:markup.edit');
+        });
 
         Route::get('/{agency}/edit', [AgencyController::class, 'edit'])->name('edit')->middleware('can:update,agency');
         Route::put('/{agency}', [AgencyController::class, 'update'])->name('update');

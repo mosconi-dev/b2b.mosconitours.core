@@ -575,10 +575,13 @@ flag; the permission rows already sync.
 | Phase | Contents | Price moves? |
 | --- | --- | --- |
 | **1** ✅ | `TravelScope` classification, display only — [`00-overview.md`](00-overview.md) §1.3. **Done**: one enum + `App\Support\TravelScopeResolver` replacing all three `isDomestic()` implementations, `country_code` on the curated airport list, `scope` on `FlightOffer`/`HotelOffer`/`FareQuote`, chips on both results pages | No |
-| **2** | Schema: `net`/`cost`/`markup_total`/`total` on bookings, `booking_price_layers`, backfill. `TboHotelBookPayload` → `net_amount`. Hotel price-change gate compares net to net | No |
-| **3** | **The engine, complete and tested, wired to nothing.** `pricing_strategies` + `pricing_rules`; `PricingEngine`, `StrategyResolver`, `RuleMatcher`, `CalculatorRegistry`; the `fixed` and `percentage_markup` calculators; the Main Office strategy row (**empty**) + `pricing.main_office_agency_id`; the Main Office pricing UI and ladder preview, `markup.office.*` gated | No — **ships empty** |
-| **4** | Wire the already-tested engine into flight and hotel search and both booking paths. `PriceBreakdown::forViewer` (§6). `ChargesWallet` → `cost_amount`. **This is the commit that activates pricing** | **Yes** |
-| **5** | Agency strategies, `markup.*`, My Agency screen (§8.2), margin reporting off `booking_price_layers` | Yes |
+| **2** ✅ | Schema: `net`/`cost`/`markup_total`/`total` on bookings, `booking_price_layers`, backfill. `TboHotelBookPayload` → `net_amount`. Hotel price-change gate compares like with like | No |
+| **3** ✅ | **The engine, complete and tested, wired to nothing.** `pricing_strategies` + `pricing_rules`; `PricingEngine`, `StrategyResolver`, `RuleMatcher`, `CalculatorRegistry`; the `fixed` and `percentage_markup` calculators; the Main Office strategy row (**empty**) + `pricing.main_office_agency_id`; the Main Office pricing UI and ladder preview, `markup.office.*` gated | No — **ships empty** |
+| **4** ✅ | Wire the already-tested engine into flight and hotel search and both booking paths. `PriceBreakdown::forViewer` (§6). `ChargesWallet` → `cost_amount`. **This is the commit that activates pricing** | **Yes** |
+| **5** ✅ | Agency strategies behind `markup.*` and `PricingStrategyPolicy`, as a **Markup tab on the agency hub** rather than a separate page — an agency reaches its pricing where it already reaches its wallet, users and roles. Margin reporting off `booking_price_layers` | Yes |
+
+**All five phases are built.** What Phase 4 turned on is still inert in practice until a
+pricing root is named and its first rule is written — both operations, not deploys.
 
 **[RECOMMENDED]** Phase 3 ships the whole engine with an **empty** Main Office strategy: it runs,
 contributes zero, and every price stays as it is. The first rule then becomes an operation rather
@@ -596,6 +599,11 @@ first non-net `total_amount`.
 **[UNRESOLVED]** — all of them. Your §18's list, carried forward. None is invented; each is a place
 the specification and the existing application are both silent.
 
+> **None of these blocks the code, and that is deliberate.** Every one is expressible as a column on
+> `pricing_rules` or a key in `config/pricing.php`, and every default is the conservative reading:
+> `basis` defaults to `net`, `rounding` to none, `max_total_markup` to unset, discounts refused,
+> ancillaries inside the basis. **Answering them is configuration, not development.**
+
 | # | Decision | Why it matters | Needed by |
 | --- | --- | --- | --- |
 | ~~**D1**~~ | ~~Percentage basis~~ | **RESOLVED: `net` is the default.** Two 10% rules on ₱5,000 → **₱6,000**. No compounding against the running total by default; `basis` stays a column so `running` is available per rule later | — |
@@ -609,7 +617,7 @@ the specification and the existing application are both silent.
 | **D9** | **VAT treatment of markup** | Markup is service revenue and in PH very likely VATable; the supplier's net is not our sale. **[EXISTING]** the live system hardcodes `IsVATApplicable => true`. Is ₱500 VAT-inclusive or exclusive? Answer before rules are configured — reinterpreting live rules later reprices history | Phase 3 |
 | **D10** | **Zero / near-zero net amounts** | A ₱0 infant fare takes 10% of nothing. `min_markup` provides a floor — and is also how a free component acquires ₱1,500 of markup. Decide per product | Phase 3 |
 | **D11** | **Visibility** — is the model in §6 the intended boundary | Confirms an Agency may see its own markup but never net or the Main Office's markup separately | Phase 4 |
-| **D12** | **A percentage-on-net agency rule lets that agency derive the supplier net** | Found while building Phase 3, by the test that asserts the net never reaches an agency payload. If an Agency sets *"10% of net"* and is shown its own markup of ₱500 — which is theirs, and which §6 says they may see — then net = ₱5,000 falls straight out. The leak is arithmetic, not a bug, so no amount of redaction closes it. **Recommendation: agency-level rules use `basis: running`** — a percentage of *their cost*, which they already know, and which is also the more natural reading of "I add 10% to what I pay". Settle before Phase 5 opens rule editing to agencies | Phase 5 |
+| **D12** ⚠️ | **A percentage-on-net agency rule lets that agency derive the supplier net** | Found while building Phase 3, by the test that asserts the net never reaches an agency payload. If an Agency sets *"10% of net"* and is shown its own markup of ₱500 — which is theirs, and which §6 says they may see — then net = ₱5,000 falls straight out. The leak is arithmetic, not a bug, so no amount of redaction closes it. **Phase 5 ships the recommendation: an agency percentage rule is forced onto `basis: running`** — a percentage of *their cost*, which they already know, and which is also the more natural reading of "I add 10% to what I pay". Fixed rules are untouched; a flat ₱200 says nothing about what the room cost. **Confirm or reverse** — reversing is one validation rule in `StoreAgencyPricingRuleRequest` | **shipped, needs sign-off** |
 
 ---
 
