@@ -92,53 +92,14 @@
                 </div>
             </section>
 
-            {{-- Recent bookings (sample data) --}}
-            <section x-show="!searched" x-cloak>
-                @php
-                    $recentBookings = [
-                        ['ref' => 'BK-20451', 'pax' => 'Mike Alibo', 'route' => 'MNL → CEB', 'date' => 'Jul 2, 2026', 'status' => 'Ticketed', 'badge' => 'bg-blue-50 text-blue-700 ring-blue-600/20', 'amount' => '₱ 7,450'],
-                        ['ref' => 'BK-20448', 'pax' => 'Anna Cruz', 'route' => 'MNL → SIN', 'date' => 'Jul 12, 2026', 'status' => 'Confirmed', 'badge' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', 'amount' => '₱ 18,200'],
-                        ['ref' => 'BK-20442', 'pax' => 'Jose Rizal', 'route' => 'CEB → HKG', 'date' => 'Aug 2, 2026', 'status' => 'Pending', 'badge' => 'bg-amber-50 text-amber-700 ring-amber-600/20', 'amount' => '₱ 12,300'],
-                        ['ref' => 'BK-20435', 'pax' => 'Maria Santos', 'route' => 'MNL → MPH', 'date' => 'Jun 30, 2026', 'status' => 'Cancelled', 'badge' => 'bg-red-50 text-red-700 ring-red-600/20', 'amount' => '₱ 4,300'],
-                    ];
-                @endphp
-
-                <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                    <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-                        <h2 class="text-base font-semibold text-brand-900">Recent bookings</h2>
-                        <a href="#" class="text-sm font-medium text-blue-600 transition hover:text-blue-700">View all →</a>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-100 text-sm">
-                            <thead>
-                                <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                    <th class="px-5 py-3">Reference</th>
-                                    <th class="px-5 py-3">Passenger</th>
-                                    <th class="px-5 py-3">Route</th>
-                                    <th class="px-5 py-3">Travel date</th>
-                                    <th class="px-5 py-3">Status</th>
-                                    <th class="px-5 py-3 text-right">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                @foreach ($recentBookings as $b)
-                                    <tr class="transition hover:bg-gray-50">
-                                        <td class="whitespace-nowrap px-5 py-3.5 font-medium text-blue-600">{{ $b['ref'] }}</td>
-                                        <td class="whitespace-nowrap px-5 py-3.5 text-gray-700">{{ $b['pax'] }}</td>
-                                        <td class="whitespace-nowrap px-5 py-3.5 font-medium text-brand-900">{{ $b['route'] }}</td>
-                                        <td class="whitespace-nowrap px-5 py-3.5 text-gray-600">{{ $b['date'] }}</td>
-                                        <td class="px-5 py-3.5">
-                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ $b['badge'] }}">{{ $b['status'] }}</span>
-                                        </td>
-                                        <td class="whitespace-nowrap px-5 py-3.5 text-right font-medium text-gray-900">{{ $b['amount'] }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
+            {{-- Recent bookings. Server-rendered and gone once a search runs, like the
+                 recent searches above it: both are ways back into work already done,
+                 and neither belongs over the results of a new search. --}}
+            @if ($recentBookings->isNotEmpty())
+                <section x-show="!searched" x-cloak>
+                    @include('bookings._recent', ['bookings' => $recentBookings, 'product' => \App\Enums\BookingProduct::Flight])
+                </section>
+            @endif
 
             {{-- Results --}}
             <section x-show="searched" x-cloak>

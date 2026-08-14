@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BookingProduct;
 use App\Http\Requests\FareDetailRequest;
 use App\Http\Requests\SearchFlightsRequest;
 use App\Http\Requests\StoreRecentFlightSearchesRequest;
+use App\Models\Booking;
 use App\Services\Search\FlightRecentSearches;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\FlightSearchCache;
@@ -21,6 +23,7 @@ class FlightController extends Controller
     {
         return view('flights', [
             'recent' => $this->upcoming($recent->get($request->user()->id)),
+            'recentBookings' => Booking::recentFor($request->user(), BookingProduct::Flight),
         ]);
     }
 

@@ -8,6 +8,7 @@ use App\Enums\Supplier;
 use App\Models\Concerns\BelongsToAgency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,6 +25,14 @@ use RuntimeException;
 class Booking extends Model
 {
     use BelongsToAgency, HasFactory, SoftDeletes;
+
+    /**
+     * How many past bookings the flight and hotel search pages show above the form.
+     *
+     * A shortcut back into recent work, not a list: the list is /bookings, and the
+     * panel says so.
+     */
+    public const RECENT = 4;
 
     /**
      * @return array<string, string>
@@ -116,6 +125,55 @@ class Booking extends Model
         $query->where(fn (Builder $q) => $q
             ->whereAny(['reference', 'pnr', 'supplier_reference', 'booking_id', 'pax'], 'like', $like)
             ->orWhereHas('hotel', fn ($hotel) => $hotel->whereAny(['hotel_name', 'city'], 'like', $like)));
+    }
+
+    /**
+     * The last few bookings this user made for one product — what the search pages
+     * show above the form.
+     *
+     * Empty for a user who may not open a booking: every row of that panel is a link
+     * into /bookings, so showing it to someone who would be refused there is a panel
+     * of 403s. The agency scope sits on top of ownership for the same reason it does
+     * on the list — redundant today, correct if visibility ever widens.
+     *
+     * @return EloquentCollection<int, static>
+     */
+    public static function recentFor(User $user, BookingProduct $product): EloquentCollection
+    {
+        if ($user->cannot('booking.view')) {
+            return new EloquentCollection;
+        }
+
+        return static::visibleTo($user)
+            ->where('user_id', $user->id)
+            ->where('product', $product)
+            // The property is what a hotel row is called; without this the panel runs
+            // a query per row to read it.
+            ->when($product === BookingProduct::Hotel, fn (Builder $query) => $query->with('hotel:id,booking_id,hotel_name'))
+            ->latest()
+            ->limit(self::RECENT)
+            ->get();
+    }
+
+    /**
+     * Who the booking is under.
+     *
+     * The lead guest on a hotel booking — the name the front desk asks for — and the
+     * first passenger on a flight, where the air API has no such flag and the order
+     * captured in the wizard is the only thing that says who is first.
+     */
+    public function leadPassengerName(): ?string
+    {
+        $pax = collect($this->pax ?? []);
+        $lead = $pax->first(fn (array $p): bool => (bool) ($p['isLead'] ?? false)) ?? $pax->first() ?? [];
+
+        $name = implode(' ', array_filter([
+            $lead['title'] ?? null,
+            $lead['firstName'] ?? null,
+            $lead['lastName'] ?? null,
+        ], 'filled'));
+
+        return $name === '' ? null : $name;
     }
 
     /**

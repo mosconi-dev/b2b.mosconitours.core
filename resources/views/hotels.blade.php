@@ -93,6 +93,15 @@
             </div>
         </section>
 
+        {{-- Recent bookings, on the same terms as the recent searches above: a way back
+             into work already done, so it goes the moment a search is running or has
+             run. Same panel the flights page shows. --}}
+        @if ($recentBookings->isNotEmpty())
+            <section x-show="!result && !loading" x-cloak>
+                @include('bookings._recent', ['bookings' => $recentBookings, 'product' => \App\Enums\BookingProduct::Hotel])
+            </section>
+        @endif
+
         {{-- A search that only half-succeeded says so. A page showing nine tenths of
              a city is indistinguishable from one showing all of it. --}}
         <div x-show="result && result.partial" x-cloak
