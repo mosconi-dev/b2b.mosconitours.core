@@ -69,12 +69,30 @@ class BookingTest extends TestCase
         ], $overrides);
     }
 
+    /**
+     * Where the flight wizard lives, asserted on the path rather than the name.
+     *
+     * Picking a fare must not drop the agent onto a generic /bookings/create — until
+     * there is a booking, the URL says what is being booked, the same way the hotel
+     * wizard sits on /hotels/book. Every other test here resolves these by route
+     * name, so this is the only thing holding the paths themselves.
+     */
+    public function test_the_flight_booking_steps_live_under_the_flights_prefix(): void
+    {
+        $this->assertSame('/flights/book', route('flights.book', absolute: false));
+        $this->assertSame('/flights/bookings', route('flights.bookings.store', absolute: false));
+        $this->assertSame('/flights/bookings/7/fulfil', route('flights.bookings.fulfil', 7, absolute: false));
+
+        // And nothing answers at the old generic path.
+        $this->actingAs($this->bookingUser())->get('/bookings/create')->assertNotFound();
+    }
+
     public function test_create_renders_the_wizard(): void
     {
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', [
+            ->get(route('flights.book', [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => 'OB1',
                 'oldFare' => 6000,
@@ -99,7 +117,7 @@ class BookingTest extends TestCase
         config(['tboair.default' => 'live']);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->get(route('flights.book', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
             ->assertOk()
             ->assertSee('This is a LIVE booking.')
             ->assertSee('issues a real ticket with the airline');
@@ -115,7 +133,7 @@ class BookingTest extends TestCase
         config(['tboair.default' => 'test']);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->get(route('flights.book', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
             ->assertOk()
             ->assertDontSee('This is a LIVE booking.');
     }
@@ -130,7 +148,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $res = $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->get(route('flights.book', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
             ->assertOk()
             ->assertSee('Flight details')
             ->assertSee('Fare conditions');
@@ -148,7 +166,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', [
+            ->get(route('flights.book', [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => 'OB1',
                 'search' => 'Manila (MNL) → Cebu (CEB) · 1 Pax',
@@ -170,7 +188,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->get(route('flights.book', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
             ->assertOk()
             ->assertSee('Checked baggage')
             ->assertSee('Add-ons total')
@@ -192,7 +210,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->userWith(['booking.view']))
-            ->get(route('bookings.create', ['traceId' => 'x', 'resultIndex' => 'y']))
+            ->get(route('flights.book', ['traceId' => 'x', 'resultIndex' => 'y']))
             ->assertForbidden();
     }
 
@@ -204,7 +222,7 @@ class BookingTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', ['traceId' => 'x', 'resultIndex' => 'y']))
+            ->get(route('flights.book', ['traceId' => 'x', 'resultIndex' => 'y']))
             ->assertRedirect(route('flights'));
     }
 
@@ -213,7 +231,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->userWith(['booking.view']))
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertForbidden();
     }
 
@@ -228,7 +246,7 @@ class BookingTest extends TestCase
         $user = $this->bookingUser();
 
         $this->actingAs($user)
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertRedirect();
 
         $booking = Booking::firstOrFail();
@@ -248,7 +266,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertRedirect();
 
         $booking = Booking::firstOrFail();
@@ -270,7 +288,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
                     ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
@@ -296,7 +314,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     // A child flagged as lead, which TBO will not accept...
                     ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'isLeadPax' => true, 'dateOfBirth' => '2018-03-04'],
@@ -317,7 +335,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     ['type' => 'Adult', 'title' => 'Dr', 'firstName' => 'Juan', 'lastName' => 'Cruz', 'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
                 ],
@@ -330,7 +348,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'contact' => ['email' => 'agent@example.com', 'phone' => '09170000000'],
             ]))
             ->assertSessionHasErrors(['contact.addressLine1', 'contact.city', 'contact.countryCode', 'contact.mobileCountryCode']);
@@ -347,7 +365,7 @@ class BookingTest extends TestCase
         $this->fakeQuote('farequote-passport-at-ticket.json');
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload()) // no passport details
+            ->post(route('flights.bookings.store'), $this->payload()) // no passport details
             ->assertSessionHasErrors('booking');
 
         $this->assertDatabaseCount('bookings', 0);
@@ -358,7 +376,7 @@ class BookingTest extends TestCase
         $this->fakeQuote('farequote-passport.json'); // IsPassportRequiredAtBook = true
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload()) // no passport details
+            ->post(route('flights.bookings.store'), $this->payload()) // no passport details
             ->assertSessionHasErrors('booking');
 
         $this->assertDatabaseCount('bookings', 0);
@@ -369,7 +387,7 @@ class BookingTest extends TestCase
         $this->fakeQuote('farequote-passport.json');
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
                     'documentNumber' => 'P1234567', 'documentExpiry' => '2030-01-01', 'nationality' => 'PH', 'dateOfBirth' => '1990-08-15']],
@@ -389,7 +407,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->postJson(route('bookings.store'), $this->payload([
+            ->postJson(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Mike', 'lastName' => 'Alibo', 'gender' => 'M'],
                 ],
@@ -408,7 +426,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->postJson(route('bookings.store'), $this->payload([
+            ->postJson(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Ana', 'lastName' => 'Cruz',
                         'gender' => 'F', 'dateOfBirth' => '2020-01-01'],
@@ -426,7 +444,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     ['type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
                         'gender' => 'M', 'dateOfBirth' => '1990-08-15'],
@@ -444,7 +462,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->postJson(route('bookings.store'), $this->payload())
+            ->postJson(route('flights.bookings.store'), $this->payload())
             ->assertOk()
             ->assertJsonStructure(['redirect', 'reference']);
 
@@ -456,7 +474,7 @@ class BookingTest extends TestCase
         $this->fakeQuote('farequote-passport.json');
 
         $this->actingAs($this->bookingUser())
-            ->postJson(route('bookings.store'), $this->payload()) // no passport
+            ->postJson(route('flights.bookings.store'), $this->payload()) // no passport
             ->assertStatus(422);
 
         $this->assertDatabaseCount('bookings', 0);
@@ -467,7 +485,7 @@ class BookingTest extends TestCase
         $this->fakeQuote(); // LCC fare + SSR options
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
                     'baggage' => 'PBAG20', 'meal' => 'HFML', 'dateOfBirth' => '1990-08-15']],
@@ -492,7 +510,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [[
                     'type' => 'Adult', 'title' => 'Mr', 'firstName' => 'Juan', 'lastName' => 'Cruz',
                     'dateOfBirth' => '1990-08-15',
@@ -513,7 +531,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 // An accompanying adult, so this exercises the infant baggage guard
                 // rather than the "needs an adult" one. TBO's title enum has no
                 // Mstr — an infant boy is Mr, its only male value.
@@ -532,7 +550,7 @@ class BookingTest extends TestCase
         $this->fakeQuote();
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload([
+            ->post(route('flights.bookings.store'), $this->payload([
                 'passengers' => [
                     ['type' => 'Child', 'title' => 'Miss', 'firstName' => 'Ana', 'lastName' => 'Cruz', 'gender' => 'F', 'dateOfBirth' => '2018-03-04'],
                 ],
@@ -545,7 +563,7 @@ class BookingTest extends TestCase
     public function test_store_validates_the_input(): void
     {
         $this->actingAs($this->bookingUser())
-            ->postJson(route('bookings.store'), ['passengers' => []])
+            ->postJson(route('flights.bookings.store'), ['passengers' => []])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['traceId', 'resultIndex', 'passengers', 'contact.email']);
     }

@@ -9,7 +9,7 @@
         </x-page-heading>
     </x-slot>
 
-    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookingCreateUrl: '{{ route('bookings.create') }}', recentUrl: '{{ route('flights.recent') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', recent: @js($recent) })"
+    <div x-data="flightSearch({ airports: @js(\App\Support\Airports::all()), searchUrl: '{{ route('flights.search') }}', bookUrl: '{{ route('flights.book') }}', recentUrl: '{{ route('flights.recent') }}', fareRuleUrl: '{{ route('flights.fare-rule') }}', recent: @js($recent) })"
          class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
 
         {{-- Main column (full width once a search has run) --}}

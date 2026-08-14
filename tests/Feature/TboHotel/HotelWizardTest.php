@@ -464,7 +464,7 @@ class HotelWizardTest extends TestCase
         $booking = Booking::firstOrFail();
 
         $this->actingAs($user)
-            ->post(route('bookings.fulfil', $booking))
+            ->post(route('flights.bookings.fulfil', $booking))
             ->assertNotFound();
 
         // Untouched by the airline route: still the hotel's own chain, and nothing of

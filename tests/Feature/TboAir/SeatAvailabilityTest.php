@@ -130,7 +130,7 @@ class SeatAvailabilityTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload(['seats' => [9, 8, 7]]))
+            ->post(route('flights.bookings.store'), $this->payload(['seats' => [9, 8, 7]]))
             ->assertRedirect();
 
         $this->assertSame([9, 8, 7], Booking::firstOrFail()->seats_available);
@@ -145,7 +145,7 @@ class SeatAvailabilityTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->post(route('bookings.store'), $this->payload())
+            ->post(route('flights.bookings.store'), $this->payload())
             ->assertRedirect();
 
         $this->assertSame([], Booking::firstOrFail()->seats_available);
@@ -160,7 +160,7 @@ class SeatAvailabilityTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', [
+            ->get(route('flights.book', [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
                 'seats' => '9,8,7',
@@ -183,7 +183,7 @@ class SeatAvailabilityTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', [
+            ->get(route('flights.book', [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
                 'seats' => '9,8,7',
@@ -208,7 +208,7 @@ class SeatAvailabilityTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', [
+            ->get(route('flights.book', [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
                 'seats' => '9,,7',
@@ -220,7 +220,7 @@ class SeatAvailabilityTest extends TestCase
     public function test_the_wizard_rejects_a_malformed_seat_list(): void
     {
         $this->actingAs($this->bookingUser())
-            ->get(route('bookings.create', [
+            ->get(route('flights.book', [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
                 'seats' => '9;DROP',

@@ -14,7 +14,7 @@
             // what Book needs and FareQuote no longer returns.
             'seats' => $seats,
             'resultType' => $resultType,
-            'bookingUrl' => route('bookings.store'),
+            'bookingUrl' => route('flights.bookings.store'),
             // Two different intents: "Book another" starts a fresh search, while
             // "Change flight" / "Decline" go back to Select Flight with the search
             // that produced this fare, so the results list is restored.

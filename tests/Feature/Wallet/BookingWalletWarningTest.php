@@ -64,7 +64,7 @@ class BookingWalletWarningTest extends TestCase
         $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $wallet = $this->actingAs($agent)
-            ->get(route('bookings.create', $this->query()))
+            ->get(route('flights.book', $this->query()))
             ->assertOk()
             ->viewData('wallet');
 
@@ -78,7 +78,7 @@ class BookingWalletWarningTest extends TestCase
         $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $wallet = $this->actingAs($agent)
-            ->get(route('bookings.create', $this->query()))
+            ->get(route('flights.book', $this->query()))
             ->assertOk()
             ->viewData('wallet');
 
@@ -93,7 +93,7 @@ class BookingWalletWarningTest extends TestCase
         $staff = $this->userWith(['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $response = $this->actingAs($staff)
-            ->get(route('bookings.create', $this->query()))
+            ->get(route('flights.book', $this->query()))
             ->assertOk();
 
         // The wizard is handed wallet: null, so hasWallet is false and none of the
@@ -115,7 +115,7 @@ class BookingWalletWarningTest extends TestCase
         $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $response = $this->actingAs($agent)
-            ->get(route('bookings.create', $this->query()))
+            ->get(route('flights.book', $this->query()))
             ->assertOk()
             ->assertSee('Not enough wallet balance')
             ->assertSee('Remaining after booking')
@@ -137,11 +137,11 @@ class BookingWalletWarningTest extends TestCase
 
         $this->assertSame(
             route('wallet.requests.create'),
-            $this->actingAs($canRequest)->get(route('bookings.create', $this->query()))->viewData('walletRequestUrl'),
+            $this->actingAs($canRequest)->get(route('flights.book', $this->query()))->viewData('walletRequestUrl'),
         );
 
         $this->assertNull(
-            $this->actingAs($cannot)->get(route('bookings.create', $this->query()))->viewData('walletRequestUrl'),
+            $this->actingAs($cannot)->get(route('flights.book', $this->query()))->viewData('walletRequestUrl'),
         );
     }
 
@@ -153,7 +153,7 @@ class BookingWalletWarningTest extends TestCase
         $agent = $this->agencyUserWith($this->agency, ['flight.view', 'booking.view', 'booking.create', 'flight.issue']);
 
         $this->actingAs($agent)
-            ->postJson(route('bookings.store'), [
+            ->postJson(route('flights.bookings.store'), [
                 'traceId' => 'trace-abc-123',
                 'resultIndex' => str_repeat('R', 400),
                 'contact' => [

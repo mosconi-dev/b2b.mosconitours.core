@@ -30,7 +30,7 @@ Documentation for the **TBO Air** flight-supplier integration in `b2b.mosconitou
   min**, so pricing/booking must run against a fresh search.
 - **Done:** **Phase 1** (FareRule + FareQuote), **Phase 2** (booking domain + passenger UI), and
   **Phase 3** (SSR baggage + meal ancillaries, priced server-side and folded into the booking total).
-- **Booking UX:** a **full-page wizard** at `/bookings/create` — Select Flight → Guest Details →
+- **Booking UX:** a **full-page wizard** at `/flights/book` — Select Flight → Guest Details →
   Add-ons → Payment → Confirmation. Steps 1–3 are functional (reuse FareQuote / passengers / SSR);
   Payment shows the wallet balance and warns on a shortfall (no gateway yet); **Confirmation** shows the
   saved `quoted` booking. **Ticketing is a separate, deliberate act on the booking page**, not the end of
