@@ -85,18 +85,72 @@
 
         <p x-show="error" x-cloak x-text="error" class="mt-3 text-sm font-medium text-red-700"></p>
 
-        <div x-show="result" x-cloak class="mt-5 rounded-lg bg-gray-50 p-4 font-mono text-sm">
-            <div class="flex justify-between py-1">
-                <span class="text-gray-600">Your cost</span>
-                <span class="tabular-nums text-brand-900" x-text="money(result.cost)"></span>
-            </div>
-            <div class="flex justify-between py-1">
-                <span class="text-gray-600">Your markup</span>
-                <span class="tabular-nums text-gray-700" x-text="money(result.markup)"></span>
-            </div>
-            <div class="mt-2 flex justify-between border-t border-gray-300 pt-2 font-semibold">
-                <span class="text-brand-900">Selling price</span>
-                <span class="tabular-nums text-brand-900" x-text="money(result.sell)"></span>
+        <div x-show="result" x-cloak class="mt-5 rounded-lg bg-gray-50 p-4">
+
+            {{-- EVERY rule of theirs that fired, and the arithmetic each one did. A
+                 level is cumulative, so this is the breakdown of the total below. --}}
+            <template x-if="matched">
+                <div class="mb-3 overflow-hidden rounded-md border border-gray-200 bg-white">
+                    <p class="border-b border-gray-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        <span x-text="layers.length"></span>
+                        <span x-text="layers.length === 1 ? 'rule applied' : 'rules applied — they add up'"></span>
+                    </p>
+
+                    <template x-for="(layer, i) in layers" :key="i">
+                        <div class="border-b border-gray-100 px-3 py-2.5 last:border-b-0">
+                            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                                <p class="text-sm font-semibold text-brand-900" x-text="ruleLabel(layer)"></p>
+                                <p class="font-mono text-sm tabular-nums text-gray-700">
+                                    + <span x-text="money(layer.markup)"></span>
+                                </p>
+                            </div>
+
+                            {{-- The note whoever added the rule left, so "why is this on
+                                 my price?" is answered where the price is shown. --}}
+                            <p x-show="layer.description" x-cloak x-text="layer.description"
+                               class="mt-0.5 text-xs text-gray-500"></p>
+
+                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <template x-for="chip in criteria(layer)" :key="chip">
+                                    <span class="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600"
+                                          x-text="chip"></span>
+                                </template>
+                                <span x-show="bounds(layer)" x-cloak
+                                      class="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
+                                      x-text="bounds(layer)"></span>
+                                <span class="ml-auto font-mono text-[11px] text-gray-400"
+                                      x-text="workingOut(layer)"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            {{-- No rule matched. Said plainly, because a zero markup and a broken
+                 preview look identical otherwise. --}}
+            <template x-if="! matched">
+                <div class="mb-3 rounded-md border border-gray-200 bg-white px-3 py-2.5">
+                    <p class="text-sm font-semibold text-brand-900">No rule matched this trip</p>
+                    <p class="mt-1 text-xs text-gray-500">
+                        You would sell it at your cost and take no margin. Add a rule that covers
+                        this product and scope, or widen an existing one.
+                    </p>
+                </div>
+            </template>
+
+            <div class="font-mono text-sm">
+                <div class="flex justify-between py-1">
+                    <span class="text-gray-600">Your cost</span>
+                    <span class="tabular-nums text-brand-900" x-text="money(result.cost)"></span>
+                </div>
+                <div class="flex justify-between py-1">
+                    <span class="text-gray-600">Your markup</span>
+                    <span class="tabular-nums text-gray-700">+ <span x-text="money(result.markup)"></span></span>
+                </div>
+                <div class="mt-2 flex justify-between border-t border-gray-300 pt-2 font-semibold">
+                    <span class="text-brand-900">Selling price</span>
+                    <span class="tabular-nums text-brand-900" x-text="money(result.sell)"></span>
+                </div>
             </div>
         </div>
     </div>
@@ -106,8 +160,9 @@
         <div class="border-b border-gray-100 px-6 py-4">
             <h2 class="text-base font-semibold text-brand-900">Your rules</h2>
             <p class="mt-1 text-sm text-gray-500">
-                Evaluated top to bottom. <strong>The first rule that matches wins</strong> — put narrow
-                rules above broad ones, and a catch-all last.
+                <strong>Every rule that matches applies, and they add up.</strong> A base rate plus a
+                service fee is two rules and a booking pays both — so a rule left switched on keeps
+                charging. Use the preview above to see exactly which ones fire.
             </p>
         </div>
 
@@ -120,7 +175,6 @@
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <tr>
-                            <th class="px-6 py-3">Priority</th>
                             <th class="px-6 py-3">Applies to</th>
                             <th class="px-6 py-3">You add</th>
                             <th class="px-6 py-3"></th>
@@ -129,17 +183,19 @@
                     <tbody class="divide-y divide-gray-100">
                         @foreach ($strategy->rules as $rule)
                             <tr class="{{ $rule->is_active ? '' : 'opacity-50' }}">
-                                <td class="px-6 py-3 font-mono text-xs text-gray-500">{{ $rule->priority }}</td>
                                 <td class="px-6 py-3">
                                     <span class="font-medium text-brand-900">{{ $options['products'][$rule->product] ?? $rule->product }}</span>
                                     @if ($rule->scope !== 'any')
                                         <span class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $options['scopes'][$rule->scope] ?? $rule->scope }}</span>
                                     @endif
+                                    @if (filled($rule->description))
+                                        <p class="mt-0.5 text-xs text-gray-500">{{ $rule->description }}</p>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-3 font-semibold text-brand-900">
                                     @if ($rule->calc_type->isPercentage())
                                         {{ rtrim(rtrim((string) $rule->value, '0'), '.') }}%
-                                        <span class="ml-1 text-xs font-normal text-gray-400">of your cost</span>
+                                        <span class="ml-1 text-xs font-normal text-gray-400">of the supplier rate</span>
                                     @else
                                         {{ number_format((float) $rule->value, 2) }}
                                     @endif
@@ -186,15 +242,25 @@
                         <input id="ag-value" name="value" type="number" step="0.01" value="{{ old('value') }}" required
                                class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                     </div>
-                    <div>
-                        <label for="ag-priority" class="mb-1 block text-xs font-medium text-gray-600">Priority</label>
-                        <input id="ag-priority" name="priority" type="number" value="{{ old('priority', 100) }}" required
+                    <div class="sm:col-span-2 lg:col-span-3">
+                        <label for="ag-description" class="mb-1 block text-xs font-medium text-gray-600">
+                            Note <span class="font-normal text-gray-400">— optional, why this rule exists</span>
+                        </label>
+                        <input id="ag-description" name="description" type="text" maxlength="255"
+                               value="{{ old('description') }}"
+                               placeholder="e.g. Peak season surcharge agreed with the office"
                                class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                     </div>
+                    {{-- No order field here, deliberately. Every rule of an agency's is
+                         pinned to the supplier net, so their contributions are all of the
+                         same figure and addition commutes — the order they run in cannot
+                         change the total. It is only load-bearing for a rule that
+                         compounds, which is the Main Office screen's to offer. --}}
 
-                    {{-- A percentage here is of YOUR cost, never of the supplier rate —
-                         see StoreAgencyPricingRuleRequest. The server forces it either way. --}}
-                    <input type="hidden" name="basis" value="running">
+                    {{-- A percentage here is of the supplier rate, so the levels do not
+                         compound — see StoreAgencyPricingRuleRequest. The server pins it
+                         either way; this field only keeps the form honest. --}}
+                    <input type="hidden" name="basis" value="net">
                     <input type="hidden" name="supplier" value="">
                     <input type="hidden" name="applies_to" value="total">
                     <input type="hidden" name="rounding" value="none">

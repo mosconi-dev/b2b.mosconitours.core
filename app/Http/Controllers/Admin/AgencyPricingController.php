@@ -9,7 +9,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreAgencyPricingRuleRequest;
 use App\Models\Agency;
 use App\Models\PricingRule;
+use App\Services\Pricing\AgencyPriceView;
 use App\Services\Pricing\Exceptions\PricingException;
+use App\Services\Pricing\Money;
 use App\Services\Pricing\NetPrice;
 use App\Services\Pricing\PricingAdminService;
 use App\Services\Pricing\PricingContext;
@@ -86,7 +88,7 @@ class AgencyPricingController extends Controller
      * The agency's own preview: cost, their markup, selling price.
      *
      * Deliberately reuses the same engine as everything else, then hands the result
-     * through forViewer() — so what this endpoint can return is bounded by the same
+     * through AgencyPriceView — so what this endpoint can return is bounded by the same
      * rule that bounds a search result, not by what this controller remembers to omit.
      */
     public function preview(Request $request, Agency $agency, PricingEngine $engine): JsonResponse
@@ -121,7 +123,12 @@ class AgencyPricingController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json($breakdown->forViewer($request->user()));
+        // The agency's own rung against the figure they typed. forOwnLadder() drops the
+        // Main Office rung the engine also computed: showing `cost` from the full chain
+        // would give up the Main Office markup as the difference from the input.
+        return response()->json(
+            AgencyPriceView::forOwnLadder($breakdown, $request->user(), Money::of($data['net']))->toArray(),
+        );
     }
 
     /**

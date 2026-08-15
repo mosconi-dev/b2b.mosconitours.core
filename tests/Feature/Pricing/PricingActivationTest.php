@@ -260,4 +260,160 @@ class PricingActivationTest extends TestCase
         $this->assertSame('500.00', (string) $platformTake);
         $this->assertSame('200.00', (string) $price->ownMargin());
     }
+
+    // ------------------------------------------------------------- add-ons ----
+
+    /**
+     * The quote the add-ons hang off, and the add-on menu TBO returns for it.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+     */
+    private function quoteAndSsr(float $net = 5000): array
+    {
+        return [
+            [
+                'scope' => 'domestic',
+                'isLcc' => true,
+                'price' => ['currency' => 'PHP', 'baseFare' => 4000.0, 'tax' => 1000.0, 'offeredFare' => $net],
+                'fareBreakdown' => [['passengerType' => 'Adult', 'count' => 1, 'baseFare' => 4000.0, 'tax' => 1000.0]],
+                'trips' => [],
+            ],
+            [
+                'traceId' => 'T1',
+                'resultIndex' => 'OB1',
+                'baggage' => [['key' => 'B5|MNL|CEB', 'code' => 'B5', 'label' => '5 kg', 'price' => 1000.0]],
+                'meals' => [
+                    ['key' => 'M1|MNL|CEB', 'code' => 'M1', 'label' => 'Cake', 'price' => 500.0],
+                    ['key' => 'M0|MNL|CEB', 'code' => 'M0', 'label' => 'Fruit platter', 'price' => 0.0],
+                ],
+            ],
+        ];
+    }
+
+    public function test_add_ons_are_shown_at_the_selling_price_not_the_supplier_price(): void
+    {
+        // 10% for the Main Office, 20% for the agency — both on net, cumulative.
+        PricingRule::factory()->percentage(10)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+        ]);
+        PricingRule::factory()->percentage(20)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        [$quote, $ssr] = $this->quoteAndSsr();
+
+        $priced = app(OfferPricer::class)->ssr($ssr, $quote, $this->agent);
+
+        // 1,000 of supplier cost sells for 1,300; 500 sells for 650. Left at net, these
+        // were both our cost, printed in a picker for an agency to read.
+        $this->assertSame(1300.0, $priced['baggage'][0]['price']);
+        $this->assertSame(650.0, $priced['meals'][0]['price']);
+
+        // A complimentary meal stays complimentary.
+        $this->assertSame(0.0, $priced['meals'][1]['price']);
+    }
+
+    public function test_the_quoted_total_is_the_one_the_booking_is_written_at(): void
+    {
+        PricingRule::factory()->percentage(10)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+        ]);
+        PricingRule::factory()->percentage(20)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        [$quote, $ssr] = $this->quoteAndSsr();
+        $pricer = app(OfferPricer::class);
+
+        // What the wizard puts in front of the agent: a priced fare, plus the add-ons
+        // it lists beside it.
+        $fare = $pricer->fareQuote($quote, $this->agent)['price']['offeredFare'];
+        $priced = $pricer->ssr($ssr, $quote, $this->agent);
+        $shown = $fare + $priced['baggage'][0]['price'] + $priced['meals'][0]['price'];
+
+        // What BookingService charges: ancillaries folded into net, priced once.
+        $charged = app(PricingEngine::class)->quote(
+            new PricingContext(
+                product: BookingProduct::Flight,
+                supplier: Supplier::TboAir,
+                scope: TravelScope::Domestic,
+                net: NetPrice::of(5000 + 1000 + 500),
+            ),
+            $this->agency,
+        )->sell->amount->toFloat();
+
+        $this->assertSame($charged, $shown, 'the agent approves the total they are charged');
+    }
+
+    /**
+     * The same, on figures that do not divide cleanly.
+     *
+     * Each add-on is rounded to centavos on its own and the browser adds them up, while
+     * the booking rounds once over the whole net — so the two can part company by a
+     * centavo per add-on. That is the real guarantee, and it is asserted here rather
+     * than left to a fixture whose round numbers hide it: a test that claims exactness
+     * the system does not offer is worse than no test.
+     */
+    public function test_the_quoted_total_holds_to_a_centavo_an_add_on_on_awkward_figures(): void
+    {
+        // The live ladder: 10% Main Office, then 12% + 5% + 250 for the agency.
+        $office = PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id]);
+        $own = PricingStrategy::factory()->create(['agency_id' => $this->agency->id]);
+        PricingRule::factory()->percentage(10)->create(['pricing_strategy_id' => $office->id]);
+        PricingRule::factory()->percentage(12)->create(['pricing_strategy_id' => $own->id]);
+        PricingRule::factory()->percentage(5)->create(['pricing_strategy_id' => $own->id]);
+        PricingRule::factory()->fixed(250)->create(['pricing_strategy_id' => $own->id]);
+
+        // Prices TBO actually quoted for a DEL→DXB add-on menu.
+        [$quote, $ssr] = $this->quoteAndSsr(18143.03);
+        $ssr['baggage'][0]['price'] = 4277.35;
+        $ssr['meals'][0]['price'] = 544.39;
+
+        $pricer = app(OfferPricer::class);
+        $shown = $pricer->fareQuote($quote, $this->agent)['price']['offeredFare'];
+
+        $priced = $pricer->ssr($ssr, $quote, $this->agent);
+        $shown += $priced['baggage'][0]['price'] + $priced['meals'][0]['price'];
+
+        $charged = app(PricingEngine::class)->quote(
+            new PricingContext(
+                product: BookingProduct::Flight,
+                supplier: Supplier::TboAir,
+                scope: TravelScope::Domestic,
+                net: NetPrice::of(18143.03 + 4277.35 + 544.39),
+            ),
+            $this->agency,
+        )->sell->amount->toFloat();
+
+        $this->assertEqualsWithDelta($charged, $shown, 0.02, 'two add-ons, so at most two centavos');
+    }
+
+    public function test_a_flat_rule_is_charged_once_for_the_booking_not_once_per_add_on(): void
+    {
+        // A ₱250 ticketing fee, of the kind an agency adds on top of its percentages.
+        $this->withMarkups(office: 500, agency: 250);
+
+        [$quote, $ssr] = $this->quoteAndSsr();
+
+        $priced = app(OfferPricer::class)->ssr($ssr, $quote, $this->agent);
+
+        // Pricing each option on its own would have made every bag cost 750 more and
+        // every meal 750 more. The marginal price carries no flat at all.
+        $this->assertSame(1000.0, $priced['baggage'][0]['price']);
+        $this->assertSame(500.0, $priced['meals'][0]['price']);
+    }
+
+    public function test_an_agency_never_sees_the_supplier_price_of_an_add_on(): void
+    {
+        PricingRule::factory()->percentage(10)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+        ]);
+
+        [$quote, $ssr] = $this->quoteAndSsr();
+
+        $json = json_encode(app(OfferPricer::class)->ssr($ssr, $quote, $this->agent));
+
+        $this->assertStringNotContainsString('1000', $json, 'the supplier price of the bag');
+        $this->assertStringNotContainsString('500.0', $json, 'the supplier price of the meal');
+    }
 }

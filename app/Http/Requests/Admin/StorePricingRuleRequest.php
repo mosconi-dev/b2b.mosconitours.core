@@ -20,9 +20,31 @@ use Illuminate\Validation\Rule;
  */
 class StorePricingRuleRequest extends FormRequest
 {
+    /**
+     * Where a rule sits in the list when nothing says otherwise.
+     *
+     * Neither form offers an order field. Every rule works from the supplier net, so
+     * contributions never compound and the order they run in cannot change a total —
+     * the column survives only to keep the listing deterministic, and rules that share
+     * a value fall back to the order they were created in.
+     */
+    public const DEFAULT_PRIORITY = 100;
+
     public function authorize(): bool
     {
         return true; // route middleware and policy decide
+    }
+
+    /**
+     * `basis` and `priority` are no longer asked for, so they are supplied here rather
+     * than trusted to a hidden field — a form input is not enforcement.
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'basis' => PricingBasis::Net->value,
+            'priority' => $this->input('priority') ?: self::DEFAULT_PRIORITY,
+        ]);
     }
 
     /**
@@ -31,6 +53,10 @@ class StorePricingRuleRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Why the rule exists, in whoever added it's own words. Optional: requiring
+            // it would only guarantee the word "test" ends up in the column.
+            'description' => ['nullable', 'string', 'max:255'],
+
             'product' => ['required', Rule::in([...BookingProduct::values(), PricingRule::ANY])],
             'supplier' => ['nullable', Rule::in(array_keys(Supplier::options()))],
             'scope' => ['required', Rule::in([...TravelScope::values(), 'any'])],

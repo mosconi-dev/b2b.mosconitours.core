@@ -15,6 +15,12 @@
         {{-- Main column (full width once a search has run) --}}
         <div class="space-y-5" :class="searched ? 'lg:col-span-12' : 'lg:col-span-9'">
 
+            {{-- Where a fare that would not quote lands. The wizard sends the agent back
+                 here with their search intact rather than to an empty form, so the alert
+                 has to be rendered on this page or the redirect looks like nothing
+                 happened at all — which is exactly how it behaved before. --}}
+            <x-admin.flash />
+
             {{-- Search header: the full form or, once searched, the collapsed summary bar.
                  Wrapped as one block so the summary sits as tight under the page title as the form does. --}}
             <div>
@@ -250,9 +256,17 @@
 
                                     {{-- Price + select --}}
                                     <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-3 sm:w-40 sm:flex-col sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                                        {{-- The fare, and what it is made of. The partial
+                                             owns its own `open` state — no x-data here,
+                                             or two nested scopes would both be called
+                                             `open` and shadow each other. --}}
                                         <div class="text-right">
                                             <p class="text-[11px] text-gray-400">total fare</p>
-                                            <p class="text-lg font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(offer.price.offeredFare)"></span></p>
+                                            <div class="flex items-center justify-end gap-1.5">
+                                                <p class="text-lg font-bold text-brand-900"><span x-text="currency"></span> <span x-text="money(offer.price.offeredFare)"></span></p>
+
+                                                @include('partials._fare-breakdown', ['pricing' => 'offer.pricing'])
+                                            </div>
                                         </div>
                                         @can('booking.create')
                                             <button type="button" @click="selectOffer(offer)"

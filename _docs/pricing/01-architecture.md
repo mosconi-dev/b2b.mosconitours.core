@@ -4,16 +4,18 @@ The design for **cumulative two-level markup**: Main Office + Agency, applied on
 net rate. Read [`00-overview.md`](00-overview.md) first for the investigation of what exists today and
 where price is decided.
 
-**Nothing is built yet.** This document is the agreed architecture; the phase plan is §9 and the
-questions still open are §10 and §11.
+**Built, and not yet switched on for live trading.** This document is the agreed architecture; the
+phase plan is §9 and the questions still open are §10 and §11.
 
 ## The design in one sentence
 
 **A price is a ladder, not a lookup.** Each pricing level owns at most one strategy; the engine takes
-one matching rule per level and **sums** their contributions onto the supplier's net rate, recording
-each rung as its own immutable row so any price can be taken apart a year later.
+**every** matching rule in that strategy and sums their contributions onto the supplier's net rate,
+recording each rung as its own immutable row so any price can be taken apart a year later.
 
-> **First match wins *within* a level. Levels sum.**
+> **Everything that matches applies. Rules sum within a level, levels sum on top of each other, and
+> every rule works from the supplier net — so nothing ever compounds and the order rules run in
+> cannot change a total.**
 
 ## How to read this document
 
@@ -36,7 +38,9 @@ were always settled.
 | **C1** | Which agency is the pricing root | An existing `agencies` row, named by the `pricing.main_office_agency_id` setting — **not** a query on `AgencyType::MainOffice`. **The resolver fails loudly when the setting is missing.** §11-C1 |
 | **C2** | Does a Main Office user pay the Main Office markup | **No.** Main Office user → `[Main Office]`; Agency user → `[Main Office, Agency]`. The `chain()` dedupe stands. §3.1 |
 | **C3** | What the wallet debits | **Model A** — `cost_amount`, not `total_amount`. The Agency's own markup is downstream margin, not owed to the platform. **No settlement or commission-payable system is to be built.** §7 |
-| **D1** | Percentage basis | **`net` is the default.** The second level does **not** compound against the running total. `basis` stays a column so `running` is available per rule later. §3.2 |
+| **D1** | Percentage basis | **`net`, for every rule at every level.** Nothing compounds. `basis` stays a column and the engine still honours `running`, but neither form offers the choice — see C4. §3.2 |
+| **C4** | How rules inside one strategy combine | **CUMULATIVE (15 Aug 2026).** Every matching rule contributes and they sum — a base rate, a service fee and a surcharge are three rules and a booking they all match pays all three. Replaces the original first-match-wins. §3.2 |
+| **C5** | Order and basis as user-facing controls | **Removed from both forms (15 Aug 2026).** Order only ever mattered to a compounding rule; with every rule on `net`, addition commutes and order cannot move a total. `priority` survives to keep the listing deterministic and is defaulted server-side. §3.2 |
 
 ---
 
@@ -99,11 +103,13 @@ largely resolves itself as a consequence (§10-D7).
 | `PricingContext` | readonly DTO | Everything a rule may match on. §1.2. Built once, per priced item. |
 | `PricingContextFactory` | service | `forFlight(FlightOffer)`, `forHotel(HotelOffer, RoomOffer)`. **The only place that knows a product's DTO shape** — this is what keeps product logic out of the engine. Reads `scope` straight off the offer, which Phase 1 already put there. |
 | `StrategyResolver` | service | Booker → **ordered list of levels**. §3.1. |
-| `RuleMatcher` | service | Strategy + context → the one matching rule, or null. First match by `priority`. |
+| `RuleMatcher` | service | Strategy + context → **every** matching rule, in priority order. Contributions sum. §3.2 |
 | `Calculator` | interface | `compute(Money $basis, PricingRule $rule, PricingContext $ctx): Money`. One class per type. §1.3. |
 | `CalculatorRegistry` | service | `calc_type` → `Calculator`. **Adding a calculator is registering a class, not editing the engine.** |
 | `PricingLayer` | readonly DTO | One rung: level, agency, strategy, rule, basis, markup, running total. |
-| `PriceBreakdown` | readonly DTO | Net + ordered `PricingLayer[]` + rounding delta + sell. The engine's only return type. Carries the visibility filter, §6. |
+| `PriceBreakdown` | readonly DTO | Net + ordered `PricingLayer[]` + rounding delta + sell. The engine's only return type. **INTERNAL — the audit record; never serialized to an agency.** §6.1 |
+| `AgencyPriceView` | readonly DTO | The EXTERNAL representation, built from a `PriceBreakdown` for one named viewer. **The only price shape that may reach an agency.** §6.1 |
+| `FareAllocation` | service | Spreads a selling price across per-passenger rows, and drops the supplier's own components. Shared by the live pricer and stored bookings so the two cannot drift. §6.5 |
 | `PricingEngine` | service | `quote(PricingContext, ?Agency $booker): PriceBreakdown`. **The single entry point.** |
 
 ### 1.1 The type separation that prevents double markup
@@ -197,17 +203,18 @@ only one row of that type.
 | Column | Notes |
 | --- | --- |
 | `strategy_id` | FK, `cascadeOnDelete` |
+| `description` | nullable string(255) — **why this rule exists**, in the words of whoever added it. Optional on purpose; requiring it only guarantees "test" ends up in the column. Copied into the snapshot, so a past price still explains its reasoning after the rule is deleted |
 | `product` | `flight` \| `hotel` \| `*` — **string, not a DB enum** |
 | `supplier` | nullable; `tboair` \| `tbohotel` \| null = any |
 | `scope` | `domestic` \| `international` \| `any` — see [`00-overview.md`](00-overview.md) §1 |
 | `matchers` | json — airline, cabin, `isLcc`, rating, city, refundable, meal plan, LOS… |
 | `calc_type` | §1.3 |
 | `value` | `decimal(12,4)` — four places, because a percentage needs them and money does not |
-| `basis` | **`net` \| `running`** — required, no default. §10-D1 |
+| `basis` | **`net` \| `running`** — required, no default. Written `net` by both forms and pinned server-side; the engine still honours `running` for a rule that carries it. §10-D1, C5 |
 | `applies_to` | `total` \| `base_fare` \| `excl_ancillaries` — *which part* of the amount |
 | `min_markup`, `max_markup` | nullable — floor and cap on **this rule's** contribution |
 | `rounding` | `none` \| `1` \| `10` \| `50` \| `100`, plus direction |
-| `priority` | int ascending — **first match wins within the strategy** |
+| `priority` | int ascending — the order rules are applied in. Cannot change a total while every rule is on `net`; kept so the listing is deterministic, defaulted server-side, and asked for on neither form. C5 |
 | `valid_from`, `valid_to` | nullable — seasonality and promos |
 | `is_active`, `version`, `timestamps` | `version` increments on edit; needed by §10-D8 |
 
@@ -233,7 +240,7 @@ handful of rows to evaluate in PHP.
 | `basis_amount`, `markup_amount`, `running_total` | `decimal(14,2)` |
 | `created_at` | append-only, **no `updated_at`** |
 
-UNIQUE `(booking_id, level)` — §5.6.
+UNIQUE `(booking_id, level, pricing_rule_id)` — §5.6.
 
 **[RECOMMENDED]** `rule_snapshot` is copied rather than joined for the same reason `hotel_bookings`
 copies the hotel: *"a voucher presented at a front desk eighteen months later must read the same as
@@ -320,16 +327,14 @@ quote(PricingContext $ctx, ?Agency $booker): PriceBreakdown
   4  foreach (level, agency) in StrategyResolver.chain(booker):
        strategy = agency.pricingStrategy
        if strategy is null or !strategy.is_active: continue       // contributes zero
-       rule = RuleMatcher.firstMatch(strategy, ctx)                // by priority; null → zero
-       if rule is null: continue
+       foreach rule in RuleMatcher.allMatches(strategy, ctx):      // EVERY match, in priority order
+         basis  = rule.basis === 'net' ? net : running             // CONFIRMED D1 — always 'net' in practice
+         basis  = rule.applies_to.slice(basis, ctx)
+         markup = CalculatorRegistry.for(rule.calc_type).compute(basis, rule, ctx)
+         markup = clamp(markup, rule.min_markup, rule.max_markup)
 
-       basis  = rule.basis === 'net' ? net : running               // CONFIRMED D1 — default 'net'
-       basis  = rule.applies_to.slice(basis, ctx)
-       markup = CalculatorRegistry.for(rule.calc_type).compute(basis, rule, ctx)
-       markup = clamp(markup, rule.min_markup, rule.max_markup)
-
-       running  = running.plus(markup)
-       layers[] = PricingLayer(level, agency, strategy, rule, basis, markup, running)
+         running  = running.plus(markup)
+         layers[] = PricingLayer(level, agency, strategy, rule, basis, markup, running)
 
   5  running = clampTotal(running, net, platform.max_total_markup)  // §10-D5
   6  sell    = round(running, platform.rounding)                    // ONCE, at the end — §10-D3
@@ -350,9 +355,24 @@ And your §8 percentage example — both levels 10%, `basis: net`:
 | 0 | 10% | 5,000.00 | +500.00 | 5,500.00 |
 | 1 | 10% | **5,000.00** | +500.00 | **6,000.00** |
 
-On `basis: running` the second rung would compute 10% of 5,500 = ₱550 and total ₱6,050. **Both are
-legitimate policies; neither should ever be an accident**, which is why `basis` is a required column
-with no default. Your §8 confirms `net` as the recommended default.
+On `basis: running` the second rung would compute 10% of 5,500 = ₱550 and total ₱6,050. That form
+still exists in the engine, but **neither form offers it** — every rule is written on `net`, which is
+what makes the order they run in irrelevant (C5).
+
+And a level holding several rules, which is the normal case (C4). An international flight at
+supplier net ₱5,000, with the office on 10% and the agency running a 12% international surcharge, a
+5% base rate and a ₱100 service fee:
+
+| Level | Rule | Basis | Markup | Running |
+| --- | --- | --- | --- | --- |
+| 0 | Main Office 10% | 5,000.00 | +500.00 | 5,500.00 |
+| 1 | Agency 12% (international) | 5,000.00 | +600.00 | 6,100.00 |
+| 1 | Agency 5% (all products) | 5,000.00 | +250.00 | 6,350.00 |
+| 1 | Agency ₱100 (all products) | — | +100.00 | **6,450.00** |
+
+Three rungs at level 1, each its own row. The agency's margin is their sum, ₱950 — not the first of
+them. Under the old first-match model this fare would have sold at ₱6,100 and the other two rules
+would have been silently dead.
 
 ### 3.3 Three properties worth stating
 
@@ -417,7 +437,10 @@ simultaneously the audit trail and the margin ledger.
    the agent was shown, which is evidence about the gate and never a source of truth about what to
    charge"* (`:48-51`). The engine re-runs on the freshly fetched net.
 5. **`basis` is explicit and required** — §3.2. `net` vs `running` is never inferred.
-6. **One layer per level, enforced on write** — UNIQUE `(booking_id, level)`. If a bug ever ran the
+6. **One layer per RULE, enforced on write** — UNIQUE `(booking_id, level, pricing_rule_id)`. A
+   level contributes as many rungs as it has matching rules (C4), so several rows per level is the
+   normal case; what stays impossible is the same rule twice, which is what a double run looks like.
+   If a bug ever ran the
    engine twice, the second insert fails loudly instead of quietly doubling the margin.
 
 ---
@@ -426,22 +449,181 @@ simultaneously the audit trail and the margin ledger.
 
 **[CONFIRMED]** — your §13. A security boundary, not a UI preference.
 
-**[RECOMMENDED]** `PriceBreakdown::forViewer(User): array` collapses every layer **above** the
-viewer's own level into a single opaque `cost` figure and drops the rest **before serialization**.
+### 6.1 Two models of the same price
 
-| Viewer | Sees |
+**[CONFIRMED 15 Aug 2026]** Calculation and disclosure are **separate concerns with separate types**.
+They are two classes rather than two methods on one, because a single object that is *sometimes*
+redacted gets serialized unredacted by the next endpoint somebody writes.
+
+| | `PriceBreakdown` | `AgencyPriceView` |
+| --- | --- | --- |
+| **Role** | INTERNAL — calculation and audit | EXTERNAL — authorized representation |
+| **Holds** | supplier net, every level's rule and contribution, cost, sell, rounding delta | only what one named viewer may see |
+| **Built by** | `PricingEngine::quote()` | `AgencyPriceView::forOffer()` / `::forOwnLadder()`, FROM a `PriceBreakdown` |
+| **Consumed by** | `booking_price_layers`, `MarginReport`, Main Office screens | every agency-facing JSON response |
+| **May reach an agency** | **never** | yes — that is its whole job |
+
+The engine keeps computing the full ladder — `net + Main Office contribution + Agency contribution =
+sell` — and writes all of it to `booking_price_layers`. Nothing about disclosure changes what is
+**charged** or what is **recorded**; it changes only what is **shown**.
+
+### 6.2 What each viewer receives
+
+| Viewer | Surface | Sees |
+| --- | --- | --- |
+| Platform staff | anything | the whole ladder: `net`, every layer, `cost`, `sell` |
+| Main Office member | anything | the same — level 0 has nothing above it, so its cost **is** the net |
+| Agency user | a real offer, quote, room or booking | `cost`, own `markup`, `sell`, and **its own rungs only** |
+| Agency user | its own ladder preview | `cost` (**the figure they typed**), own `markup`, `sell`, own rungs |
+
+**An agency never receives, on any surface:** the supplier net, the Main Office's markup amount, its
+percentage, its rule, its strategy, or the number of levels above it. Everything above the agency
+arrives fused into a single opaque `cost` — how deep the ladder goes is itself commercial
+information.
+
+### 6.3 What an agency sees of its own position, and what that concedes
+
+**[CONFIRMED 15 Aug 2026 — revised the same day.]** The first cut withheld `cost` and the agency's own
+`markup` on a real offer, on the grounds that an agency knowing its own percentage can divide its
+margin back to the supplier net and subtract to the office's cut.
+
+**The business chose to expose them anyway.** An agent quoting a customer needs to know what it earns
+on the fare in front of it, and the margin is theirs. The inference was already accepted under D12;
+what changed is that it is now reachable from the search screen rather than only by working it out.
+
+What is still refused is *handing over* the pieces:
+
+- `cost` is **one fused number** — net and every level above the booker together, with nothing to
+  separate them, and no clue how many levels there are.
+- `ownLayers` carries **only the booker's own rungs**. The Main Office rung is never serialized.
+- `net` is never sent under any key. Its presence in a payload **is** the entitlement test —
+  `AgencyPriceView` reads it to decide which shape a viewer gets, so there is no separate flag to
+  keep in sync.
+
+Two channels remain for margin away from a live fare, and they are what make the preview safe:
+
+- **The ladder preview** — the agency types the figure itself, so nothing about any real supplier
+  rate is disclosed. `forOwnLadder()` drops the Main Office rung the engine also computed: returning
+  the chain's real `cost` against the typed input would hand over the office's markup as the
+  difference.
+- **The margin report** — aggregated, historical, and gated by `markup.view`.
+
+### 6.4 The limit, stated plainly
+
+**[CONFIRMED]** An agency that independently knows a supplier's rate can always compare it to what it
+was charged. That inference is **accepted** and the pricing model is not redesigned around it — see
+D12. What this section guarantees is that the platform never *hands over* the net, the office's
+margin, or the pieces they are trivially reconstructed from.
+
+> Both product search pages fetch results as JSON (`FlightController::search`,
+> `HotelController::search`), so a Blade-level filter is one devtools panel from useless. The same
+> applies to documents: the booking page, the e-ticket and the hotel voucher all render from the
+> stored supplier quote, whose `baseFare`/`tax` rows and `nightlyRate` are **net** figures. They go
+> through `Booking::fareLinesFor()` and `HotelVoucher::charges()`, which reallocate to the selling
+> price. See §6.5.
+
+### 6.5 Surfaces audited
+
+Every path that can carry a price, and what enforces the boundary on it:
+
+| Surface | Enforced by |
 | --- | --- |
-| Main Office / platform staff | `net`, every layer, `sell` |
-| Agency user | `cost` (= net + Main Office markup, **one opaque number**), own `markup`, `sell` |
+| Flight search, fare quote, hotel search, room, PreBook | `AgencyPriceView::forOffer()` + `OfferPricer::redactFare()` (drops `baseFare`, `tax`, `publishedFare`, `dayRates`) |
+| **The flight booking wizard** | `BookingController::create()` prices the quote it renders. It re-fetches the binding fare server-side rather than calling `/flights/fare-quote`, so it has to run the pricer itself — handing the raw supplier DTO to the view showed the agent the NET on the screen they book from |
+| **Flight add-ons (baggage, meals)** | `OfferPricer::ssr()` — each option priced to its MARGINAL selling price. TBO returns these at supplier net, and they reached the pickers untouched: the agent read our cost for a bag, and the payment step added that net to an already-priced fare, so the total they approved sat below the one the booking was written at |
+| Per-passenger fare rows | `FareAllocation` — reallocated to sell, supplier components dropped |
+| **Add-ons on a stored booking** | `Booking::addOnSellTotal()` — attributed from the STORED layers, so a document shows the rules that applied when it was booked rather than today's. Read by the e-ticket's add-on rows and summary line and by the booking page. The rows printed `ancillary_total` — our cost — and the fare rows silently absorbed the add-on markup to keep the total reconciling |
+| Booking page, e-ticket | `Booking::fareLinesFor()` |
+| Hotel voucher | `HotelVoucher::charges()` — nightly rate recomputed from the selling total |
+| Booking as JSON | `Booking::$hidden` — `net_amount`, `cost_amount`, `markup_total`, `quote_raw` |
+| Agency ladder preview | `AgencyPriceView::forOwnLadder()` |
+| Main Office rules and strategy | `markup.office.*` + `PricingStrategyPolicy::isPricingRoot()` |
+| Role composition | `RoleService::boundToCeiling()` — an agency cannot grant itself `markup.office.view` |
 
-An Agency never receives `net_amount` or the Main Office's markup as a separate value — not in the
-page, and **not in the JSON**. Both product search pages fetch results as JSON
-(`FlightController::search`, `HotelController::search`), so a Blade-level filter is one devtools panel
-from useless.
+#### Why add-ons are priced marginally
 
-> **[RECOMMENDED]** Get this into the DTO in the same commit as the engine. Retrofitting it means
-> auditing every response that ever carried a price — search, rooms, fare quote, booking show,
-> e-ticket, voucher.
+`BookingService` folds ancillaries into net and prices the sum **once**, so an add-on's true
+cost to the agency is what the total goes up by when it is chosen:
+
+```
+marginal(X) = sell(net + X) − sell(net)
+```
+
+Taking the difference rather than pricing each option on its own is what keeps flat rules out
+of it — a ₱250 ticketing fee is charged once for the booking, not once per meal. It also makes
+an `excl_ancillaries` rule work end to end for the first time: the option declares itself as
+ancillary in the context, so a rule written on that basis prices the fare and leaves the add-on
+at cost. `BookingService` now declares the same figure at book time, which it never did.
+
+One consequence is worth stating rather than discovering: each option is rounded to centavos on
+its own and the browser adds them up, while the booking rounds once over the whole net. **The
+quoted total can therefore differ from the charged total by up to a centavo per add-on** — a
+three-add-on booking is exact to within ₱0.03. Closing that last centavo would mean re-pricing
+server-side on every add-on toggle; the tolerance is asserted in
+`test_the_quoted_total_holds_to_a_centavo_an_add_on_on_awkward_figures` so it stays a known
+bound rather than a surprise.
+
+#### The same split, on a stored booking
+
+A document cannot re-run the engine — that would price a months-old booking at today's
+rules — so `Booking::addOnSellTotal()` reconstructs the add-on selling price from the
+layers the booking stored. Each layer contributes the share of its markup that the
+ancillary part of its basis earned: exact for a percentage, and **zero for a flat rule**,
+because a ₱250 ticketing fee was charged once for the booking and not once per meal. That
+is the same rule the wizard's marginal pricing follows, so the two agree.
+
+The fare portion is then defined as the **remainder** — `total_amount` less the add-on
+selling total — which is what guarantees the printed document reconciles to its own total
+however the attribution falls. Before this, the fare rows were computed by subtracting
+`ancillary_total` (a cost) from `total_amount` (a selling price), so they still summed to
+the right total while overstating every passenger's fare by a share of someone's baggage.
+
+### 6.6 Proven end to end
+
+**[EXISTING]** Both products were booked through the full flow against the suppliers' test
+environments on 15 August 2026, with a Main Office 10% and four cumulative agency rules configured.
+
+| | Flight `MT-KNJWOAEX` | Hotel `MT-RX7NEN9Q` |
+| --- | --- | --- |
+| supplier net | 14,381.91 | 1,597.17 |
+| + Main Office 10% | 1,438.19 | 159.72 |
+| + agency rungs | 2,219.65 (4 rules) | 429.86 (3 rules) |
+| **sell** | **18,039.75** | **2,186.75** |
+| wallet debited | 15,820.10 = `cost_amount` | 1,756.89 = `cost_amount` |
+| sent to the supplier | `OfferedFare 14,381.91` — the NET | `TotalFare 1,597.17` — the NET |
+| outcome | PNR 9ZVWQY, ticket 5014488041 | TBO confirmation 1G3D2X |
+
+Five layers were written for the flight and four for the hotel — one row per rule that fired, summing
+exactly to `markup_total`. The rule matching held on real bookings: a flight-only 8% rule fired on the
+flight and not the hotel, and an international-only 12% fired on neither.
+
+**The supplier is always sent its own number.** The hotel figure is the load-bearing one — TBO
+compares `TotalFare` against its own and refuses a mismatch, so sending the selling price there would
+fail every hotel booking.
+
+#### Then nine more, on the certification run
+
+The TBO certification matrix was run through the same UI on the same day (see §7 of
+`_docs/tboair/01-tbo-api-reference.md`), which put the ladder through **seven more flight bookings**
+across both fare types, four passenger mixes, one-way and return, non-stop and one-stop:
+
+| Case | Booking | Net | Cost (wallet) | Sell | Layers |
+| --- | --- | --- | --- | --- | --- |
+| 3 LCC | `MT-LC9TWA9G` | 45,091.90 | 49,601.09 | 57,616.72 | 5 |
+| 4 LCC + add-ons | `MT-7GTLXSP3` | 23,431.39 | 25,774.53 | 30,107.87 | 5 |
+| 5 LCC + add-ons | `MT-AJEFTZWB` | 75,107.66 | 82,618.43 | 95,736.73 | 5 |
+| 6 GDS | `MT-XCHBVEA4` | 38,661.18 | 42,527.30 | 49,449.70 | 5 |
+| 7 GDS | `MT-E43ZBZRQ` | 52,477.05 | 57,724.76 | 66,995.86 | 5 |
+| 8 GDS | `MT-SJGXT4QE` | 89,857.30 | 98,843.03 | 114,468.78 | 5 |
+| 9 GDS | `MT-E9YCQIUV` | 88,990.91 | 97,890.00 | 113,368.46 | 5 |
+
+Every row reconciles the same three ways: the layers sum to `markup_total`, `net + markup = total`,
+and the wallet is debited **cost**, never sell. The international 12% rule fired on all of them and
+the domestic 8% on none, which is the scope matching doing its job on real inventory rather than a
+fixture.
+
+Cases 4 and 5 are the ones that matter for add-ons: they are what surfaced the two defects in §6.5 —
+the wizard quoting add-ons at supplier cost, and the documents doing the same afterwards.
 
 ---
 
@@ -577,11 +759,27 @@ flag; the permission rows already sync.
 | **1** ✅ | `TravelScope` classification, display only — [`00-overview.md`](00-overview.md) §1.3. **Done**: one enum + `App\Support\TravelScopeResolver` replacing all three `isDomestic()` implementations, `country_code` on the curated airport list, `scope` on `FlightOffer`/`HotelOffer`/`FareQuote`, chips on both results pages | No |
 | **2** ✅ | Schema: `net`/`cost`/`markup_total`/`total` on bookings, `booking_price_layers`, backfill. `TboHotelBookPayload` → `net_amount`. Hotel price-change gate compares like with like | No |
 | **3** ✅ | **The engine, complete and tested, wired to nothing.** `pricing_strategies` + `pricing_rules`; `PricingEngine`, `StrategyResolver`, `RuleMatcher`, `CalculatorRegistry`; the `fixed` and `percentage_markup` calculators; the Main Office strategy row (**empty**) + `pricing.main_office_agency_id`; the Main Office pricing UI and ladder preview, `markup.office.*` gated | No — **ships empty** |
-| **4** ✅ | Wire the already-tested engine into flight and hotel search and both booking paths. `PriceBreakdown::forViewer` (§6). `ChargesWallet` → `cost_amount`. **This is the commit that activates pricing** | **Yes** |
+| **4** ✅ | Wire the already-tested engine into flight and hotel search and both booking paths. The visibility boundary (§6). `ChargesWallet` → `cost_amount`. **This is the commit that activates pricing** | **Yes** |
 | **5** ✅ | Agency strategies behind `markup.*` and `PricingStrategyPolicy`, as a **Markup tab on the agency hub** rather than a separate page — an agency reaches its pricing where it already reaches its wallet, users and roles. Margin reporting off `booking_price_layers` | Yes |
 
-**All five phases are built.** What Phase 4 turned on is still inert in practice until a
-pricing root is named and its first rule is written — both operations, not deploys.
+**All five phases are built, and the whole path has been booked end to end against both suppliers**
+— see §6.6. What Phase 4 turned on stays inert until a pricing root is named and its first rule is
+written; both are operations, not deploys.
+
+**[EXISTING]** Two defects surfaced only when the feature was driven through a browser, and both were
+invisible to the test suite because the test environment differs from production:
+
+- `StrategyResolver` cached the `PricingStrategy` **model**, but `config/cache.php` sets
+  `serializable_classes => false` — the store unserializes no classes at all, so the model came back
+  as `__PHP_Incomplete_Class` and every pricing page 500'd. `phpunit.xml` runs on the `array` store,
+  which never serializes. Now memoised per request instead, with a regression test that runs against
+  a serializing store.
+- `MarginReport::monthly()` called `selectRaw` twice — SQLite's `strftime` and MySQL's `date_format` —
+  and `selectRaw` **appends**, so MySQL received both and rejected the query. The suite runs SQLite,
+  where only the first landed. The method had no test at all.
+
+The lesson worth keeping: **a green suite on SQLite and an `array` cache proves less than it looks
+about MySQL and a serializing store.**
 
 **[RECOMMENDED]** Phase 3 ships the whole engine with an **empty** Main Office strategy: it runs,
 contributes zero, and every price stays as it is. The first rule then becomes an operation rather
@@ -617,7 +815,7 @@ the specification and the existing application are both silent.
 | **D9** | **VAT treatment of markup** | Markup is service revenue and in PH very likely VATable; the supplier's net is not our sale. **[EXISTING]** the live system hardcodes `IsVATApplicable => true`. Is ₱500 VAT-inclusive or exclusive? Answer before rules are configured — reinterpreting live rules later reprices history | Phase 3 |
 | **D10** | **Zero / near-zero net amounts** | A ₱0 infant fare takes 10% of nothing. `min_markup` provides a floor — and is also how a free component acquires ₱1,500 of markup. Decide per product | Phase 3 |
 | **D11** | **Visibility** — is the model in §6 the intended boundary | Confirms an Agency may see its own markup but never net or the Main Office's markup separately | Phase 4 |
-| **D12** ⚠️ | **A percentage-on-net agency rule lets that agency derive the supplier net** | Found while building Phase 3, by the test that asserts the net never reaches an agency payload. If an Agency sets *"10% of net"* and is shown its own markup of ₱500 — which is theirs, and which §6 says they may see — then net = ₱5,000 falls straight out. The leak is arithmetic, not a bug, so no amount of redaction closes it. **Phase 5 ships the recommendation: an agency percentage rule is forced onto `basis: running`** — a percentage of *their cost*, which they already know, and which is also the more natural reading of "I add 10% to what I pay". Fixed rules are untouched; a flat ₱200 says nothing about what the room cost. **Confirm or reverse** — reversing is one validation rule in `StoreAgencyPricingRuleRequest` | **shipped, needs sign-off** |
+| ~~**D12**~~ | ~~A percentage-on-net agency rule lets that agency derive the supplier net~~ | **RESOLVED 15 Aug 2026 — reversed. An agency percentage is taken of the supplier net**, not of the running total, so the two levels add rather than compound and the total is independent of the order they are applied in. This *accepts* the disclosure the recommendation was written to avoid: an agency shown its own ₱500 markup on a 10% rule divides back to a ₱5,000 net. The leak is arithmetic — the agency wrote the rule — and it was accepted in favour of the simpler model, ahead of a set of calculator types where "of the supplier price" is the only basis that means the same thing in all of them. What this makes load-bearing is `PricingLayer::toViewerArray()`, which drops `basis_amount` and `running_total`: handing an agency the net *directly* is still refused. Fixed rules are unaffected — a flat ₱200 says nothing about what anyone above charged. Pinned in `StoreAgencyPricingRuleRequest` against hand-made requests, not just the form | — |
 
 ---
 
@@ -649,8 +847,8 @@ query.**
 
 If the Main Office is an agency row, its own staff have `agency_id` = that row. A naive chain gives
 `[Main Office, Main Office]` — **the level-0 rule applied twice**, a genuine double-markup on exactly
-the people configuring it, and the UNIQUE `(booking_id, level)` guard would not catch it because the
-two rows have different levels.
+the people configuring it, and the UNIQUE `(booking_id, level, pricing_rule_id)` guard would not
+catch it because the two rows differ in level.
 
 **[RECOMMENDED]** The dedupe in §3.1: a booker whose agency *is* the Main Office contributes no level
 1. Their price is net + Main Office markup, which is also their cost — consistent, and a Main Office

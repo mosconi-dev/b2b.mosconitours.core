@@ -264,6 +264,7 @@ class TboAirService
     {
         $data = $this->client->fareQuote($this->detailPayload($selection, $token));
         $this->guardSession($data);
+        $this->guardError($data);
 
         return FareQuote::fromResponse($data);
     }
@@ -272,6 +273,7 @@ class TboAirService
     {
         $data = $this->client->fareRule($this->detailPayload($selection, $token));
         $this->guardSession($data);
+        $this->guardError($data);
 
         return FareRule::fromResponse($data, $selection->resultIndex);
     }
@@ -280,6 +282,7 @@ class TboAirService
     {
         $data = $this->client->ssr($this->detailPayload($selection, $token));
         $this->guardSession($data);
+        $this->guardError($data);
 
         return Ssr::fromResponse($data, $selection->resultIndex);
     }
@@ -330,6 +333,38 @@ class TboAirService
         if ((int) data_get($data, 'Errors.0.Code') === 2 && stripos($message, 'authentication') !== false) {
             throw TboAirException::auth($message);
         }
+    }
+
+    /**
+     * Any other error TBO reports inside a 200.
+     *
+     * The HTTP status says nothing about whether the call worked: a supplier-side
+     * failure arrives as `200 OK` carrying `Response.Error.ErrorCode`. Observed as
+     * code 28, "Fare Quote failed from the Supplier end", which parsed into an EMPTY
+     * FareQuote — no trips, no fare breakdown, a net of zero — and the wizard then
+     * rendered a bookable page priced at the agency's flat rules alone. The agent was
+     * looking at ₱350 for a fare that does not exist.
+     *
+     * Session expiry (code 6) is not handled here: guardSession turns that into an
+     * auth error so withReauth can retry it once.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function guardError(array $data): void
+    {
+        if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
+            $data = $data[0];
+        }
+
+        $errorCode = (int) data_get($data, 'Response.Error.ErrorCode', data_get($data, 'Error.ErrorCode', 0));
+
+        if ($errorCode === 0 || $errorCode === 6) {
+            return;
+        }
+
+        throw new TboAirException(
+            $this->firstError($data, 'The flight provider could not price this fare.')
+        );
     }
 
     /**

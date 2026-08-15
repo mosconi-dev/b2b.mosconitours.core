@@ -4,8 +4,10 @@ How a supplier's net rate becomes the price an agency pays. Covers **local and i
 and hotels**, a **platform default** strategy owned by the main office, and a **per-agency** strategy
 that overrides it. Proposed namespace: `App\Services\Pricing`.
 
-**Nothing here is built yet.** This document is the investigation and the design; the phase plan in
-§9 is what turns it into code.
+**This document is the investigation that preceded the build, kept as the record of what existed
+before pricing and why it was designed this way.** For what was actually built, and for every
+decision that has moved since, read [`01-architecture.md`](01-architecture.md) — it is the current
+one. Where the two disagree, this file is the older.
 
 ## Design in one paragraph
 
@@ -199,9 +201,16 @@ lives in `config/` is a deploy, not an operation.
 `matchers` (json, §5), `calc_type` (§6), `value`, `min_markup`, `max_markup`, `basis`, `rounding`,
 `priority`, `is_active`.
 
-**First match wins, by `priority`.** Not a sum of every matching rule — an accumulating engine makes
-the eventual "why is this fare 40% up?" impossible to answer without replaying the whole table.
-Narrow rules sit above broad ones and a catch-all sits at the bottom.
+> **Superseded.** This section originally proposed **first match wins, by `priority`** within a
+> strategy, arguing that an accumulating engine makes "why is this fare 40% up?" unanswerable.
+>
+> **The business chose cumulative on 15 August 2026.** Every rule that matches contributes and the
+> contributions sum: a base rate, a service fee and a surcharge are three rules, and a booking they
+> all match pays all three. The concern above was answered by making the price explain itself
+> instead — every rung that fired is recorded against the booking and named in the preview.
+>
+> `priority` survives only as the order rules are applied in, which no longer changes a total.
+> See [`01-architecture.md`](01-architecture.md) §3.
 
 ## 4. Resolution — cumulative, not override
 
@@ -211,9 +220,9 @@ Narrow rules sit above broad ones and a catch-all sits at the bottom.
 > contribution on top of the previous one. The Agency's markup does not replace the Main Office's,
 > it stacks on it.
 >
-> What survives from the original text, and it matters: **first match wins *within* a level; levels
-> *sum*.** The "not a sum of every matching rule" argument in §3.3 is still correct — it constrains
-> one strategy's rules against each other, not the levels against each other.
+> This was later taken further: contributions are cumulative **within** a level as well as between
+> levels. The "not a sum of every matching rule" argument in §3.3 no longer holds — see the note
+> there.
 >
 > See [`01-architecture.md`](01-architecture.md) §3 for the resolution algorithm and §7 for the
 > settlement question this raises.

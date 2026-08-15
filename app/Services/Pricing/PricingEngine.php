@@ -83,25 +83,24 @@ class PricingEngine
                 continue;
             }
 
-            $rule = $this->matcher->firstMatch($strategy, $context);
+            // Every rule that matches, not just the first: contributions within a level
+            // are cumulative. Applied in priority order, which only changes the total
+            // when a rule works from the running figure rather than from net.
+            foreach ($this->matcher->allMatches($strategy, $context) as $rule) {
+                $basis = $this->basisFor($rule, $context, $net, $running);
+                $markup = $this->markupFor($rule, $basis, $context);
 
-            if ($rule === null) {
-                continue;
+                $running = $running->plus($markup);
+
+                $layers[] = PricingLayer::from(
+                    level: $rung['level'],
+                    agency: $rung['agency'],
+                    rule: $rule,
+                    basis: $basis,
+                    markup: $markup,
+                    runningTotal: $running,
+                );
             }
-
-            $basis = $this->basisFor($rule, $context, $net, $running);
-            $markup = $this->markupFor($rule, $basis, $context);
-
-            $running = $running->plus($markup);
-
-            $layers[] = PricingLayer::from(
-                level: $rung['level'],
-                agency: $rung['agency'],
-                rule: $rule,
-                basis: $basis,
-                markup: $markup,
-                runningTotal: $running,
-            );
         }
 
         $running = $this->capTotal($net, $running);

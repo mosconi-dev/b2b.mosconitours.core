@@ -253,7 +253,10 @@
                 <div class="border-t border-gray-100 pt-4">
                     <div class="flex items-baseline justify-between gap-4">
                         <span class="text-sm text-gray-500">Total to charge</span>
-                        <span class="text-lg font-semibold text-brand-900" x-text="money(quote.totalFare)"></span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="text-lg font-semibold text-brand-900" x-text="money(quote.totalFare)"></span>
+                            @include('partials._fare-breakdown', ['pricing' => 'quote.pricing'])
+                        </span>
                     </div>
                     <p class="mt-1 text-xs text-gray-400">Includes tax <span x-text="money(quote.totalTax)"></span>.</p>
                 </div>

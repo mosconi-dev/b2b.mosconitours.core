@@ -103,9 +103,13 @@ class BookingShowTest extends TestCase
         $this->actingAs($user)
             ->get(route('bookings.show', $booking))
             ->assertOk()
-            ->assertSee('14,858.75')        // the line total, matching what was charged
-            ->assertSee('7,429.38')         // and per head
-            ->assertDontSee('29,717.50');   // what doubling produced
+            ->assertSee('14,858.85')        // the line total, matching what was charged
+            ->assertSee('7,429.43')         // and per head
+            ->assertDontSee('29,717.50')    // what doubling produced
+            // The supplier's own components sum to the NET. Rendered beside the total
+            // they would give up our cost in one addition.
+            ->assertDontSee('11,852.16')
+            ->assertDontSee('3,006.59');
     }
 
     public function test_it_shows_the_document_the_passenger_gave(): void

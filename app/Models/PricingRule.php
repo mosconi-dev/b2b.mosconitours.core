@@ -14,12 +14,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One rule inside a strategy: what it matches, and what it adds.
  *
- * Rules within a strategy compete — the first match by `priority` wins and the rest are
- * not consulted. That is deliberate over summing every match: a price built from four
- * overlapping rules cannot be explained to an agency without replaying the whole table.
+ * Rules within a strategy are CUMULATIVE — every rule that matches contributes, and the
+ * contributions sum. A base rate, a service fee and a surcharge are three rules, and a
+ * booking they all match pays all three. Each works from the supplier net, so they never
+ * compound on one another and the order they run in cannot change the total.
+ *
+ * `description` is the optional note explaining why the rule was added, and it travels
+ * into the snapshot so a past price can still account for itself after the rule is gone.
  */
 #[Fillable([
-    'pricing_strategy_id', 'product', 'supplier', 'scope', 'matchers',
+    'pricing_strategy_id', 'description', 'product', 'supplier', 'scope', 'matchers',
     'calc_type', 'value', 'basis', 'applies_to',
     'min_markup', 'max_markup', 'rounding', 'priority',
     'valid_from', 'valid_to', 'is_active',
@@ -173,6 +177,7 @@ class PricingRule extends Model
         return [
             'rule_id' => $this->id,
             'version' => (int) $this->version,
+            'description' => $this->description,
             'product' => $this->product,
             'supplier' => $this->supplier,
             'scope' => $this->scope,

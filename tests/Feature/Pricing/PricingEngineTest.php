@@ -16,6 +16,7 @@ use App\Services\Pricing\PricingEngine;
 use App\Services\Pricing\StrategyResolver;
 use App\Services\Settings\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
@@ -60,6 +61,35 @@ class PricingEngineTest extends TestCase
             net: NetPrice::of($net),
             attributes: $overrides['attributes'] ?? [],
         );
+    }
+
+    // --------------------------------------------------------------- the store ----
+
+    /**
+     * The engine must survive a cache store that refuses to unserialize classes.
+     *
+     * `config/cache.php` ships `serializable_classes => false` — a gadget-chain defence
+     * that makes the store return `__PHP_Incomplete_Class` for ANY cached object. A
+     * resolver that put an Eloquent model in the shared cache therefore died on
+     * RuleMatcher's type hint on the second read, in production, while every test
+     * passed: the suite runs on the `array` store, which never serializes anything.
+     *
+     * This test runs the real thing. Two quotes, because the first is what fills a cache
+     * and the second is what chokes on it.
+     */
+    public function test_pricing_works_on_a_store_that_unserializes_no_classes(): void
+    {
+        config(['cache.default' => 'database', 'cache.serializable_classes' => false]);
+        Cache::purge('database');   // rebuild the store against the config above
+
+        PricingRule::factory()->fixed(500)->create(['pricing_strategy_id' => $this->strategyFor($this->mainOffice)->id]);
+        PricingRule::factory()->fixed(200)->create(['pricing_strategy_id' => $this->strategyFor($this->agency)->id]);
+
+        foreach ([1, 2] as $attempt) {
+            $price = app(PricingEngine::class)->quote($this->context(5000), $this->agency);
+
+            $this->assertSame('5700.00', (string) $price->sell->amount, "attempt {$attempt}");
+        }
     }
 
     // ------------------------------------------------------------ the core sum ----
@@ -183,34 +213,73 @@ class PricingEngineTest extends TestCase
         $this->assertSame('5500.00', (string) $this->engine()->quote($this->context(5000), $this->agency)->sell->amount);
     }
 
-    // ------------------------------------------------------- first match wins ----
+    // ---------------------------------------------------- cumulative within a level ----
 
-    public function test_only_one_rule_per_level_contributes(): void
+    public function test_every_matching_rule_in_a_level_contributes(): void
     {
         $strategy = $this->strategyFor($this->mainOffice);
         PricingRule::factory()->fixed(500)->priority(10)->create(['pricing_strategy_id' => $strategy->id]);
-        PricingRule::factory()->fixed(999)->priority(20)->create(['pricing_strategy_id' => $strategy->id]);
+        PricingRule::factory()->fixed(200)->priority(20)->create(['pricing_strategy_id' => $strategy->id]);
 
         $price = $this->engine()->quote($this->context(5000), $this->agency);
 
-        $this->assertCount(1, $price->layers);
-        $this->assertSame('5500.00', (string) $price->sell->amount, 'not 6,499 — rules do not sum');
+        $this->assertCount(2, $price->layers, 'one rung per rule that fired');
+        $this->assertSame('5700.00', (string) $price->sell->amount, '500 + 200, both apply');
     }
 
-    public function test_a_narrower_rule_above_a_catch_all_wins(): void
+    /**
+     * A catch-all does not stop applying because a narrower rule also matched — it is a
+     * base rate that everything pays, and the narrow rule is a surcharge on top.
+     */
+    public function test_a_narrow_rule_adds_on_top_of_a_catch_all(): void
     {
         $strategy = $this->strategyFor($this->mainOffice);
         PricingRule::factory()->fixed(800)->scoped('international')->priority(10)->create(['pricing_strategy_id' => $strategy->id]);
         PricingRule::factory()->fixed(300)->priority(900)->create(['pricing_strategy_id' => $strategy->id]);
 
         $domestic = $this->engine()->quote($this->context(5000), $this->agency);
-        $this->assertSame('5300.00', (string) $domestic->sell->amount, 'falls through to the catch-all');
+        $this->assertSame('5300.00', (string) $domestic->sell->amount, 'only the catch-all matches');
 
         $international = $this->engine()->quote(
             $this->context(5000, ['scope' => TravelScope::International]),
             $this->agency,
         );
-        $this->assertSame('5800.00', (string) $international->sell->amount, 'the narrow rule wins');
+        $this->assertSame('6100.00', (string) $international->sell->amount, '800 surcharge + 300 base');
+    }
+
+    public function test_a_mixed_percentage_and_fixed_level_sums_both(): void
+    {
+        // The shape the business actually asked for: a base percentage, a flat service
+        // fee, and an international surcharge — an international booking pays all three.
+        $strategy = $this->strategyFor($this->agency);
+        PricingRule::factory()->percentage(5)->priority(100)->create(['pricing_strategy_id' => $strategy->id]);
+        PricingRule::factory()->fixed(100)->priority(100)->create(['pricing_strategy_id' => $strategy->id]);
+        PricingRule::factory()->percentage(12)->scoped('international')->priority(60)->create(['pricing_strategy_id' => $strategy->id]);
+
+        PricingRule::factory()->percentage(10)->create(['pricing_strategy_id' => $this->strategyFor($this->mainOffice)->id]);
+
+        $price = $this->engine()->quote(
+            $this->context(5000, ['scope' => TravelScope::International]),
+            $this->agency,
+        );
+
+        $this->assertSame('950.00', (string) $price->ownMargin(), '600 + 250 + 100');
+        $this->assertSame('5500.00', (string) $price->cost(), 'net + the office 10%');
+        $this->assertSame('6450.00', (string) $price->sell->amount);
+        $this->assertCount(4, $price->layers, 'three agency rungs and one office rung');
+    }
+
+    /** Percentages on `net` do not compound on each other, however many there are. */
+    public function test_stacked_percentages_are_all_of_the_net(): void
+    {
+        $strategy = $this->strategyFor($this->agency);
+        PricingRule::factory()->percentage(10)->priority(10)->create(['pricing_strategy_id' => $strategy->id]);
+        PricingRule::factory()->percentage(10)->priority(20)->create(['pricing_strategy_id' => $strategy->id]);
+
+        $price = $this->engine()->quote($this->context(5000), $this->agency);
+
+        // 500 + 500 = 6,000. Compounding would give 500 + 550 = 6,050.
+        $this->assertSame('6000.00', (string) $price->sell->amount);
     }
 
     // ------------------------------------------------------------ Main Office ----

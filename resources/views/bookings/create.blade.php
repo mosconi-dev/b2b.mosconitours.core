@@ -642,7 +642,10 @@
                     </div>
                     <div class="flex items-center justify-between">
                         <span class="font-medium text-brand-900">New fare</span>
-                        <span class="font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote.price.offeredFare)"></span></span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote.price.offeredFare)"></span></span>
+                            @include('partials._fare-breakdown', ['pricing' => 'quote.pricing'])
+                        </span>
                     </div>
                     <div class="flex items-center justify-between border-t border-gray-100 pt-2" x-show="oldFare > 0">
                         <span class="text-gray-500">Difference</span>

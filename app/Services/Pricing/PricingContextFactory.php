@@ -45,6 +45,7 @@ class PricingContextFactory
                 'destination' => Arr::get($offer, 'arrival.code'),
             ],
             baseFare: Money::of(Arr::get($offer, 'price.baseFare', 0)),
+            ancillaries: $this->ancillaries($offer),
         );
     }
 
@@ -72,7 +73,24 @@ class PricingContextFactory
                 'destination' => Arr::get($quote, 'trips.0.segments.'.(count((array) Arr::get($quote, 'trips.0.segments', [])) - 1).'.destination.code'),
             ],
             baseFare: Money::of(Arr::get($quote, 'price.baseFare', 0)),
+            ancillaries: $this->ancillaries($quote),
         );
+    }
+
+    /**
+     * The part of net that is bought-on-the-side rather than fare — baggage, meals.
+     *
+     * Null, not zero, when the payload does not carry the figure: a rule written on
+     * `excl_ancillaries` must fall back to the whole net rather than silently price a
+     * fare as if all of it were add-ons.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function ancillaries(array $payload): ?Money
+    {
+        $ancillaries = Arr::get($payload, 'price.ancillaries');
+
+        return $ancillaries === null ? null : Money::of($ancillaries);
     }
 
     /**

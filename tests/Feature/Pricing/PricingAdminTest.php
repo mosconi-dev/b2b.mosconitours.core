@@ -188,13 +188,13 @@ class PricingAdminTest extends TestCase
         $this->assertDatabaseMissing('pricing_rules', ['id' => $rule->id]);
     }
 
-    public function test_a_rule_change_invalidates_the_resolver_cache(): void
+    public function test_a_rule_change_is_seen_by_a_resolver_that_already_answered(): void
     {
         $this->configureRoot();
         $agency = Agency::factory()->create();
         $resolver = app(StrategyResolver::class);
 
-        // Warm the cache with no strategy at all.
+        // Make it answer once, with no strategy at all, so it has something to hold.
         $this->assertNull($resolver->chain($agency)[1]['strategy']);
 
         PricingStrategy::factory()->create(['agency_id' => $agency->id]);

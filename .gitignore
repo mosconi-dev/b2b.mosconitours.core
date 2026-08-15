@@ -25,3 +25,6 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Generated status reports — rebuilt from their HTML source, not edited by hand.
+/Philippine-Explorer-Platform-Status-*.pdf

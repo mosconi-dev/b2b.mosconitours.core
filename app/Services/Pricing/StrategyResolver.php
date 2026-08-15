@@ -25,7 +25,34 @@ class StrategyResolver
     /** Where the pricing root is named. Not inferred from AgencyType — see below. */
     public const MAIN_OFFICE_SETTING = 'pricing.main_office_agency_id';
 
-    private const CACHE_TTL = 300;
+    /**
+     * Strategies already loaded during this request, by agency id.
+     *
+     * **Deliberately not the shared cache.** `config/cache.php` sets
+     * `serializable_classes => false`, so the store unserializes NO classes: an Eloquent
+     * model put into it comes back as `__PHP_Incomplete_Class` and the engine dies on
+     * the type hint. That setting is a gadget-chain defence and is not worth weakening
+     * to save one query, so nothing but this in-request memo stands between the engine
+     * and the database.
+     *
+     * The repeat queries this exists to stop were always within a single request anyway
+     * — a hotel city search prices a hundred properties, each of which resolves the same
+     * two levels.
+     *
+     * @var array<int|string, PricingStrategy|null>
+     */
+    private array $loaded = [];
+
+    /**
+     * Bumped by forget(). An instance whose generation is behind drops what it holds.
+     *
+     * The memo is per-instance so it cannot outlive a request, but a resolver that has
+     * already answered once must still notice a rule edited after it did — a queue
+     * worker, or an admin write followed by a quote in the same process.
+     */
+    private static int $generation = 0;
+
+    private int $seenGeneration = 0;
 
     public function __construct(private readonly Settings $settings) {}
 
@@ -100,25 +127,31 @@ class StrategyResolver
     /**
      * One rung, with its strategy and rules eagerly loaded.
      *
-     * Cached briefly: strategies change rarely and this runs once per level per priced
-     * item, which on a hotel city search is once per level per property. Invalidated
-     * explicitly on write by PricingAdminService rather than left to expire, so an
-     * edited rule takes effect on the next search rather than five minutes later.
+     * Memoised for the rest of the request — see $loaded for why it is not the shared
+     * cache. An edited rule therefore takes effect on the very next request rather than
+     * when a TTL expires.
      *
      * @return array{level: int, agency: Agency, strategy: ?PricingStrategy}
      */
     private function rung(int $level, Agency $agency): array
     {
-        $strategy = Cache::remember(
-            self::cacheKey($agency->getKey()),
-            self::CACHE_TTL,
-            fn () => PricingStrategy::with('activeRules')
-                ->where('agency_id', $agency->getKey())
-                ->where('is_active', true)
-                ->first(),
-        );
+        $id = $agency->getKey();
 
-        return ['level' => $level, 'agency' => $agency, 'strategy' => $strategy];
+        if ($this->seenGeneration !== self::$generation) {
+            $this->loaded = [];
+            $this->seenGeneration = self::$generation;
+        }
+
+        // array_key_exists, not isset: "this agency has no strategy" is a null we want
+        // to remember, or every priced item re-runs the miss.
+        if (! array_key_exists($id, $this->loaded)) {
+            $this->loaded[$id] = PricingStrategy::with('activeRules')
+                ->where('agency_id', $id)
+                ->where('is_active', true)
+                ->first();
+        }
+
+        return ['level' => $level, 'agency' => $agency, 'strategy' => $this->loaded[$id]];
     }
 
     public static function cacheKey(int|string $agencyId): string
@@ -126,9 +159,17 @@ class StrategyResolver
         return "pricing:strategy:{$agencyId}";
     }
 
-    /** Called whenever a strategy or one of its rules changes. */
+    /**
+     * Called whenever a strategy or one of its rules changes.
+     *
+     * Invalidates every in-memory memo in this process, and clears the shared-cache row
+     * that the version which cached across requests used to write — so an installation
+     * upgrading in place cannot serve a strategy out of a row this code never writes.
+     */
     public static function forget(int|string $agencyId): void
     {
+        self::$generation++;
+
         Cache::forget(self::cacheKey($agencyId));
     }
 }

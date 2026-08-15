@@ -31,7 +31,10 @@ class MarginReport
     public function byAgency(User $viewer, int $level = BookingPriceLayer::AGENCY, int $months = 12): Collection
     {
         return BookingPriceLayer::query()
-            ->selectRaw('agency_id, count(*) as bookings, sum(markup_amount) as margin')
+            // count(DISTINCT booking_id), not count(*): a level contributes one row per
+            // matching rule now, so counting rows would report a booking priced by three
+            // rules as three bookings.
+            ->selectRaw('agency_id, count(distinct booking_id) as bookings, sum(markup_amount) as margin')
             ->where('level', $level)
             ->where('created_at', '>=', now()->subMonths($months)->startOfMonth())
             ->when(! $viewer->isPlatformStaff(), fn ($q) => $q->where('agency_id', $viewer->agency_id))
@@ -53,14 +56,20 @@ class MarginReport
      */
     public function monthly(int $agencyId, int $level = BookingPriceLayer::AGENCY, int $months = 12): Collection
     {
-        return BookingPriceLayer::query()
-            ->selectRaw("strftime('%Y-%m', created_at) as period, count(*) as bookings, sum(markup_amount) as margin")
-            ->when(
-                // SQLite in tests, MySQL in dev and production. The date function is the
-                // one thing that cannot be written once for both.
-                config('database.default') !== 'sqlite',
-                fn ($q) => $q->selectRaw("date_format(created_at, '%Y-%m') as period, count(*) as bookings, sum(markup_amount) as margin"),
-            )
+        $query = BookingPriceLayer::query();
+
+        // SQLite in tests, MySQL in dev and production. The date function is the one
+        // thing that cannot be written once for both — so PICK one. selectRaw appends
+        // rather than replaces, so adding the second on top of the first produced a
+        // query carrying `strftime` AND `date_format`, which MySQL rejects outright.
+        // Read from the connection's driver, not the connection's NAME: a connection
+        // called something other than "sqlite" can still be one.
+        $period = $query->getConnection()->getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m', created_at)"
+            : "date_format(created_at, '%Y-%m')";
+
+        return $query
+            ->selectRaw("{$period} as period, count(distinct booking_id) as bookings, sum(markup_amount) as margin")
             ->where('agency_id', $agencyId)
             ->where('level', $level)
             ->where('created_at', '>=', now()->subMonths($months)->startOfMonth())

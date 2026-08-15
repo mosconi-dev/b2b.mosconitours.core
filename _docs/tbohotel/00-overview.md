@@ -1,7 +1,7 @@
 # TBO Hotel Integration — Docs
 
 Documentation for the **TBO Holidays** hotel-supplier integration in `b2b.mosconitours.core`.
-Phases 0–3 are built; PreBook and booking onwards are not.
+The full lifecycle is built: search, PreBook, Book, cancel, voucher and reconciliation.
 
 ## Read in this order
 
@@ -19,12 +19,12 @@ For the sibling integration, whose architecture this one reuses, start at
 
 ## TL;DR
 
-- **Status: Phases 0–3 are done.** The shared seams are supplier-agnostic
+- **Status: the lifecycle is complete.** The shared seams are supplier-agnostic
   (`supplier_api_logs`, `SupplierEnvironmentResolver`, a `product`-bearing booking spine,
   `Confirmed`/`Cancelling` statuses), the hotel client talks to TBO for real, and the catalogue is
   loaded: **249 countries, 194 Philippine cities, 3,364 hotels** across Manila and Cebu City,
   curated per city at `/admin/hotel-catalogue`. **Search works end to end**: Cebu City returns 118
-  available properties in about five seconds. **Next: Phase 4, PreBook and the booking domain.**
+  available properties in about five seconds. **Next: catalogue breadth** — five destinations of 194 are carried, and no city list outside the Philippines has been pulled.
 - **The base-URL question is settled:** the spec's `https://api.tbotechnology.in/HotelAPI`, not
   production's `http://api.tbotechnology.in/TBOHolidays_HotelAPI`. And the hotel API is **not
   IP-restricted**, so unlike TBO Air the read side is fully developable from a dev machine.

@@ -86,7 +86,15 @@ class BookingService
         $price = $this->pricing->quoteOrNet(
             $this->contexts->forFlightOffer([
                 'scope' => $quote->scope->value,
-                'price' => ['offeredFare' => $net, 'currency' => $quote->price['currency'], 'baseFare' => $quote->price['baseFare']],
+                'price' => [
+                    'offeredFare' => $net,
+                    'currency' => $quote->price['currency'],
+                    'baseFare' => $quote->price['baseFare'],
+                    // Declared, so a rule written on `excl_ancillaries` prices the fare
+                    // and leaves the add-ons at cost. Without it the context cannot tell
+                    // the two apart and marks up the whole of net.
+                    'ancillaries' => number_format($ancillaryTotal, 2, '.', ''),
+                ],
                 'isLcc' => $quote->isLcc,
                 'isRefundable' => $quote->isRefundable,
             ], $quote->price['currency'], count($passengers)),

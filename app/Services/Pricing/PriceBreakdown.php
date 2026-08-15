@@ -2,16 +2,18 @@
 
 namespace App\Services\Pricing;
 
-use App\Models\User;
-
 /**
  * What the engine returns: a net price, the rungs added to it, and the selling price.
  *
- * Also the place price visibility is enforced. An Agency must never see the supplier's
- * net or the Main Office's markup as a separate figure, and search results travel to the
- * browser as JSON — so filtering in a Blade template is one devtools panel away from
- * useless. `forViewer()` collapses everything above the viewer's own level into a single
- * opaque "cost" and drops the rest BEFORE serialization.
+ * This is the INTERNAL model — the complete ladder, including the supplier's net and
+ * every level's rule and contribution. It exists to be computed against, written to
+ * `booking_price_layers` as the audit record, and read back by margin reporting.
+ *
+ * **It must never be serialized to an agency.** Search results travel to the browser as
+ * JSON, so filtering in a Blade template is one devtools panel away from useless. The
+ * external representation is a separate type — see AgencyPriceView, which is built from
+ * this one for a named viewer and carries only what that viewer may see. Reaching for
+ * `toArray()` on an agency-facing path is the mistake this split exists to make visible.
  */
 final readonly class PriceBreakdown
 {
@@ -64,26 +66,48 @@ final readonly class PriceBreakdown
         return $this->sell->amount->minus($this->net->amount);
     }
 
-    /** The booker's own margin — their rung, or nothing when they added none. */
+    /**
+     * The booker's own margin — the SUM of their rungs, or nothing when they added none.
+     *
+     * A level contributes as many rungs as it has matching rules, so this is a sum and
+     * not a lookup. Reading a single rung here would under-report an agency's margin the
+     * moment it ran a base rate plus a service fee.
+     */
     public function ownMargin(): Money
     {
-        return $this->layerAt($this->bookerLevel)?->markup ?? Money::zero();
-    }
+        $margin = Money::zero();
 
-    public function layerAt(int $level): ?PricingLayer
-    {
-        foreach ($this->layers as $layer) {
-            if ($layer->level === $level) {
-                return $layer;
-            }
+        foreach ($this->layersAt($this->bookerLevel) as $layer) {
+            $margin = $margin->plus($layer->markup);
         }
 
-        return null;
+        return $margin;
     }
 
     /**
-     * The whole ladder. Only ever for someone entitled to see every rung — the Main
-     * Office, the ladder preview, a margin report.
+     * Every rung a level contributed, in the order they were applied.
+     *
+     * @return array<int, PricingLayer>
+     */
+    public function layersAt(int $level): array
+    {
+        return array_values(array_filter(
+            $this->layers,
+            fn (PricingLayer $layer): bool => $layer->level === $level,
+        ));
+    }
+
+    /** The first rung at a level. Only meaningful where a level has exactly one. */
+    public function layerAt(int $level): ?PricingLayer
+    {
+        return $this->layersAt($level)[0] ?? null;
+    }
+
+    /**
+     * The whole ladder, unredacted — supplier net included.
+     *
+     * Only ever for someone entitled to see every rung: platform staff, the Main Office,
+     * a margin report. Everything agency-facing goes through AgencyPriceView instead.
      *
      * @return array<string, mixed>
      */
@@ -97,44 +121,6 @@ final readonly class PriceBreakdown
             'markupTotal' => (string) $this->markupTotal(),
             'roundingDelta' => (string) $this->roundingDelta,
             'layers' => array_map(fn (PricingLayer $l): array => $l->toArray(), $this->layers),
-        ];
-    }
-
-    /**
-     * The ladder as this viewer is allowed to see it.
-     *
-     * Platform staff and Main Office members see everything. Anyone else sees their cost
-     * as ONE opaque number, their own markup, and the selling price — never the supplier
-     * net, and never an upstream level's margin broken out.
-     *
-     * This is a security boundary, not a presentation choice: the return value is what
-     * goes into the JSON, so what is dropped here is what the browser never receives.
-     *
-     * @return array<string, mixed>
-     */
-    public function forViewer(?User $viewer): array
-    {
-        if ($viewer !== null && $viewer->isPlatformStaff()) {
-            return $this->toArray();
-        }
-
-        $own = $this->layerAt($this->bookerLevel);
-
-        // A Main Office member is at level 0 and has nothing above them, so their cost
-        // is the net — which is theirs to see.
-        $seesNet = $this->bookerLevel === 0;
-
-        return [
-            'currency' => $this->currency,
-            'cost' => (string) $this->cost(),
-            'markup' => (string) ($own?->markup ?? Money::zero()),
-            'sell' => (string) $this->sell->amount,
-            // Their own rung only, and redacted: toArray() carries `basisAmount`, which
-            // IS the supplier net on a net-basis rule. Upstream rungs are not summarised,
-            // not labelled and not counted — how many levels there are is itself
-            // commercial information.
-            'ownLayer' => $own?->toViewerArray(),
-            'net' => $seesNet ? (string) $this->net->amount : null,
         ];
     }
 }

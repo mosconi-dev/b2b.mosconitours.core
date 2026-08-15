@@ -252,6 +252,59 @@ function moneyWhole(amount) {
 }
 
 /**
+ * One pricing rule, named for the fare breakdown popover.
+ *
+ * "8% of the supplier rate" or "a flat ₱250" — the same phrasing the markup screens use,
+ * so a rule reads identically wherever it appears.
+ */
+function fareRuleLabel(layer) {
+    const value = String(layer?.value ?? '').replace(/\.?0+$/, '') || '0';
+
+    return ['percentage_markup', 'percentage_margin'].includes(layer?.calcType)
+        ? `${value}% of the supplier rate`
+        : `a flat ${money(layer?.value)}`;
+}
+
+/**
+ * The fare breakdown, in whichever shape this viewer is entitled to.
+ *
+ * The server sends two different payloads and the popover must not care which:
+ *
+ *   entitled (platform staff, Main Office) — `net` and EVERY rung, each named by the
+ *   agency that took it. They are allowed the whole ladder.
+ *
+ *   an agency — `cost` as one opaque figure, their own margin, and only their own rungs.
+ *   What the levels above took is fused into cost and is not theirs to see.
+ *
+ * Reading `net` is what tells the two apart: it is the one key an agency can never
+ * receive, so its presence IS the entitlement. No separate flag to keep in sync.
+ */
+function fareBreakdown(pricing) {
+    if (! pricing) {
+        return null;
+    }
+
+    const entitled = pricing.net !== undefined && pricing.net !== null;
+    const rungs = (entitled ? pricing.layers : pricing.ownLayers) ?? [];
+
+    return {
+        entitled,
+        baseLabel: entitled ? 'Supplier net' : 'Your cost',
+        baseAmount: entitled ? pricing.net : pricing.cost,
+        // Platform staff may be looking at another agency's fare, so a rung says whose
+        // it is. An agency's own rungs need no such label.
+        rows: rungs.map((l) => ({
+            label: entitled ? `${l.agencyName} — ${fareRuleLabel(l)}` : fareRuleLabel(l),
+            note: l.description,
+            amount: l.markup,
+        })),
+        marginLabel: entitled ? 'Total markup' : 'Your margin',
+        marginAmount: entitled ? pricing.markupTotal : pricing.markup,
+        totalAmount: pricing.sell,
+    };
+}
+
+/**
  * flightSearch — state + behaviour for the flight search form and results.
  */
 Alpine.data('flightSearch', (config = {}) => ({
@@ -2478,8 +2531,8 @@ Alpine.data('ladderPreview', (config = {}) => ({
  * agencyMarkupPreview — an agency's own "what do I sell this for?" panel.
  *
  * The same server round-trip as the office ladder, and deliberately so: the response is
- * PriceBreakdown::forViewer(), which is what decides that this page never receives the
- * supplier net or the office's margin. Computing it here would mean sending the pieces.
+ * an AgencyPriceView, which is what decides that this page never receives the supplier
+ * net or the office's margin. Computing it here would mean sending the pieces.
  */
 Alpine.data('agencyMarkupPreview', (config = {}) => ({
     url: config.url,
@@ -2493,6 +2546,70 @@ Alpine.data('agencyMarkupPreview', (config = {}) => ({
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         });
+    },
+
+    /** Trailing zeros off a stored decimal: 8.0000 reads as 8. */
+    trim(value) {
+        return String(value ?? '').replace(/\.?0+$/, '') || '0';
+    },
+
+    /** Every rule of theirs that fired. A level is cumulative, so this is a list. */
+    get layers() {
+        return this.result?.ownLayers ?? [];
+    },
+
+    get matched() {
+        return this.layers.length > 0;
+    },
+
+    isPercentage(layer) {
+        return ['percentage_markup', 'percentage_margin'].includes(layer?.calcType);
+    },
+
+    /** "8% of the supplier rate", or "a flat ₱200". */
+    ruleLabel(layer) {
+        if (this.isPercentage(layer)) {
+            const of = layer.basis === 'running' ? 'of your cost' : 'of the supplier rate';
+
+            return `${this.trim(layer.value)}% ${of}`;
+        }
+
+        return `a flat ${this.money(layer.value)}`;
+    },
+
+    /** The arithmetic, spelled out: "8% × 5,000.00". */
+    workingOut(layer) {
+        return this.isPercentage(layer)
+            ? `${this.trim(layer.value)}% × ${this.money(this.result.cost)}`
+            : 'flat amount';
+    },
+
+    /** What the rule matched on, as chips. */
+    criteria(layer) {
+        const products = { flight: 'Flight', hotel: 'Hotel' };
+        const scopes = { domestic: 'Domestic', international: 'International' };
+
+        return [
+            products[layer.product] ?? 'All products',
+            scopes[layer.scope] ?? 'Domestic and international',
+            layer.supplier ? layer.supplier : null,
+        ].filter(Boolean);
+    },
+
+    /** A floor or cap only worth mentioning when one is set. */
+    bounds(layer) {
+        const min = layer?.minMarkup;
+        const max = layer?.maxMarkup;
+
+        if (min == null && max == null) {
+            return '';
+        }
+
+        if (min != null && max != null) {
+            return `floor ${this.money(min)} · cap ${this.money(max)}`;
+        }
+
+        return min != null ? `floor ${this.money(min)}` : `cap ${this.money(max)}`;
     },
 
     async run() {
@@ -2528,5 +2645,10 @@ Alpine.data('agencyMarkupPreview', (config = {}) => ({
         }
     },
 }));
+
+// Available in any component without wiring: the fare popover is rendered from one
+// shared partial on four different screens, each owned by a different Alpine root.
+Alpine.magic('money', () => money);
+Alpine.magic('fareBreakdown', () => fareBreakdown);
 
 Alpine.start();

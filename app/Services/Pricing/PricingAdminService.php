@@ -145,7 +145,7 @@ class PricingAdminService
      */
     private function normalise(array $data): array
     {
-        foreach (['supplier', 'min_markup', 'max_markup', 'valid_from', 'valid_to'] as $key) {
+        foreach (['description', 'supplier', 'min_markup', 'max_markup', 'valid_from', 'valid_to'] as $key) {
             if (array_key_exists($key, $data) && $data[$key] === '') {
                 $data[$key] = null;
             }

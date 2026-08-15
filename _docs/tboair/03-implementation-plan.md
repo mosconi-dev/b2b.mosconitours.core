@@ -255,16 +255,21 @@ Each is detailed under "Gaps for the booking lifecycle" in `02-current-implement
 
 **Goal:** pass TBO certification and switch to production.
 
-- ⚠️ **The test environment appears to have no LCC inventory.** A MNL→CEB search returned 40 results,
-  all Philippine Airlines, with no 5J or Z2 anywhere — so **cases 1–5 cannot be run as written**. Case 6
-  (non-LCC, 2 adults, one-way, non-stop) was used for the first real booking instead. Ask TBO how to
-  reach LCC content on test before planning the certification run.
-- Run the **11 required test cases** on the **test** environment — the exact matrix (5 LCC, 4 non-LCC,
-  plus price/schedule-change and `InProgress` handling) is tabulated in §7 of
-  `01-tbo-api-reference.md`. Two shape the build rather than merely exercising it: **Case 10**
-  (price/schedule change on non-LCC → `IsPriceChanged` / `IsTimeChanged`) and **Case 11**
-  (`InProgress`). Cases 4, 5, 7 and 9 require **baggage/meal**, so Phase 3's SSR work is on the
-  certification path.
+- **Seven of eleven cases pass; nine of eleven have been run.** The matrix in §7 of
+  `01-tbo-api-reference.md` now carries the booking reference and PNR for each. All were run through
+  the real UI on the **test** environment on 15 August 2026, with a Main Office 10% and four
+  cumulative agency rules configured, and every one reconciles: price layers sum to `markup_total`,
+  `net + markup = total`, and the wallet is debited **cost**, never the selling price.
+- **The earlier "no LCC inventory on test" note was wrong.** It was drawn from a single MNL→CEB search.
+  Air India Express sells DEL–DXB with one stop, and cases 3, 4 and 5 ran on it. What is genuinely
+  missing is **non-stop LCC**, which blocks cases 1 and 2 — DEL–DXB has none on any date tried, and
+  DEL–BOM, BOM–DXB and DEL–BLR return nothing at all. Ask TBO for a route with non-stop LCC on test.
+- **Cases 7 and 9 booked without their meal** — we cannot send one on a GDS fare yet (see the non-LCC
+  meal gap in `02`). This is the one build gap left on the certification path; the rest of both cases
+  was exercised, so they may be resubmittable once the field is known.
+- **Cases 10 and 11 still shape the build rather than merely exercising it**: Case 10 (price/schedule
+  change on non-LCC → `IsPriceChanged` / `IsTimeChanged`) and Case 11 (`InProgress`). Neither is
+  producible by ordinary booking — both need TBO to designate a scenario.
 - Submit the JSON request/response **plus PNR numbers**, **case by case, not consolidated**;
   `GetBookingDetails` must appear in every case. The **API Logs** pages already capture the evidence —
   an export-per-case view would make this mechanical.

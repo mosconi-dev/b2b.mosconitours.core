@@ -79,8 +79,14 @@
                 <div class="border-b border-gray-100 px-6 py-4">
                     <h2 class="text-base font-semibold text-brand-900">Rules</h2>
                     <p class="mt-1 text-sm text-gray-500">
-                        Evaluated top to bottom. <strong>The first rule that matches wins</strong> and the rest are not
-                        consulted &mdash; put narrow rules above broad ones, and a catch-all last.
+                        <strong>Every rule that matches applies, and they add up.</strong> A base rate, a
+                        service fee and a surcharge are three rules, and a booking they all match pays
+                        all three &mdash; so a rule left switched on keeps charging.
+                        <br>
+                        <span class="text-gray-400">Every rule is a percentage or an amount of the
+                        <strong class="font-medium text-gray-500">supplier net</strong>, so they never
+                        compound on each other and the order they are listed in does not affect the
+                        total.</span>
                     </p>
                 </div>
 
@@ -93,10 +99,8 @@
                         <table class="min-w-full text-sm">
                             <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 <tr>
-                                    <th class="px-6 py-3">Priority</th>
                                     <th class="px-6 py-3">Applies to</th>
                                     <th class="px-6 py-3">Adds</th>
-                                    <th class="px-6 py-3">Basis</th>
                                     <th class="px-6 py-3">Bounds</th>
                                     <th class="px-6 py-3"></th>
                                 </tr>
@@ -104,7 +108,6 @@
                             <tbody class="divide-y divide-gray-100">
                                 @foreach ($strategy->rules as $rule)
                                     <tr class="{{ $rule->is_active ? '' : 'opacity-50' }}">
-                                        <td class="px-6 py-3 font-mono text-xs text-gray-500">{{ $rule->priority }}</td>
                                         <td class="px-6 py-3">
                                             <span class="font-medium text-brand-900">{{ $products[$rule->product] ?? $rule->product }}</span>
                                             @if ($rule->scope !== 'any')
@@ -112,6 +115,9 @@
                                             @endif
                                             @if (filled($rule->supplier))
                                                 <span class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $suppliers[$rule->supplier] ?? $rule->supplier }}</span>
+                                            @endif
+                                            @if (filled($rule->description))
+                                                <p class="mt-0.5 text-xs text-gray-500">{{ $rule->description }}</p>
                                             @endif
                                         </td>
                                         <td class="px-6 py-3 font-semibold text-brand-900">
@@ -121,7 +127,6 @@
                                                 {{ number_format((float) $rule->value, 2) }}
                                             @endif
                                         </td>
-                                        <td class="px-6 py-3 text-gray-600">{{ $bases[$rule->basis->value] }}</td>
                                         <td class="px-6 py-3 text-xs text-gray-500">
                                             @if ($rule->min_markup !== null || $rule->max_markup !== null)
                                                 min {{ $rule->min_markup === null ? '—' : number_format((float) $rule->min_markup, 2) }},
@@ -157,7 +162,6 @@
                                 ['scope', 'Scope', $scopes, 'any'],
                                 ['supplier', 'Supplier', $suppliers, ''],
                                 ['calc_type', 'Type', $calcTypes, 'fixed'],
-                                ['basis', 'Basis', $bases, 'net'],
                             ] as [$field, $label, $options, $default])
                                 <div>
                                     <label for="{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
@@ -173,7 +177,6 @@
                                 ['value', 'Amount or %', 'number', old('value'), 'required'],
                                 ['min_markup', 'Floor', 'number', old('min_markup'), ''],
                                 ['max_markup', 'Cap', 'number', old('max_markup'), ''],
-                                ['priority', 'Priority', 'number', old('priority', 100), 'required'],
                             ] as [$field, $label, $type, $value, $required])
                                 <div>
                                     <label for="{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
@@ -182,6 +185,23 @@
                                 </div>
                             @endforeach
 
+                            <div class="sm:col-span-2 lg:col-span-4">
+                                <label for="description" class="mb-1 block text-xs font-medium text-gray-600">
+                                    Note <span class="font-normal text-gray-400">— optional, why this rule exists</span>
+                                </label>
+                                <input id="description" name="description" type="text" maxlength="255"
+                                       value="{{ old('description') }}"
+                                       placeholder="e.g. Covers the card fee on international issues"
+                                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                            </div>
+
+                            {{-- Every rule works from the supplier net, so contributions
+                                 never compound and the order they run in cannot change a
+                                 total. That is why there is no Basis choice and no Order
+                                 field: both only ever mattered to a compounding rule.
+                                 The engine still honours `running` if a rule carries it,
+                                 so re-offering it is a form change and nothing more. --}}
+                            <input type="hidden" name="basis" value="net">
                             <input type="hidden" name="applies_to" value="total">
                             <input type="hidden" name="rounding" value="none">
                             <input type="hidden" name="is_active" value="1">

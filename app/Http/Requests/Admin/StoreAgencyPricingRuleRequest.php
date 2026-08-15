@@ -2,54 +2,31 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Enums\CalcType;
-use App\Enums\PricingBasis;
-
 /**
- * An agency's own rule, which is the Main Office rule form with one restriction.
+ * An agency's own rule.
  *
- * **A percentage rule at agency level must work from the running total, never net.**
- * The reason is arithmetic rather than policy: an agency may see its own markup, so if
- * it sets "10% of net" and is shown a markup of ₱500, the supplier net falls out as
- * ₱5,000 in one division. No amount of redaction closes that — the agency wrote the
- * rule. Working from the running total means the percentage is taken of the agency's
- * own cost, a figure it already knows, and it is also what "I add 10% to what I pay"
- * actually means.
+ * Identical to the Main Office form's validation, and deliberately so: **every rule at
+ * every level works from the supplier net.** An agency adding 10% adds it to the
+ * original supplier price, not to what the level above already charged it, so the levels
+ * add rather than compound and the total does not depend on the order they run in.
  *
- * Fixed rules are unaffected: a flat ₱200 says nothing about what the room cost.
+ * That is enforced in the parent, for both forms, rather than here for one — a rule that
+ * compounds would make the order it runs in load-bearing, and neither screen asks for an
+ * order any more.
  *
- * See D12 in _docs/pricing/01-architecture.md. Reversible in one rule if the business
- * would rather accept the disclosure.
+ * **The disclosure this accepts.** A percentage of net means an agency shown its own
+ * markup of ₱500 on a 10% rule can divide back to a supplier net of ₱5,000. The leak is
+ * arithmetic rather than a defect — the agency wrote the rule — so no redaction closes
+ * it. Signed off on 15 August 2026 in favour of the simpler pricing model. What it makes
+ * load-bearing is AgencyPriceView, which never puts a markup or a cost on a real offer at
+ * all: the figure that inverts is only ever shown against a fare the agency typed itself.
+ *
+ * See D12 in _docs/pricing/01-architecture.md.
+ *
+ * The class survives as its own type because the controller and the policy pair on it,
+ * and because an agency-only restriction is likely to return.
  */
 class StoreAgencyPricingRuleRequest extends StorePricingRuleRequest
 {
-    /**
-     * A percentage rule is forced onto the running basis rather than refused: the
-     * agency asked for a percentage and there is exactly one basis it may have, so
-     * rejecting the form would be asking them to guess the answer.
-     */
-    protected function prepareForValidation(): void
-    {
-        if ($this->input('calc_type') === CalcType::PercentageMarkup->value) {
-            $this->merge(['basis' => PricingBasis::Running->value]);
-        }
-    }
-
-    public function withValidator($validator): void
-    {
-        parent::withValidator($validator);
-
-        $validator->after(function ($validator): void {
-            if ($this->input('calc_type') !== CalcType::PercentageMarkup->value) {
-                return;
-            }
-
-            if ($this->input('basis') !== PricingBasis::Running->value) {
-                $validator->errors()->add(
-                    'basis',
-                    'An agency percentage is taken of your own cost, not of the supplier rate.',
-                );
-            }
-        });
-    }
+    //
 }

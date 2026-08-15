@@ -368,19 +368,33 @@ Observed pairings across 338 logged calls (**search generation only**):
 
 The exact **11 cases**, from `Certification.aspx` — 5 LCC, 4 non-LCC, 2 behavioural:
 
-| # | Carrier | Passengers | Journey |
-| --- | --- | --- | --- |
-| 1 | LCC | 2 adults | one-way, non-stop |
-| 2 | LCC | 2 adults + 1 child + 1 infant | one-way, non-stop |
-| 3 | LCC | 1 adult + 1 child + 1 infant | return, 1 stop |
-| 4 | LCC | 1 adult + 1 child + 1 infant | one-way, 1 stop — **with baggage + meal** |
-| 5 | LCC | 2 adults + 1 child + 1 infant | return, 1 stop — **with baggage + meal** |
-| 6 | Non-LCC | 2 adults | one-way, non-stop |
-| 7 | Non-LCC | 2 adults + 1 child + 1 infant | one-way, 1 stop — **with meal** |
-| 8 | Non-LCC | 3 adults | return, non-stop |
-| 9 | Non-LCC | 2 adults + 1 child + 1 infant | return, 1 stop — **with meal** |
-| 10 | Non-LCC | — | **price / schedule change** verification |
-| 11 | Both | — | **`InProgress` status handling** |
+| # | Carrier | Passengers | Journey | Run (test env, 15 Aug 2026) |
+| --- | --- | --- | --- | --- |
+| 1 | LCC | 2 adults | one-way, non-stop | **blocked** — no non-stop LCC on DEL–DXB |
+| 2 | LCC | 2 adults + 1 child + 1 infant | one-way, non-stop | **blocked** — same |
+| 3 | LCC | 1 adult + 1 child + 1 infant | return, 1 stop | ✅ `MT-LC9TWA9G` · PNR **ASL5JL** |
+| 4 | LCC | 1 adult + 1 child + 1 infant | one-way, 1 stop — **with baggage + meal** | ✅ `MT-7GTLXSP3` · PNR **B4SKWT** |
+| 5 | LCC | 2 adults + 1 child + 1 infant | return, 1 stop — **with baggage + meal** | ✅ `MT-AJEFTZWB` · PNR **M45L4T** |
+| 6 | Non-LCC | 2 adults | one-way, non-stop | ✅ `MT-XCHBVEA4` · PNR **729QZS** |
+| 7 | Non-LCC | 2 adults + 1 child + 1 infant | one-way, 1 stop — **with meal** | ⚠️ `MT-E43ZBZRQ` · PNR **72BDXF** — **no meal**, see below |
+| 8 | Non-LCC | 3 adults | return, non-stop | ✅ `MT-SJGXT4QE` · PNR **72AJTZ** |
+| 9 | Non-LCC | 2 adults + 1 child + 1 infant | return, 1 stop — **with meal** | ⚠️ `MT-E9YCQIUV` · PNR **72DIOK** — **no meal**, see below |
+| 10 | Non-LCC | — | **price / schedule change** verification | not run — needs a TBO-designated scenario |
+| 11 | Both | — | **`InProgress` status handling** | not run — same |
+
+**Cases 1–2 are blocked on inventory, not on the build.** DEL–DXB has no non-stop LCC on any date
+tried; DEL–BOM, BOM–DXB and DEL–BLR return nothing at all. The earlier note that the test environment
+has *no* LCC content is wrong — Air India Express (IX) sells DEL–DXB with one stop, which is what
+cases 3–5 ran on. Ask TBO for a route that has non-stop LCC on test.
+
+**Cases 7 and 9 ran without their meal**, because we cannot yet send one on a GDS fare — see the
+non-LCC meal gap in `02-current-implementation.md`. Everything else in both cases was exercised.
+
+Ticket numbers behave differently by fare type, and both are correct: **GDS returns real 13-digit IATA
+tickets, one per passenger**; **LCC returns the PNR itself as the ticket number**, shared by everyone on
+the booking, because low-cost carriers do not issue IATA e-tickets — the booking reference *is* the
+travel document. On case 8, TBO returned the three tickets in a different order than they were sent and
+they still paired to the right passengers, which is the name-matching in `BookingService` working.
 
 **Submission:** the JSON request/response **plus the PNR numbers**, submitted **case by case, not
 consolidated**. `GetBookingDetails` must appear in every case. Verification takes **4–5 working days**;

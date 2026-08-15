@@ -420,14 +420,23 @@
                 <tr class="grp">
                     <td colspan="2">{{ $line['label'] }} &times; {{ $line['count'] }}</td>
                 </tr>
-                <tr>
-                    <td class="muted">Base fare <span class="small">({{ $booking->currency }} {{ number_format($line['baseFare'] / $line['count'], 2) }} each)</span></td>
-                    <td class="right nowrap">{{ $booking->currency }} {{ number_format($line['baseFare'], 2) }}</td>
-                </tr>
-                <tr>
-                    <td class="muted">Taxes and fees</td>
-                    <td class="right nowrap">{{ $booking->currency }} {{ number_format($line['tax'], 2) }}</td>
-                </tr>
+                {{-- The supplier's own components are present only for a viewer entitled
+                     to the net; on every other copy the line is the selling fare. --}}
+                @if (isset($line['baseFare'], $line['tax']))
+                    <tr>
+                        <td class="muted">Base fare <span class="small">({{ $booking->currency }} {{ number_format($line['baseFare'] / $line['count'], 2) }} each)</span></td>
+                        <td class="right nowrap">{{ $booking->currency }} {{ number_format($line['baseFare'], 2) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Taxes and fees</td>
+                        <td class="right nowrap">{{ $booking->currency }} {{ number_format($line['tax'], 2) }}</td>
+                    </tr>
+                @else
+                    <tr>
+                        <td class="muted">Fare <span class="small">({{ $booking->currency }} {{ number_format($line['each'], 2) }} each)</span></td>
+                        <td class="right nowrap">{{ $booking->currency }} {{ number_format($line['total'], 2) }}</td>
+                    </tr>
+                @endif
                 <tr class="sub">
                     <td class="right">{{ $line['label'] }} subtotal</td>
                     <td class="right nowrap">{{ $booking->currency }} {{ number_format($line['total'], 2) }}</td>

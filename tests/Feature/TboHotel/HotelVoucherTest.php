@@ -434,4 +434,39 @@ class HotelVoucherTest extends TestCase
             ->assertSee('Print voucher')
             ->assertSee(route('hotels.bookings.voucher', $booking), false);
     }
+
+    /**
+     * The per-night rate on the voucher is OURS, not the supplier's.
+     *
+     * The stored quote keeps TBO's own nightly figure, and it is the net. Printed on a
+     * document an agency holds, it multiplies straight back up to our cost — so the
+     * voucher recomputes it from what the agency was actually charged.
+     */
+    public function test_the_nightly_rate_is_recomputed_from_the_selling_total(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM']);
+
+        // TBO's own per-night net for the two-night stay, well below what we charged.
+        $booking->update(['quote' => $booking->quote + ['nightlyRate' => 1500.00]]);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertSee('2,018.01')     // 4,036.02 over two nights, one room
+            ->assertDontSee('1,500.00') // TBO's figure
+            ->assertDontSee('3,000.00'); // and what it multiplies back up to
+    }
+
+    /** An unevenly priced stay keeps the supplier's null rather than inventing a rate. */
+    public function test_no_nightly_rate_is_printed_when_the_supplier_gave_none(): void
+    {
+        $user = $this->agent();
+        $booking = $this->booking($user, BookingStatus::Confirmed, ['confirmation_number' => 'WM9CWM']);
+
+        $this->actingAs($user)
+            ->get(route('hotels.bookings.voucher', $booking))
+            ->assertOk()
+            ->assertDontSee('per room per night');
+    }
 }

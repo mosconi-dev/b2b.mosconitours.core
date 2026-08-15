@@ -69,7 +69,7 @@ final readonly class PricingLayer
      *
      * **`basisAmount` is the supplier net whenever the rule uses a `net` basis**, so
      * this must never be serialized to a viewer below this level. Send
-     * toViewerArray() instead — PriceBreakdown::forViewer() does.
+     * toViewerArray() instead — AgencyPriceView does.
      *
      * @return array<string, mixed>
      */
@@ -82,6 +82,7 @@ final readonly class PricingLayer
             'ruleId' => $this->ruleId,
             'calcType' => $this->ruleSnapshot['calc_type'] ?? null,
             'value' => $this->ruleSnapshot['value'] ?? null,
+            'description' => $this->ruleSnapshot['description'] ?? null,
             'basisAmount' => (string) $this->basis,
             'markup' => (string) $this->markup,
             'runningTotal' => (string) $this->runningTotal,
@@ -89,7 +90,13 @@ final readonly class PricingLayer
     }
 
     /**
-     * The rung as its own owner may see it: what they added, and what rule did it.
+     * The rung as its own owner may see it: what they added, and which of THEIR rules
+     * did it.
+     *
+     * The matching criteria are here so the preview can answer "why this rule and not
+     * the one below it" — which is the question an agency actually has once it holds
+     * more than one rule. They are the agency's own configuration, so naming them back
+     * discloses nothing.
      *
      * `basisAmount` and `runningTotal` are dropped. The basis is the supplier net on a
      * `net`-basis rule, which is precisely the figure an agency must not receive, and
@@ -106,6 +113,15 @@ final readonly class PricingLayer
             'calcType' => $this->ruleSnapshot['calc_type'] ?? null,
             'value' => $this->ruleSnapshot['value'] ?? null,
             'markup' => (string) $this->markup,
+            // Which of their own rules fired, why it exists, and what it matched on.
+            'description' => $this->ruleSnapshot['description'] ?? null,
+            'product' => $this->ruleSnapshot['product'] ?? null,
+            'scope' => $this->ruleSnapshot['scope'] ?? null,
+            'supplier' => $this->ruleSnapshot['supplier'] ?? null,
+            'priority' => $this->ruleSnapshot['priority'] ?? null,
+            'basis' => $this->ruleSnapshot['basis'] ?? null,
+            'minMarkup' => $this->ruleSnapshot['min_markup'] ?? null,
+            'maxMarkup' => $this->ruleSnapshot['max_markup'] ?? null,
         ];
     }
 }

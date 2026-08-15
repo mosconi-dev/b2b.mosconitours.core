@@ -3,6 +3,7 @@
 namespace App\Services\Pricing;
 
 use App\Models\User;
+use Illuminate\Support\Arr;
 
 /**
  * The one place the engine meets a product payload on the way to a browser.
@@ -45,7 +46,7 @@ class OfferPricer
 
             $offer['price']['offeredFare'] = $breakdown->sell->amount->toFloat();
             $offer['price'] = $this->redactFare($offer['price'], $viewer);
-            $offer['pricing'] = $breakdown->forViewer($viewer);
+            $offer['pricing'] = AgencyPriceView::forOffer($breakdown, $viewer)->toArray();
 
             return $offer;
         }, (array) ($payload['results'] ?? []));
@@ -69,9 +70,71 @@ class OfferPricer
         $quote['fareBreakdown'] = $this->allocateBreakdown((array) ($quote['fareBreakdown'] ?? []), $net, $sell, $viewer);
         $quote['price']['offeredFare'] = $sell->toFloat();
         $quote['price'] = $this->redactFare($quote['price'], $viewer);
-        $quote['pricing'] = $breakdown->forViewer($viewer);
+        $quote['pricing'] = AgencyPriceView::forOffer($breakdown, $viewer)->toArray();
 
         return $quote;
+    }
+
+    /**
+     * Price the add-on menu — every baggage and meal option the wizard offers.
+     *
+     * These arrive from TBO at SUPPLIER NET, and reached the browser untouched: the
+     * pickers listed our cost for a bag, and the payment step added that cost to an
+     * already-priced fare, so the agent approved a total lower than the one the
+     * booking was written at. Both halves of that are fixed here.
+     *
+     * Each option is priced at its MARGINAL selling price — what the total goes up by
+     * when this option is added — because that is literally how the charge is formed:
+     * BookingService folds ancillaries into net and prices the sum once. Taking the
+     * difference rather than pricing the option on its own keeps flat rules out of it,
+     * so a ₱250 service fee is charged once for the booking and not once per meal.
+     *
+     * @param  array<string, mixed>  $ssr  Ssr::toArray()
+     * @param  array<string, mixed>  $quote  the FareQuote::toArray() these belong to
+     * @return array<string, mixed>
+     */
+    public function ssr(array $ssr, array $quote, User $viewer): array
+    {
+        $fare = $this->engine
+            ->quoteOrNet($this->contexts->forFareQuote($quote), $viewer->agency)
+            ->sell->amount;
+
+        foreach (['baggage', 'meals'] as $kind) {
+            $ssr[$kind] = array_map(
+                fn (array $option): array => $this->priceOption($option, $quote, $fare, $viewer),
+                (array) ($ssr[$kind] ?? []),
+            );
+        }
+
+        return $ssr;
+    }
+
+    /**
+     * One add-on at the price the agency pays for it.
+     *
+     * A free option stays free: TBO sends complimentary meals at 0.00, and a
+     * percentage of nothing is nothing, so no special case is needed for them.
+     *
+     * @param  array<string, mixed>  $option
+     * @param  array<string, mixed>  $quote
+     * @return array<string, mixed>
+     */
+    private function priceOption(array $option, array $quote, Money $fare, User $viewer): array
+    {
+        $net = Money::of($option['price'] ?? 0);
+
+        $quote['price']['offeredFare'] = (string) Money::of(Arr::get($quote, 'price.offeredFare', 0))->plus($net);
+        // Declared so a rule written on `excl_ancillaries` can exclude exactly this
+        // option, which is the only reason that basis exists.
+        $quote['price']['ancillaries'] = (string) $net;
+
+        $withOption = $this->engine
+            ->quoteOrNet($this->contexts->forFareQuote($quote), $viewer->agency)
+            ->sell->amount;
+
+        $option['price'] = $withOption->minus($fare)->toFloat();
+
+        return $option;
     }
 
     /**
@@ -111,7 +174,7 @@ class OfferPricer
                 : round($breakdown->sell->amount->toFloat() / max(1, $nights * $rooms), 2);
 
             $room['totalFare'] = $breakdown->sell->amount->toFloat();
-            $room['pricing'] = $breakdown->forViewer($viewer);
+            $room['pricing'] = AgencyPriceView::forOffer($breakdown, $viewer)->toArray();
 
             // The per-night base prices sum to the net fare, so they hand over our cost
             // in one addition. `totalTax` stays: it is a component, not a total, and the
@@ -190,39 +253,8 @@ class OfferPricer
      */
     private function allocateBreakdown(array $rows, Money $net, Money $sell, User $viewer): array
     {
-        if ($rows === []) {
-            return $rows;
-        }
+        $rows = FareAllocation::allocate($rows, $net, $sell);
 
-        $allocated = Money::zero();
-        $last = array_key_last($rows);
-
-        foreach ($rows as $i => $row) {
-            $count = max(1, (int) ($row['count'] ?? 1));
-
-            // A FareBreakdown row is the GROUP total for that passenger type — a row of
-            // three adults already holds the fare for all three, which is why summing
-            // the rows reproduces the trip total (see FareTotal). Multiplying by `count`
-            // here would price the group twice.
-            $rowNet = Money::of($row['baseFare'] ?? 0)->plus(Money::of($row['tax'] ?? 0));
-
-            if ($i === $last) {
-                // Whatever is left, so the rows reconcile to the total exactly.
-                $rowSell = $sell->minus($allocated);
-            } else {
-                $share = $net->isZero() ? Money::zero() : $rowNet->times(bcdiv((string) $sell, (string) $net, 6));
-                $rowSell = $share;
-                $allocated = $allocated->plus($share);
-            }
-
-            $rows[$i]['amount'] = $rowSell->times(bcdiv('1', (string) $count, 6))->toFloat();
-            $rows[$i]['amountTotal'] = $rowSell->toFloat();
-
-            if (! $viewer->isPlatformStaff()) {
-                unset($rows[$i]['baseFare'], $rows[$i]['tax']);
-            }
-        }
-
-        return array_values($rows);
+        return $viewer->isPlatformStaff() ? $rows : FareAllocation::redact($rows);
     }
 }

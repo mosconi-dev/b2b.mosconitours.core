@@ -74,18 +74,41 @@ class BookingPriceSpineTest extends TestCase
         $this->assertSame('500.00', $layer->markup_amount, 'readable without the rule it points at');
     }
 
-    public function test_one_layer_per_level_is_enforced_by_the_database(): void
+    /**
+     * A level contributes one rung per matching rule, so several rows at the same level
+     * are the normal case now — a base rate and a service fee, both recorded.
+     */
+    public function test_a_level_may_record_one_rung_per_rule(): void
     {
         $booking = Booking::factory()->create();
         $agency = Agency::factory()->create();
 
-        $booking->priceLayers()->create($this->layer(BookingPriceLayer::MAIN_OFFICE, $agency, '500.00', '5500.00'));
+        $booking->priceLayers()->create(
+            $this->layer(BookingPriceLayer::AGENCY, $agency, '250.00', '5750.00') + ['pricing_rule_id' => 11],
+        );
+        $booking->priceLayers()->create(
+            $this->layer(BookingPriceLayer::AGENCY, $agency, '100.00', '5850.00') + ['pricing_rule_id' => 12],
+        );
 
-        // A second level-0 row would be the engine having run twice — a silent doubling
-        // of the margin if the database allowed it.
+        $this->assertCount(2, $booking->fresh()->priceLayers);
+    }
+
+    public function test_the_same_rule_cannot_be_recorded_twice_on_one_booking(): void
+    {
+        $booking = Booking::factory()->create();
+        $agency = Agency::factory()->create();
+
+        $booking->priceLayers()->create(
+            $this->layer(BookingPriceLayer::MAIN_OFFICE, $agency, '500.00', '5500.00') + ['pricing_rule_id' => 7],
+        );
+
+        // The same rule twice at the same level is the engine having run twice — a
+        // silent doubling of the margin if the database allowed it.
         $this->expectException(QueryException::class);
 
-        $booking->priceLayers()->create($this->layer(BookingPriceLayer::MAIN_OFFICE, $agency, '500.00', '6000.00'));
+        $booking->priceLayers()->create(
+            $this->layer(BookingPriceLayer::MAIN_OFFICE, $agency, '500.00', '6000.00') + ['pricing_rule_id' => 7],
+        );
     }
 
     public function test_the_agency_margin_is_the_agency_rung_only(): void
