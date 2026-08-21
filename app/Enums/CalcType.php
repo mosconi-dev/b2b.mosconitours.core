@@ -71,6 +71,88 @@ enum CalcType: string
     }
 
     /**
+     * Whether this type can be charged on a given product.
+     *
+     * The unit a fee scales on is a property of the product, not a preference. A hotel
+     * rate is per room per night and a fare is per passenger, and charging either on the
+     * other's axis grows the fee with a number the supplier never charged on — the live
+     * system multiplied hotel markup by head count, so two adults in one double room paid
+     * one room rate and two markups.
+     *
+     * A rule matching **every** product (`'*'`) gets neither per-unit type, because
+     * neither means the same thing on both sides of that wildcard. Say which product it
+     * is, and the unit becomes available.
+     *
+     * This is advisory in the form and binding in StorePricingRuleRequest. The form can
+     * be bypassed; the validator cannot.
+     */
+    public function appliesToProduct(string $product): bool
+    {
+        return match ($this) {
+            self::PerPax => $product === BookingProduct::Flight->value,
+            self::PerRoomNight => $product === BookingProduct::Hotel->value,
+            default => true,
+        };
+    }
+
+    /**
+     * Why a type is missing from a product's list, for the form to say out loud.
+     *
+     * A greyed-out option with no explanation reads as a bug. Naming the restriction
+     * turns it into a decision somebody made.
+     */
+    public function productRestriction(): ?string
+    {
+        return match ($this) {
+            self::PerPax => 'flights only',
+            self::PerRoomNight => 'hotels only',
+            default => null,
+        };
+    }
+
+    /**
+     * The implemented types this product may use.
+     *
+     * @return array<int, self>
+     */
+    public static function forProduct(string $product): array
+    {
+        return array_values(array_filter(
+            self::implemented(),
+            fn (self $type): bool => $type->appliesToProduct($product),
+        ));
+    }
+
+    /**
+     * @return array<string, string> value => label, for one product's select
+     */
+    public static function optionsForProduct(string $product): array
+    {
+        return array_reduce(
+            self::forProduct($product),
+            fn (array $carry, self $type): array => $carry + [$type->value => $type->label()],
+            [],
+        );
+    }
+
+    /**
+     * Every product's allowed types, for a form that has to switch between them without
+     * a round trip.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function optionsByProduct(): array
+    {
+        $products = array_merge(['*'], BookingProduct::values());
+
+        return array_reduce(
+            $products,
+            fn (array $carry, string $product): array => $carry + [$product => self::optionsForProduct($product)],
+            [],
+        );
+    }
+
+    /**
      * The types with a Calculator behind them today.
      *
      * Anything else is refused at validation rather than at quote time: a rule that

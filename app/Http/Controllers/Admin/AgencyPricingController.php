@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\BookingProduct;
+use App\Enums\CalcType;
 use App\Enums\Supplier;
 use App\Enums\TravelScope;
 use App\Http\Controllers\Controller;
@@ -146,6 +147,10 @@ class AgencyPricingController extends Controller
     public static function formOptions(): array
     {
         return [
+            'calcTypes' => CalcType::options(),
+            // Every product's allowed types, so the form can narrow the select without a
+            // round trip. Advisory here; StoreAgencyPricingRuleRequest is what binds it.
+            'calcTypesByProduct' => CalcType::optionsByProduct(),
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(
                 BookingProduct::cases(),
                 fn (array $c, BookingProduct $p): array => $c + [$p->value => $p->label()],

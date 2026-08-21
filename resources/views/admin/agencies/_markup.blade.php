@@ -219,21 +219,43 @@
                 @csrf
                 <h3 class="mb-3 text-sm font-semibold text-brand-900">Add a rule</h3>
 
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    @foreach ([
-                        ['product', 'Product', $options['products'], '*'],
-                        ['scope', 'Scope', $options['scopes'], 'any'],
-                        ['calc_type', 'Type', \App\Enums\CalcType::options(), 'fixed'],
-                    ] as [$field, $label, $opts, $default])
-                        <div>
-                            <label for="ag-{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
-                            <select id="ag-{{ $field }}" name="{{ $field }}" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                                @foreach ($opts as $value => $text)
-                                    <option value="{{ $value }}" @selected(old($field, $default) === (string) $value)>{{ $text }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                    @endforeach
+                {{-- Product and Type are bound together: a per-passenger fee is
+                     meaningless on a hotel and a per-room-night one on a flight, so
+                     choosing a product narrows the types on offer. Alpine only greys the
+                     wrong ones out — StoreAgencyPricingRuleRequest is what refuses them,
+                     so a form posted without JavaScript is held to the same rule. --}}
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+                     x-data="{ product: @js(old('product', '*')), calcType: @js(old('calc_type', 'fixed')), byProduct: @js($options['calcTypesByProduct']) }"
+                     x-effect="if (! (calcType in byProduct[product])) calcType = 'fixed'">
+                    <div>
+                        <label for="ag-product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
+                        <select id="ag-product" name="product" x-model="product" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                            @foreach ($options['products'] as $value => $text)
+                                <option value="{{ $value }}" @selected(old('product', '*') === (string) $value)>{{ $text }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="ag-scope" class="mb-1 block text-xs font-medium text-gray-600">Scope</label>
+                        <select id="ag-scope" name="scope" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                            @foreach ($options['scopes'] as $value => $text)
+                                <option value="{{ $value }}" @selected(old('scope', 'any') === (string) $value)>{{ $text }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="ag-calc_type" class="mb-1 block text-xs font-medium text-gray-600">Type</label>
+                        <select id="ag-calc_type" name="calc_type" x-model="calcType" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                            @foreach ($options['calcTypes'] as $value => $text)
+                                @php $restriction = \App\Enums\CalcType::from($value)->productRestriction(); @endphp
+                                <option value="{{ $value }}"
+                                        :disabled="! (@js($value) in byProduct[product])"
+                                        @selected(old('calc_type', 'fixed') === (string) $value)>{{ $text }}@if ($restriction) — {{ $restriction }}@endif</option>
+                            @endforeach
+                        </select>
+                    </div>
 
                     <div>
                         <label for="ag-value" class="mb-1 block text-xs font-medium text-gray-600">Amount or %</label>

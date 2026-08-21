@@ -147,6 +147,65 @@ class PricingAdminTest extends TestCase
             ->assertSessionHasErrors('value');
     }
 
+    public function test_a_per_passenger_fee_is_refused_on_a_hotel_rule(): void
+    {
+        // The live system multiplied hotel markup by head count: two adults in one
+        // double room paid one room rate and two markups. The select greys this out;
+        // this is the half that cannot be bypassed.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_pax', 'value' => '350',
+            ]))
+            ->assertSessionHasErrors('calc_type');
+    }
+
+    public function test_a_per_unit_fee_is_refused_on_a_rule_that_matches_every_product(): void
+    {
+        $this->configureRoot();
+
+        foreach (['per_pax', 'per_room_night'] as $type) {
+            $this->actingAs($this->editor())
+                ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                    'product' => '*', 'calc_type' => $type, 'value' => '200',
+                ]))
+                ->assertSessionHasErrors('calc_type');
+        }
+    }
+
+    public function test_a_per_unit_fee_is_accepted_on_the_product_it_scales_with(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'flight', 'calc_type' => 'per_pax', 'value' => '350',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_room_night', 'value' => '200',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('pricing_rules', ['product' => 'flight', 'calc_type' => 'per_pax']);
+        $this->assertDatabaseHas('pricing_rules', ['product' => 'hotel', 'calc_type' => 'per_room_night']);
+    }
+
+    public function test_the_form_names_the_restriction_rather_than_hiding_the_type(): void
+    {
+        // A greyed-out option with no explanation reads as a bug.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('flights only')
+            ->assertSee('hotels only');
+    }
+
     public function test_a_margin_of_a_hundred_percent_or_more_is_refused(): void
     {
         // A margin is a share of the SELLING price, so 100% of it needs a selling price

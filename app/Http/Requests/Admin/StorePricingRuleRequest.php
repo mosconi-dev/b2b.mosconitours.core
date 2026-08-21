@@ -112,6 +112,21 @@ class StorePricingRuleRequest extends FormRequest
                 $validator->errors()->add('value', "{$value}% more than doubles the fare. Enter 15 for 15%.");
             }
 
+            // The unit a fee scales on belongs to the product. A per-passenger fee on a
+            // hotel grows the markup with a number the supplier never charged on — two
+            // adults in one double room pay one room rate — and that was the live
+            // system's bug. The form greys these out; this is what makes it binding.
+            $product = (string) $this->input('product');
+            $chosen = is_string($type) ? CalcType::tryFrom($type) : null;
+
+            if ($chosen !== null && $product !== '' && ! $chosen->appliesToProduct($product)) {
+                $validator->errors()->add(
+                    'calc_type',
+                    "{$chosen->label()} is {$chosen->productRestriction()}. "
+                    .'Choose that product on this rule, or pick a type that means the same thing on all of them.'
+                );
+            }
+
             // A margin is a share of the selling price, so 100% of it needs a selling
             // price of infinity and anything beyond turns the sign around. Refused
             // rather than questioned: Money::margin() throws on these, and a rule that

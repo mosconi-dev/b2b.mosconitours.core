@@ -183,6 +183,9 @@ class PricingController extends Controller
     {
         return [
             'calcTypes' => CalcType::options(),
+            // Every product's allowed types, so the form can narrow the select without a
+            // round trip. Advisory here; StorePricingRuleRequest is what binds it.
+            'calcTypesByProduct' => CalcType::optionsByProduct(),
             'bases' => PricingBasis::options(),
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(
                 BookingProduct::cases(),

@@ -92,6 +92,38 @@ class CalculatorTypesTest extends TestCase
         $this->assertArrayNotHasKey('tiered', CalcType::options());
     }
 
+    // ------------------------------------------------------- the product gate ----
+
+    public function test_a_per_unit_type_is_offered_only_on_the_product_it_scales_with(): void
+    {
+        $this->assertArrayHasKey('per_pax', CalcType::optionsForProduct('flight'));
+        $this->assertArrayNotHasKey('per_pax', CalcType::optionsForProduct('hotel'));
+
+        $this->assertArrayHasKey('per_room_night', CalcType::optionsForProduct('hotel'));
+        $this->assertArrayNotHasKey('per_room_night', CalcType::optionsForProduct('flight'));
+    }
+
+    public function test_a_rule_matching_every_product_gets_neither_per_unit_type(): void
+    {
+        // Neither means the same thing on both sides of the wildcard, and a
+        // per-passenger fee on a rule that also matches hotels is the live system's bug
+        // with a wider blast radius.
+        $any = CalcType::optionsForProduct('*');
+
+        $this->assertArrayNotHasKey('per_pax', $any);
+        $this->assertArrayNotHasKey('per_room_night', $any);
+        $this->assertArrayHasKey('percentage_markup', $any, 'a percentage still means one thing everywhere');
+    }
+
+    public function test_the_types_that_mean_one_thing_everywhere_are_offered_on_every_product(): void
+    {
+        foreach (CalcType::optionsByProduct() as $product => $options) {
+            foreach (['fixed', 'percentage_markup', 'percentage_margin', 'none'] as $universal) {
+                $this->assertArrayHasKey($universal, $options, "{$universal} is missing on {$product}");
+            }
+        }
+    }
+
     // ------------------------------------------------------- percentage margin ----
 
     public function test_a_margin_takes_its_share_of_the_selling_price(): void

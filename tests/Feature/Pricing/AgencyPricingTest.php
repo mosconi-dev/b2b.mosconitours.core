@@ -114,6 +114,25 @@ class AgencyPricingTest extends TestCase
      * from its figures; why it was added is not, and that is the thing anyone needs
      * months later when deciding whether it can go.
      */
+    public function test_an_agency_is_held_to_the_same_product_gate_as_the_office(): void
+    {
+        // StoreAgencyPricingRuleRequest extends the office request precisely so a rule
+        // cannot be shaped differently depending on which screen it was written on.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_pax', 'value' => '150',
+            ]))
+            ->assertSessionHasErrors('calc_type');
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_room_night', 'value' => '150',
+            ]))
+            ->assertSessionHasNoErrors();
+    }
+
     public function test_a_rule_keeps_the_note_explaining_why_it_exists(): void
     {
         $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);

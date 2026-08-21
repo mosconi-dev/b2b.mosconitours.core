@@ -152,12 +152,27 @@
                         @csrf
                         <h3 class="mb-3 text-sm font-semibold text-brand-900">Add a rule</h3>
 
-                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                        {{-- Product and Type are bound together: a per-passenger fee is
+                             meaningless on a hotel and a per-room-night one on a flight,
+                             so choosing a product narrows the types on offer. Alpine only
+                             greys the wrong ones out — StorePricingRuleRequest is what
+                             refuses them, so a form posted without JavaScript is still
+                             held to the same rule. --}}
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+                             x-data="{ product: @js(old('product', '*')), calcType: @js(old('calc_type', 'fixed')), byProduct: @js($calcTypesByProduct) }"
+                             x-effect="if (! (calcType in byProduct[product])) calcType = 'fixed'">
+                            <div>
+                                <label for="product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
+                                <select id="product" name="product" x-model="product" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                    @foreach ($products as $value => $text)
+                                        <option value="{{ $value }}" @selected(old('product', '*') === (string) $value)>{{ $text }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
                             @foreach ([
-                                ['product', 'Product', $products, '*'],
                                 ['scope', 'Scope', $scopes, 'any'],
                                 ['supplier', 'Supplier', $suppliers, ''],
-                                ['calc_type', 'Type', $calcTypes, 'fixed'],
                             ] as [$field, $label, $options, $default])
                                 <div>
                                     <label for="{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
@@ -168,6 +183,18 @@
                                     </select>
                                 </div>
                             @endforeach
+
+                            <div>
+                                <label for="calc_type" class="mb-1 block text-xs font-medium text-gray-600">Type</label>
+                                <select id="calc_type" name="calc_type" x-model="calcType" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                    @foreach ($calcTypes as $value => $text)
+                                        @php $restriction = \App\Enums\CalcType::from($value)->productRestriction(); @endphp
+                                        <option value="{{ $value }}"
+                                                :disabled="! (@js($value) in byProduct[product])"
+                                                @selected(old('calc_type', 'fixed') === (string) $value)>{{ $text }}@if ($restriction) — {{ $restriction }}@endif</option>
+                                    @endforeach
+                                </select>
+                            </div>
 
                             @foreach ([
                                 ['value', 'Amount or %', 'number', old('value'), 'required'],
