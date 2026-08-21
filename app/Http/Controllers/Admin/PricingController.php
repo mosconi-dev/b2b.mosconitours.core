@@ -55,6 +55,7 @@ class PricingController extends Controller
         $configured = $this->resolver->isConfigured();
         $mainOffice = $configured ? $this->resolver->mainOffice() : null;
         $strategy = $mainOffice ? $this->admin->strategyFor($mainOffice) : null;
+        $sample = $this->sample($request);
 
         return view('admin.pricing.index', [
             'configured' => $configured,
@@ -63,7 +64,8 @@ class PricingController extends Controller
             'agencies' => Agency::active()->orderBy('name')->get(['id', 'name', 'code', 'type']),
             // Every agency's ladder at a glance, so an agency contributing nothing is
             // visible here rather than discovered in a margin report.
-            'ladder' => $configured ? $this->ladder($mainOffice) : collect(),
+            'ladder' => $configured ? $this->ladder($mainOffice, $sample) : collect(),
+            'sample' => $sample,
             ...$this->formOptions(),
         ]);
     }
@@ -170,22 +172,63 @@ class PricingController extends Controller
     }
 
     /**
+     * The fare every agency in the hierarchy view is priced against.
+     *
+     * **Clamped, not validated.** A `validate()` here would redirect back to this same
+     * page on a bad query string, which is this same page with the same bad query
+     * string — a loop. Out-of-range input silently becomes the nearest sensible value
+     * instead, which is the right answer for a display control nobody can break.
+     *
+     * @return array{net: string, product: BookingProduct, scope: TravelScope, pax: int, rooms: int, nights: int}
+     */
+    private function sample(Request $request): array
+    {
+        $net = $request->query('sample_net');
+
+        return [
+            'net' => is_numeric($net) && (float) $net >= 0
+                ? (string) $net
+                : (string) config('pricing.preview_net', 5000),
+            'product' => BookingProduct::tryFrom((string) $request->query('sample_product')) ?? BookingProduct::Flight,
+            'scope' => TravelScope::tryFrom((string) $request->query('sample_scope')) ?? TravelScope::Domestic,
+            'pax' => $this->count($request->query('sample_pax'), 9),
+            'rooms' => $this->count($request->query('sample_rooms'), 6),
+            'nights' => $this->count($request->query('sample_nights'), 30),
+        ];
+    }
+
+    /** A count from the query string, held between one and the search forms' own ceiling. */
+    private function count(mixed $value, int $max): int
+    {
+        return max(1, min($max, (int) $value ?: 1));
+    }
+
+    /**
      * Every agency's effective markup on a sample fare, for the hierarchy view.
      *
+     * One context, priced against every agency — so the column is a comparison between
+     * partners rather than a quote. The counts matter for exactly the reason they matter
+     * in the preview: a per-passenger or per-room-night rule charges a multiple, and a
+     * table fixed at one of each reads those rules low.
+     *
+     * @param  array{net: string, product: BookingProduct, scope: TravelScope, pax: int, rooms: int, nights: int}  $sample
      * @return Collection<int, array<string, mixed>>
      */
-    private function ladder(Agency $mainOffice): Collection
+    private function ladder(Agency $mainOffice, array $sample): Collection
     {
         $engine = app(PricingEngine::class);
-        $sample = NetPrice::of(config('pricing.preview_net', 5000));
+        $net = NetPrice::of($sample['net']);
 
-        return Agency::active()->orderBy('name')->get()->map(function (Agency $agency) use ($engine, $sample, $mainOffice): array {
+        return Agency::active()->orderBy('name')->get()->map(function (Agency $agency) use ($engine, $net, $sample, $mainOffice): array {
             $breakdown = $engine->quote(
                 new PricingContext(
-                    product: BookingProduct::Flight,
-                    supplier: Supplier::TboAir,
-                    scope: TravelScope::Domestic,
-                    net: $sample,
+                    product: $sample['product'],
+                    supplier: $sample['product']->defaultSupplier(),
+                    scope: $sample['scope'],
+                    net: $net,
+                    paxCount: $sample['pax'],
+                    roomCount: $sample['rooms'],
+                    nights: $sample['nights'],
                 ),
                 $agency,
             );

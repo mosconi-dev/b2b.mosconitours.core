@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Pricing;
 
+use App\Enums\BookingProduct;
 use App\Models\Agency;
 use App\Models\PricingRule;
 use App\Models\PricingStrategy;
@@ -575,6 +576,105 @@ class PricingAdminTest extends TestCase
                 'agency_id' => $agency->id, 'net' => '5000', 'product' => 'flight', 'scope' => 'domestic', 'pax' => 40,
             ])
             ->assertStatus(422);
+    }
+
+    // -------------------------------------------------------- the hierarchy ----
+
+    public function test_the_hierarchy_prices_its_sample_at_the_counts_it_is_given(): void
+    {
+        // Fixed at one of each, this table read a per-unit rule low — the same gap the
+        // preview panel had, on a screen that exists to compare partners.
+        $this->configureRoot();
+        Agency::factory()->create(['name' => 'Agency ABC']);
+
+        PricingRule::factory()->perPax(350)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $ladder = $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index', ['sample_net' => '5000', 'sample_pax' => 3]))
+            ->assertOk()
+            ->viewData('ladder');
+
+        $row = $ladder->firstWhere(fn (array $r): bool => $r['agency']->name === 'Agency ABC');
+
+        $this->assertSame('6050.00', (string) $row['sell'], '3 x 350 on top of 5,000');
+    }
+
+    public function test_the_hierarchy_can_be_sampled_on_a_hotel_stay(): void
+    {
+        $this->configureRoot();
+        Agency::factory()->create(['name' => 'Agency ABC']);
+
+        PricingRule::factory()->perRoomNight(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+            'product' => 'hotel',
+        ]);
+
+        $ladder = $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index', [
+                'sample_net' => '5000', 'sample_product' => 'hotel', 'sample_rooms' => 2, 'sample_nights' => 3,
+            ]))
+            ->assertOk()
+            ->viewData('ladder');
+
+        $row = $ladder->firstWhere(fn (array $r): bool => $r['agency']->name === 'Agency ABC');
+
+        $this->assertSame('6200.00', (string) $row['sell'], 'six room-nights at 200');
+    }
+
+    public function test_the_hierarchy_says_which_fare_it_priced(): void
+    {
+        // The table is only readable if the sample above it is stated — two agencies
+        // 700 apart means nothing without knowing it was three passengers.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index', ['sample_pax' => 2]))
+            ->assertOk()
+            ->assertSee('2 passengers');
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index', ['sample_product' => 'hotel', 'sample_rooms' => 2, 'sample_nights' => 3]))
+            ->assertOk()
+            ->assertSee('2 rooms for 3 nights');
+    }
+
+    public function test_the_hierarchy_falls_back_to_the_configured_sample(): void
+    {
+        $this->configureRoot();
+        Agency::factory()->create(['name' => 'Agency ABC']);
+
+        $sample = $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->viewData('sample');
+
+        $this->assertSame((string) config('pricing.preview_net', 5000), $sample['net']);
+        $this->assertSame(BookingProduct::Flight, $sample['product']);
+        $this->assertSame(1, $sample['pax']);
+    }
+
+    public function test_a_nonsense_sample_is_clamped_rather_than_rejected(): void
+    {
+        // Validating here would redirect back to this page — which is this page, with
+        // the same query string. Out-of-range input becomes the nearest sensible value.
+        $this->configureRoot();
+
+        $sample = $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index', [
+                'sample_net' => 'lots', 'sample_product' => 'submarine',
+                'sample_pax' => 400, 'sample_rooms' => 0, 'sample_nights' => -3,
+            ]))
+            ->assertOk()
+            ->viewData('sample');
+
+        $this->assertSame((string) config('pricing.preview_net', 5000), $sample['net']);
+        $this->assertSame(BookingProduct::Flight, $sample['product']);
+        $this->assertSame(9, $sample['pax'], 'held to the search form ceiling');
+        $this->assertSame(1, $sample['rooms']);
+        $this->assertSame(1, $sample['nights']);
     }
 
     public function test_the_preview_explains_a_missing_pricing_root_rather_than_failing(): void

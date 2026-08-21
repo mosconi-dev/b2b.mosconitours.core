@@ -290,9 +290,76 @@
                 <div class="border-b border-gray-100 px-6 py-4">
                     <h2 class="text-base font-semibold text-brand-900">Every agency, on a sample fare</h2>
                     <p class="mt-1 text-sm text-gray-500">
-                        A domestic flight at supplier net
-                        <span class="font-semibold text-brand-900">{{ number_format((float) config('pricing.preview_net', 5000), 2) }}</span>.
+                        @php
+                            $unit = $sample['product'] === \App\Enums\BookingProduct::Hotel
+                                ? trim(($sample['rooms'] > 1 ? $sample['rooms'].' rooms' : 'one room')
+                                    .' for '.($sample['nights'] > 1 ? $sample['nights'].' nights' : 'one night'))
+                                : ($sample['pax'] > 1 ? $sample['pax'].' passengers' : 'one passenger');
+                        @endphp
+                        {{ $sample['scope']->label() }} {{ strtolower($sample['product']->label()) }} at supplier net
+                        <span class="font-semibold text-brand-900">{{ number_format((float) $sample['net'], 2) }}</span>,
+                        {{ $unit }}. One fare, priced for everyone — a comparison between partners, not a quote.
                     </p>
+
+                    {{-- A GET form, so the sample lives in the URL and can be handed to
+                         somebody else. The controller CLAMPS what arrives rather than
+                         validating it: a validation failure would redirect back to this
+                         page, which is this page with the same query string. --}}
+                    <form method="GET" action="{{ route('admin.pricing.index') }}"
+                          class="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-3 lg:grid-cols-6"
+                          x-data="{ product: @js($sample['product']->value) }">
+                        <div>
+                            <label for="sample_net" class="mb-1 block text-xs font-medium text-gray-600">Supplier net</label>
+                            <input id="sample_net" name="sample_net" type="number" step="0.01" min="0" value="{{ $sample['net'] }}"
+                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        </div>
+
+                        <div>
+                            <label for="sample_product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
+                            <select id="sample_product" name="sample_product" x-model="product"
+                                    class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                @foreach (\App\Enums\BookingProduct::cases() as $case)
+                                    <option value="{{ $case->value }}" @selected($sample['product'] === $case)>{{ $case->label() }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="sample_scope" class="mb-1 block text-xs font-medium text-gray-600">Scope</label>
+                            <select id="sample_scope" name="sample_scope"
+                                    class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                @foreach (\App\Enums\TravelScope::cases() as $case)
+                                    <option value="{{ $case->value }}" @selected($sample['scope'] === $case)>{{ $case->label() }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        {{-- Per product, for the same reason the preview panel is: a fare
+                             has no rooms and a room rate has no head count. --}}
+                        <div x-show="product === 'flight'">
+                            <label for="sample_pax" class="mb-1 block text-xs font-medium text-gray-600">Passengers</label>
+                            <input id="sample_pax" name="sample_pax" type="number" min="1" max="9" step="1" value="{{ $sample['pax'] }}"
+                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        </div>
+
+                        <div x-show="product === 'hotel'" x-cloak>
+                            <label for="sample_rooms" class="mb-1 block text-xs font-medium text-gray-600">Rooms</label>
+                            <input id="sample_rooms" name="sample_rooms" type="number" min="1" max="6" step="1" value="{{ $sample['rooms'] }}"
+                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        </div>
+
+                        <div x-show="product === 'hotel'" x-cloak>
+                            <label for="sample_nights" class="mb-1 block text-xs font-medium text-gray-600">Nights</label>
+                            <input id="sample_nights" name="sample_nights" type="number" min="1" max="30" step="1" value="{{ $sample['nights'] }}"
+                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        </div>
+
+                        <div>
+                            <button type="submit" class="w-full rounded-lg border border-brand-900 px-4 py-2 text-sm font-semibold text-brand-900 transition hover:bg-brand-900 hover:text-white">
+                                Re-price
+                            </button>
+                        </div>
+                    </form>
                 </div>
 
                 <div class="overflow-x-auto">
