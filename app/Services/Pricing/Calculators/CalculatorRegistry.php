@@ -25,6 +25,10 @@ class CalculatorRegistry
     {
         $this->register(CalcType::Fixed, new FixedCalculator);
         $this->register(CalcType::PercentageMarkup, new PercentageMarkupCalculator);
+        $this->register(CalcType::PercentageMargin, new PercentageMarginCalculator);
+        $this->register(CalcType::PerPax, new PerPaxCalculator);
+        $this->register(CalcType::PerRoomNight, new PerRoomNightCalculator);
+        $this->register(CalcType::None, new NoneCalculator);
     }
 
     public function register(CalcType $type, Calculator $calculator): void

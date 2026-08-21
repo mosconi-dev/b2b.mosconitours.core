@@ -42,6 +42,26 @@ class PricingRuleFactory extends Factory
         return $this->state(['calc_type' => CalcType::PercentageMarkup, 'value' => $percent]);
     }
 
+    public function margin(string|float $percent): static
+    {
+        return $this->state(['calc_type' => CalcType::PercentageMargin, 'value' => $percent]);
+    }
+
+    public function perPax(string|float $amount): static
+    {
+        return $this->state(['calc_type' => CalcType::PerPax, 'value' => $amount]);
+    }
+
+    public function perRoomNight(string|float $amount): static
+    {
+        return $this->state(['calc_type' => CalcType::PerRoomNight, 'value' => $amount]);
+    }
+
+    public function none(): static
+    {
+        return $this->state(['calc_type' => CalcType::None, 'value' => 0]);
+    }
+
     public function forProduct(string $product): static
     {
         return $this->state(['product' => $product]);

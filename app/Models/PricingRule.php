@@ -198,13 +198,33 @@ class PricingRule extends Model
      */
     public function summary(): string
     {
-        $amount = $this->calc_type->isPercentage()
-            ? rtrim(rtrim((string) $this->value, '0'), '.').'%'
-            : number_format((float) $this->value, 2);
+        $amount = $this->amountLabel();
 
         $product = $this->product === self::ANY ? 'all products' : $this->product;
         $scope = $this->scope === 'any' ? '' : ' '.TravelScope::from($this->scope)->label();
 
         return trim("{$amount} on {$product}{$scope}");
+    }
+
+    /**
+     * What the rule adds, as a phrase — "10%", "500.00 per passenger", "No markup".
+     *
+     * The unit is part of the amount, not decoration: a flat 500 and a 500 per passenger
+     * are the same three characters otherwise, and the second one costs a family of five
+     * five times the first.
+     */
+    public function amountLabel(): string
+    {
+        if (! $this->calc_type->usesValue()) {
+            return $this->calc_type->label();
+        }
+
+        $amount = $this->calc_type->isPercentage()
+            ? rtrim(rtrim((string) $this->value, '0'), '.').'%'
+            : number_format((float) $this->value, 2);
+
+        $unit = $this->calc_type->unitLabel();
+
+        return $unit === null ? $amount : "{$amount} {$unit}";
     }
 }

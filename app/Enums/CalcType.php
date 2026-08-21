@@ -9,9 +9,12 @@ namespace App\Enums;
  * CalculatorRegistry, so adding a type is registering a class — not editing the engine,
  * the resolver, the matcher or the layers table.
  *
- * Only Fixed and PercentageMarkup are implemented. The rest are declared because the
- * shape of the set is a business decision already taken, and a half-declared enum
- * invites someone to invent a seventh spelling of "percentage".
+ * Every case but Tiered has a calculator. Tiered stays declared and unimplemented
+ * because it carries bands rather than a single number, and `pricing_rules.value` is one
+ * `decimal(12,4)` — it needs a `params` column before it can be anything but an enum
+ * case. The case is kept regardless: the shape of the set is a business decision already
+ * taken, and a half-declared enum invites someone to invent a seventh spelling of
+ * "percentage".
  */
 enum CalcType: string
 {
@@ -46,6 +49,28 @@ enum CalcType: string
     }
 
     /**
+     * What the amount is charged *per*, for the rule list. Null when it is charged once.
+     *
+     * Without it a ₱500 booking fee and a ₱500 per-passenger fee are the same three
+     * characters on a pricing screen, and only one of them costs a family of five
+     * ₱2,500.
+     */
+    public function unitLabel(): ?string
+    {
+        return match ($this) {
+            self::PerPax => 'per passenger',
+            self::PerRoomNight => 'per room-night',
+            default => null,
+        };
+    }
+
+    /** Whether the rule's `value` means anything. It does not for an explicit zero. */
+    public function usesValue(): bool
+    {
+        return $this !== self::None;
+    }
+
+    /**
      * The types with a Calculator behind them today.
      *
      * Anything else is refused at validation rather than at quote time: a rule that
@@ -56,7 +81,14 @@ enum CalcType: string
      */
     public static function implemented(): array
     {
-        return [self::Fixed, self::PercentageMarkup];
+        return [
+            self::Fixed,
+            self::PercentageMarkup,
+            self::PercentageMargin,
+            self::PerPax,
+            self::PerRoomNight,
+            self::None,
+        ];
     }
 
     /**

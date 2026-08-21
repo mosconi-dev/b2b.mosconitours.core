@@ -121,11 +121,7 @@
                                             @endif
                                         </td>
                                         <td class="px-6 py-3 font-semibold text-brand-900">
-                                            @if ($rule->calc_type->isPercentage())
-                                                {{ rtrim(rtrim((string) $rule->value, '0'), '.') }}%
-                                            @else
-                                                {{ number_format((float) $rule->value, 2) }}
-                                            @endif
+                                            {{ $rule->amountLabel() }}
                                         </td>
                                         <td class="px-6 py-3 text-xs text-gray-500">
                                             @if ($rule->min_markup !== null || $rule->max_markup !== null)

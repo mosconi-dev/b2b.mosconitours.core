@@ -193,11 +193,9 @@
                                     @endif
                                 </td>
                                 <td class="px-6 py-3 font-semibold text-brand-900">
+                                    {{ $rule->amountLabel() }}
                                     @if ($rule->calc_type->isPercentage())
-                                        {{ rtrim(rtrim((string) $rule->value, '0'), '.') }}%
                                         <span class="ml-1 text-xs font-normal text-gray-400">of the supplier rate</span>
-                                    @else
-                                        {{ number_format((float) $rule->value, 2) }}
                                     @endif
                                 </td>
                                 <td class="px-6 py-3 text-right">

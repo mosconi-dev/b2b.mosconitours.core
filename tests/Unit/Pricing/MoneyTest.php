@@ -52,6 +52,39 @@ class MoneyTest extends TestCase
         $this->assertSame('92.59', (string) Money::of('1234.56')->percent('7.5'));
     }
 
+    public function test_a_margin_is_a_share_of_the_selling_price(): void
+    {
+        // 20% margin on 5,000 adds 1,250 and sells at 6,250 — and 1,250 IS 20% of 6,250.
+        // The same figure read as a markup adds 1,000. The gap is the point of the method.
+        $this->assertSame('1250.00', (string) Money::of(5000)->margin(20));
+        $this->assertSame('1000.00', (string) Money::of(5000)->percent(20));
+    }
+
+    public function test_a_margin_holds_at_the_awkward_percentages(): void
+    {
+        $this->assertSame('0.00', (string) Money::of(5000)->margin(0));
+        $this->assertSame('5000.00', (string) Money::of(5000)->margin(50), 'half the sell is the cost');
+
+        // 12.5% of the sell on 3,333.33: 3333.33 x 0.125/0.875 = 476.190...
+        $this->assertSame('476.19', (string) Money::of('3333.33')->margin('12.5'));
+    }
+
+    public function test_a_margin_of_a_hundred_percent_is_refused_rather_than_divided_by_zero(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('selling price of infinity');
+
+        Money::of(5000)->margin(100);
+    }
+
+    public function test_a_margin_over_a_hundred_percent_is_refused_rather_than_flipping_sign(): void
+    {
+        // 5000 x 120/-20 = -30,000. A "margin" that quietly became a discount.
+        $this->expectException(InvalidArgumentException::class);
+
+        Money::of(5000)->margin(120);
+    }
+
     public function test_clamping_between_a_floor_and_a_cap(): void
     {
         $markup = Money::of(100);

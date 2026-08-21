@@ -45,6 +45,13 @@ class StorePricingRuleRequest extends FormRequest
             'basis' => PricingBasis::Net->value,
             'priority' => $this->input('priority') ?: self::DEFAULT_PRIORITY,
         ]);
+
+        // `none` has no amount to give, and `value` is NOT NULL. Supplying the zero here
+        // rather than asking for it keeps the form from demanding a number whose only
+        // legal answer is the one the type already implies.
+        if ($this->input('calc_type') === CalcType::None->value) {
+            $this->merge(['value' => 0]);
+        }
     }
 
     /**
@@ -103,6 +110,18 @@ class StorePricingRuleRequest extends FormRequest
 
             if ($type === CalcType::PercentageMarkup->value && $value > 100) {
                 $validator->errors()->add('value', "{$value}% more than doubles the fare. Enter 15 for 15%.");
+            }
+
+            // A margin is a share of the selling price, so 100% of it needs a selling
+            // price of infinity and anything beyond turns the sign around. Refused
+            // rather than questioned: Money::margin() throws on these, and a rule that
+            // throws mid-quote is exactly what validating calc types exists to prevent.
+            if ($type === CalcType::PercentageMargin->value && $value >= 100) {
+                $validator->errors()->add(
+                    'value',
+                    "A {$value}% margin cannot be reached — a margin is a share of the selling price, "
+                    .'so it must be under 100%. For a fixed multiple of cost, use a percentage markup.'
+                );
             }
         });
     }

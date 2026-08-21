@@ -147,6 +147,48 @@ class PricingAdminTest extends TestCase
             ->assertSessionHasErrors('value');
     }
 
+    public function test_a_margin_of_a_hundred_percent_or_more_is_refused(): void
+    {
+        // A margin is a share of the SELLING price, so 100% of it needs a selling price
+        // of infinity. Money::margin() throws on it, and a rule that throws mid-quote is
+        // what validating calc types exists to prevent.
+        $this->configureRoot();
+
+        foreach (['100', '150'] as $value) {
+            $this->actingAs($this->editor())
+                ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                    'calc_type' => 'percentage_margin', 'value' => $value,
+                ]))
+                ->assertSessionHasErrors('value');
+        }
+    }
+
+    public function test_a_margin_just_under_a_hundred_percent_is_allowed(): void
+    {
+        // Absurd, but arithmetically fine — and refusing it would be this form deciding
+        // a business question it was not asked.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'percentage_margin', 'value' => '99',
+            ]))
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_an_explicit_zero_does_not_ask_for_an_amount(): void
+    {
+        // "No markup" has no number to give, and `value` is NOT NULL. The form supplies
+        // the zero rather than demanding it.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData(['calc_type' => 'none', 'value' => '']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('pricing_rules', ['calc_type' => 'none', 'value' => '0.0000']);
+    }
+
     public function test_a_cap_below_the_floor_is_refused(): void
     {
         $this->configureRoot();
