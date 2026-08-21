@@ -11,6 +11,9 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\WalletLoadRequest;
 use App\Models\WalletTransaction;
+use App\Services\Pricing\MarginReport;
+use App\Services\Pricing\PricingAdminService;
+use App\Services\Pricing\StrategyResolver;
 use App\Services\Rbac\AgencyService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +26,9 @@ class AgencyController extends Controller
     public function __construct(
         private readonly AgencyService $agencies,
         private readonly WalletService $wallets,
+        private readonly PricingAdminService $pricing,
+        private readonly MarginReport $margins,
+        private readonly StrategyResolver $resolver,
     ) {}
 
     public function index(Request $request): View
@@ -54,6 +60,8 @@ class AgencyController extends Controller
         $tabs = array_values(array_filter([
             $actor->can('wallet.view') ? 'wallet' : null,
             $actor->can('wallet.load.view') ? 'requests' : null,
+            // After the money it moves and before the people who set it up.
+            $actor->can('markup.view') ? 'markup' : null,
             $actor->can('user.view') ? 'users' : null,
             $actor->can('role.view') ? 'roles' : null,
         ]));
@@ -76,6 +84,9 @@ class AgencyController extends Controller
         $wallet = null;
         $entries = null;
         $loadRequests = null;
+        $strategy = null;
+        $margin = null;
+        $isPricingRoot = false;
 
         if ($tab === 'requests') {
             // Scoped twice on purpose: to this agency because that is the page you
@@ -110,9 +121,22 @@ class AgencyController extends Controller
                 ->orderBy('name')
                 ->paginate(20)
                 ->withQueryString();
+        } elseif ($tab === 'markup') {
+            // Created empty on first view, which changes no price — it just gives the
+            // screen something to hang rules on.
+            $strategy = $this->pricing->strategyFor($agency)->load('rules');
+            $margin = $this->margins->monthly($agency->id);
+
+            // The pricing root's own strategy is edited on the Markups screen behind
+            // `markup.office.*`, never here — it is the level everyone else builds on.
+            $isPricingRoot = $this->resolver->isConfigured()
+                && $this->resolver->mainOffice()->getKey() === $agency->getKey();
         }
 
-        return view('admin.agencies.show', compact('agency', 'tab', 'tabs', 'users', 'roles', 'wallet', 'entries', 'loadRequests'));
+        return view('admin.agencies.show', compact(
+            'agency', 'tab', 'tabs', 'users', 'roles', 'wallet', 'entries', 'loadRequests',
+            'strategy', 'margin', 'isPricingRoot',
+        ));
     }
 
     public function create(Request $request): View

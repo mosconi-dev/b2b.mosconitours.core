@@ -254,6 +254,9 @@ return [
             'icon' => 'briefcase',
             'actions' => ['view', 'manage'],
         ],
+        // An agency's own markup — the rung it adds on top of the Main Office's. It has
+        // no nav entry of its own: it is a tab on the agency hub, reached where an
+        // agency already reaches its wallet, its users and its roles.
         'markup' => [
             'label' => 'Markups',
             'section' => 'travel_operations',
@@ -262,11 +265,13 @@ return [
             'icon' => 'tag',
             'actions' => ['view', 'edit'],
         ],
+        // The Main Office's markup, which sits underneath every agency's. Gated apart
+        // from `markup` precisely because editing it moves every partner's cost.
         'markup.office' => [
             'label' => 'Office Markups',
             'section' => 'travel_operations',
             'group' => 'Markups',
-            'route' => null,
+            'route' => 'admin.pricing.index',
             'icon' => 'tag',
             'actions' => ['view', 'edit'],
         ],

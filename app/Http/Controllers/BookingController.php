@@ -13,6 +13,7 @@ use App\Models\WalletLoadRequest;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\ETicket;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Pricing\OfferPricer;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\TboAirService;
@@ -106,7 +107,11 @@ class BookingController extends Controller
 
         return view('bookings.eticket', [
             'booking' => $booking,
-            'ticket' => ETicket::for($booking, withPrices: $request->query('prices') !== '0'),
+            'ticket' => ETicket::for(
+                $booking,
+                withPrices: $request->query('prices') !== '0',
+                viewer: $request->user(),
+            ),
         ]);
     }
 
@@ -116,7 +121,7 @@ class BookingController extends Controller
      * to render the flight/price and add-on options; sends the user back to search if
      * the fare has expired.
      */
-    public function create(Request $request, TboAirService $service): View|RedirectResponse
+    public function create(Request $request, TboAirService $service, OfferPricer $pricer): View|RedirectResponse
     {
         $data = $request->validate([
             'traceId' => ['required', 'string', 'max:255'],
@@ -139,16 +144,36 @@ class BookingController extends Controller
         } catch (TboAirException $e) {
             report($e);
 
-            return redirect()->route('flights')->with('status', $e->isTimeout()
-                ? 'The flight provider timed out. Please search again.'
-                : 'That fare is no longer available — please search again.');
+            // Back to the RESULTS the agent was just reading, not a blank search form.
+            // One fare failing to quote is no reason to make them start over, so the
+            // `q` token rebuilds the same list and the alert says what happened —
+            // TBO reports a supplier-side quote failure inside a 200, and it is often
+            // that one fare rather than the search.
+            return redirect()
+                ->route('flights', array_filter(['q' => $request->query('q')]))
+                ->with('error', $e->isTimeout()
+                    ? 'The airline did not respond in time, so this fare could not be priced. Please try another flight.'
+                    : 'This flight could not be priced — the airline turned the quote down. Please choose another flight.');
         }
+
+        $priced = $pricer->fareQuote($quote->toArray(), $request->user());
 
         return view('bookings.create', [
             'traceId' => $selection->traceId,
             'resultIndex' => $selection->resultIndex,
-            'quote' => $quote->toArray(),
-            'ssr' => $ssr?->toArray(),
+            // Priced, exactly as the /flights/fare-quote endpoint prices its own
+            // response. Handing the raw DTO to the view showed the agent the SUPPLIER
+            // NET on the screen they book from — while the booking itself was written
+            // at the selling price — and shipped `baseFare`, `tax` and `publishedFare`
+            // to an agency that must never see them.
+            'quote' => $priced,
+            // Priced too, and for the same reason. Handed over raw, the add-on pickers
+            // listed the SUPPLIER's price for a bag or a meal, and the payment step
+            // added those net figures to an already-priced fare — so the agent
+            // approved a total below the one the booking was written at.
+            'ssr' => $ssr === null
+                ? null
+                : $pricer->ssr($ssr->toArray(), $quote->toArray(), $request->user()),
             'oldFare' => (float) ($data['oldFare'] ?? 0),
             'seats' => $this->seats($data['seats'] ?? null),
             'resultType' => isset($data['resultType']) ? (int) $data['resultType'] : null,

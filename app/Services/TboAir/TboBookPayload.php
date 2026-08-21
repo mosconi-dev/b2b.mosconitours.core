@@ -4,6 +4,7 @@ namespace App\Services\TboAir;
 
 use App\Models\Booking;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Support\TravelScopeResolver;
 
 /**
  * Builds the request body for TBO's Book and Ticket methods.
@@ -386,27 +387,17 @@ class TboBookPayload
     /**
      * Every airport on the priced itinerary sits in the point-of-sale country.
      *
+     * Read from `quote_raw` rather than the FareQuote DTO, because Book echoes the
+     * supplier's own itinerary back field-for-field and must classify the thing it is
+     * actually sending. Same resolver, so the answer cannot differ from the one the
+     * agent was shown.
+     *
      * @param  array<string, mixed>  $result
      */
     private static function isDomestic(array $result): bool
     {
-        $segments = self::flatten(data_get($result, 'Segments', []));
-
-        if ($segments === []) {
-            return false;
-        }
-
-        $home = strtoupper((string) config('tboair.point_of_sale', 'PH'));
-
-        foreach ($segments as $segment) {
-            foreach (['Origin', 'Destination'] as $side) {
-                if (strtoupper((string) data_get($segment, "{$side}.Airport.CountryCode", '')) !== $home) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
+        return TravelScopeResolver::forSegments(self::flatten(data_get($result, 'Segments', [])))
+            ->isDomestic();
     }
 
     /**

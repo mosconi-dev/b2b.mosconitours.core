@@ -13,13 +13,17 @@ use App\Models\Wallet;
 use App\Models\WalletLoadRequest;
 use App\Services\Booking\Exceptions\BookingException;
 use App\Services\Booking\HotelVoucher;
+use App\Services\Pricing\Money;
+use App\Services\Pricing\OfferPricer;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\TboHotel\HotelBookingService;
 use App\Services\TboHotel\TboHotelService;
 use App\Support\Countries;
+use App\Support\TravelScopeResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 /**
@@ -38,7 +42,7 @@ class HotelBookingController extends Controller
      * final, so the terms the agent is about to accept must be the supplier's current
      * ones, not the ones cached on a results page from ten minutes ago.
      */
-    public function create(Request $request, TboHotelService $service): View|RedirectResponse
+    public function create(Request $request, TboHotelService $service, OfferPricer $pricer): View|RedirectResponse
     {
         $data = $request->validate([
             'bookingCode' => ['required', 'string', 'max:8192'],
@@ -68,8 +72,27 @@ class HotelBookingController extends Controller
         $rooms = self::decodeRooms($data['rooms']);
         $shownFare = isset($data['shownFare']) ? (float) $data['shownFare'] : null;
 
+        $nights = max(1, (int) Carbon::parse($data['checkIn'])->diffInDays(Carbon::parse($data['checkOut'])));
+
+        // Priced through the same path as the rooms page, so `totalFare` on this screen
+        // is a selling price like the one the agent clicked.
+        $priced = $pricer->preBookQuote(
+            $quote->toArray(),
+            [
+                'hotelCode' => $quote->hotelCode ?: $data['locationCode'],
+                'countryCode' => $hotel?->country_code,
+                'cityCode' => $hotel?->city_code,
+                'rating' => $hotel?->rating,
+                'scope' => TravelScopeResolver::forCountryCode($hotel?->country_code)->value,
+            ],
+            $request->user(),
+            $nights,
+            count($rooms),
+            $data['checkIn'],
+        );
+
         return view('hotels.book', [
-            'quote' => $quote->toArray(),
+            'quote' => $priced,
             'bookingCode' => $quote->room->bookingCode,
             'hotel' => $hotel,
             'stay' => [
@@ -96,9 +119,11 @@ class HotelBookingController extends Controller
                 'from' => $data['from'] ?? '',
                 'label' => $data['label'] ?? '',
             ]),
-            // Whether to open on the price gate. Computed here rather than in the
-            // browser so the figure the agent is asked to accept is the supplier's.
-            'priceChanged' => $shownFare !== null && $quote->priceChanged($shownFare),
+            // Whether to open on the price gate. SELL against SELL — both sides have
+            // been through the engine, so this fires only when TBO actually moved and
+            // never merely because a markup was applied.
+            'priceChanged' => $shownFare !== null
+                && Money::of($shownFare)->compare(Money::of($priced['totalFare'] ?? 0)) !== 0,
             'wallet' => $this->walletSummary($request->user()),
             'walletRequestUrl' => $request->user()->can('create', WalletLoadRequest::class)
                 ? route('wallet.requests.create')

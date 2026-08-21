@@ -309,9 +309,13 @@
                                     @endif
                                 </div>
 
-                                <div class="shrink-0 text-right">
-                                    <p class="text-base font-semibold text-brand-900">
-                                        {{ $currency }} {{ number_format((float) $room['totalFare'], 2) }}
+                                {{-- This page is server-rendered, so the pricing payload is
+                                     handed to Alpine here rather than fetched. The partial
+                                     reads `pricing` from this scope. --}}
+                                <div class="shrink-0 text-right" x-data="{ pricing: @js($room['pricing'] ?? null) }">
+                                    <p class="flex items-center justify-end gap-1.5 text-base font-semibold text-brand-900">
+                                        <span>{{ $currency }} {{ number_format((float) $room['totalFare'], 2) }}</span>
+                                        @include('partials._fare-breakdown', ['pricing' => 'pricing'])
                                     </p>
                                     <p class="text-xs text-gray-400">
                                         incl. tax {{ $currency }} {{ number_format((float) $room['totalTax'], 2) }}

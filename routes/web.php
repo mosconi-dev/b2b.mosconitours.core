@@ -2,12 +2,14 @@
 
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AgencyController;
+use App\Http\Controllers\Admin\AgencyPricingController;
 use App\Http\Controllers\Admin\AgencyRoleController;
 use App\Http\Controllers\Admin\AgencyUserController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\HotelCatalogueController;
 use App\Http\Controllers\Admin\HotelSettingController;
 use App\Http\Controllers\Admin\PermissionController;
+use App\Http\Controllers\Admin\PricingController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\UserController;
@@ -171,6 +173,22 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             ->middleware(['can:role.create', 'can:view,agency']);
         Route::post('/{agency}/roles', [AgencyRoleController::class, 'store'])->name('roles.store');
 
+        // An agency's OWN markup, reached from its hub. `markup.*` here, never
+        // `markup.office.*` — that governs the level everyone builds on top of, and
+        // PricingStrategyPolicy refuses the pricing root through this path outright.
+        Route::prefix('{agency}/markup')->name('markup.')->middleware('can:view,agency')->group(function () {
+            Route::post('/preview', [AgencyPricingController::class, 'preview'])->name('preview')
+                ->middleware('can:markup.view');
+            Route::post('/rules', [AgencyPricingController::class, 'storeRule'])->name('rules.store')
+                ->middleware('can:markup.edit');
+            Route::put('/rules/{rule}', [AgencyPricingController::class, 'updateRule'])->name('rules.update')
+                ->middleware('can:markup.edit');
+            Route::delete('/rules/{rule}', [AgencyPricingController::class, 'destroyRule'])->name('rules.destroy')
+                ->middleware('can:markup.edit');
+            Route::patch('/toggle', [AgencyPricingController::class, 'toggle'])->name('toggle')
+                ->middleware('can:markup.edit');
+        });
+
         Route::get('/{agency}/edit', [AgencyController::class, 'edit'])->name('edit')->middleware('can:update,agency');
         Route::put('/{agency}', [AgencyController::class, 'update'])->name('update');
         Route::patch('/{agency}/toggle-active', [AgencyController::class, 'toggleActive'])->name('toggle-active')->middleware('can:toggleActive,agency');
@@ -205,6 +223,29 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     });
 
     Route::get('audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index')->middleware('can:audit.view');
+
+    /*
+    | Main Office pricing — the level every other agency's price is built on top of,
+    | which is why it is gated separately from an agency's own markup.
+    */
+    Route::prefix('pricing')->name('pricing.')->group(function () {
+        Route::get('/', [PricingController::class, 'index'])->name('index')
+            ->middleware('can:markup.office.view');
+        // The preview runs the real engine, so it is a read and needs only view rights.
+        Route::post('/preview', [PricingController::class, 'preview'])->name('preview')
+            ->middleware('can:markup.office.view');
+
+        Route::put('/main-office', [PricingController::class, 'setMainOffice'])->name('main-office')
+            ->middleware('can:markup.office.edit');
+        Route::patch('/toggle', [PricingController::class, 'toggleStrategy'])->name('toggle')
+            ->middleware('can:markup.office.edit');
+        Route::post('/rules', [PricingController::class, 'storeRule'])->name('rules.store')
+            ->middleware('can:markup.office.edit');
+        Route::put('/rules/{rule}', [PricingController::class, 'updateRule'])->name('rules.update')
+            ->middleware('can:markup.office.edit');
+        Route::delete('/rules/{rule}', [PricingController::class, 'destroyRule'])->name('rules.destroy')
+            ->middleware('can:markup.office.edit');
+    });
 
     /*
     | The hotel catalogue. TBO's Search takes hotel codes and nothing else, so this

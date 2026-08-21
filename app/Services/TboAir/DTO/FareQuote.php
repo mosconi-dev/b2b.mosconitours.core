@@ -2,8 +2,10 @@
 
 namespace App\Services\TboAir\DTO;
 
+use App\Enums\TravelScope;
 use App\Services\TboAir\FareTotal;
 use App\Services\TboAir\ItineraryMapper;
+use App\Support\TravelScopeResolver;
 use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 
@@ -29,14 +31,16 @@ class FareQuote implements Arrayable, JsonSerializable
         public readonly bool $isPriceChanged,
         public readonly bool $isPassportMandatory,
         /**
-         * Every airport on the itinerary is in the same country as the point of sale.
+         * Whether the itinerary stays inside the country we sell from.
          *
          * Drives which identity document we ask a passenger for: a passport
          * internationally, any government ID domestically. Derived from the airports
          * themselves rather than any TBO flag, because TBO's passport flags describe
          * what its API wants in the payload, not what a traveller actually carries.
+         *
+         * Serialized as BOTH `scope` and the older `isDomestic` boolean — see toArray().
          */
-        public readonly bool $isDomestic,
+        public readonly TravelScope $scope,
         public readonly array $price,
         public readonly array $fareBreakdown,
         public readonly array $trips = [],
@@ -95,7 +99,7 @@ class FareQuote implements Arrayable, JsonSerializable
             isPassportMandatory: (bool) data_get($result, 'IsPassportRequiredAtBook', false)
                 || (bool) data_get($result, 'IsPassportRequiredAtTicket', false)
                 || (bool) data_get($result, 'IsPassportFullDetailRequiredAtBook', false),
-            isDomestic: self::isDomestic($legs),
+            scope: TravelScopeResolver::forLegs($legs),
             price: [
                 'currency' => (string) data_get($fare, 'Currency', 'PHP'),
                 'baseFare' => (float) data_get($fare, 'BaseFare', 0),
@@ -115,34 +119,6 @@ class FareQuote implements Arrayable, JsonSerializable
             cabinBaggage: $itinerary->lowestAllowance($legs, 'cabinBaggage'),
             raw: $data,
         );
-    }
-
-    /**
-     * Whether every airport on the itinerary sits in the point-of-sale country.
-     *
-     * A missing country code makes the answer unknowable, and guessing "domestic"
-     * would downgrade a passport to an ID — so anything unresolved reads as
-     * international, which asks for the stronger document.
-     *
-     * @param  array<int, array<string, mixed>>  $legs
-     */
-    private static function isDomestic(array $legs): bool
-    {
-        if ($legs === []) {
-            return false;
-        }
-
-        $home = strtoupper((string) config('tboair.point_of_sale', 'PH'));
-
-        foreach ($legs as $leg) {
-            foreach (['origin', 'destination'] as $side) {
-                if (strtoupper((string) data_get($leg, "{$side}.country", '')) !== $home) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
     }
 
     /**
@@ -199,7 +175,12 @@ class FareQuote implements Arrayable, JsonSerializable
             'isRefundable' => $this->isRefundable,
             'isPriceChanged' => $this->isPriceChanged,
             'isPassportMandatory' => $this->isPassportMandatory,
-            'isDomestic' => $this->isDomestic,
+            'scope' => $this->scope->value,
+            // Kept alongside `scope`, not replaced by it. This array is persisted to
+            // `bookings.quote`, and ETicket reads `isDomestic` off that snapshot to
+            // label a passenger's document — so dropping the key would blank the label
+            // on every booking already taken. The wizard's Alpine bindings read it too.
+            'isDomestic' => $this->scope->isDomestic(),
             'price' => $this->price,
             'fareBreakdown' => $this->fareBreakdown,
             'trips' => $this->trips,

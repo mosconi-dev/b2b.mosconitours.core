@@ -7,6 +7,7 @@ use App\Http\Requests\FareDetailRequest;
 use App\Http\Requests\SearchFlightsRequest;
 use App\Http\Requests\StoreRecentFlightSearchesRequest;
 use App\Models\Booking;
+use App\Services\Pricing\OfferPricer;
 use App\Services\Search\FlightRecentSearches;
 use App\Services\TboAir\Exceptions\TboAirException;
 use App\Services\TboAir\FlightSearchCache;
@@ -71,7 +72,7 @@ class FlightController extends Controller
         return response()->noContent();
     }
 
-    public function search(SearchFlightsRequest $request, TboAirService $service, FlightSearchCache $cache): JsonResponse
+    public function search(SearchFlightsRequest $request, TboAirService $service, FlightSearchCache $cache, OfferPricer $pricer): JsonResponse
     {
         $input = $request->searchInput();
 
@@ -93,14 +94,17 @@ class FlightController extends Controller
             return $this->providerError($e, 'We could not reach the flight provider. Please try again.');
         }
 
-        return response()->json($payload);
+        // Priced on the way OUT of the cache, never into it. The cache holds supplier
+        // net, so an edited rule takes effect on the next search rather than when the
+        // TTL expires — and a cached payload can never be a priced one priced again.
+        return response()->json($pricer->flightSearch($payload, $request->user(), $input->passengerCount()));
     }
 
     /**
      * Re-price a selected result (FareQuote) before any commitment. Not cached —
      * the fare is binding and time-sensitive within the TraceId window.
      */
-    public function fareQuote(FareDetailRequest $request, TboAirService $service): JsonResponse
+    public function fareQuote(FareDetailRequest $request, TboAirService $service, OfferPricer $pricer): JsonResponse
     {
         try {
             $quote = $service->fareQuote($request->selection());
@@ -108,7 +112,9 @@ class FlightController extends Controller
             return $this->providerError($e, 'We could not price this fare. It may have expired — please search again.');
         }
 
-        return response()->json($quote->toArray());
+        // Priced with the same engine and the same rules as the results list, so the
+        // wizard's "the fare changed" panel only ever fires on a real supplier move.
+        return response()->json($pricer->fareQuote($quote->toArray(), $request->user()));
     }
 
     /**

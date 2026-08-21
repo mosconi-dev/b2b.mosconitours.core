@@ -145,6 +145,7 @@
                 $tabLabels = [
                     'wallet' => 'Wallet',
                     'requests' => 'Load Requests',
+                    'markup' => 'Markup',
                     'users' => 'Users',
                     'roles' => 'Roles',
                 ];
@@ -212,6 +213,8 @@
                     @endif
                 </div>
             </div>
+        @elseif ($tab === 'markup')
+            @include('admin.agencies._markup')
         @elseif ($tab === 'requests')
             <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div class="border-b border-gray-100 px-6 py-4">

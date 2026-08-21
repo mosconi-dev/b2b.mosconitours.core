@@ -235,8 +235,13 @@ class HotelVoucher
             'rooms' => (int) $this->stay->rooms_count,
             'accommodation' => round($total - $tax, 2),
             'tax' => round($tax, 2),
+            // Recomputed from the SELLING total, never read from the stored quote —
+            // that figure is the supplier's own per-night net, and multiplying it back
+            // up by nights and rooms hands an agency our cost. The supplier's null is
+            // kept: it means the nights were priced unevenly, and an averaged rate is a
+            // number the agent would have to defend and could not.
             'nightly' => data_get($this->booking->quote, 'nightlyRate') !== null
-                ? (float) data_get($this->booking->quote, 'nightlyRate')
+                ? round($total / max(1, $this->stay->nights * $this->stay->rooms_count), 2)
                 : null,
             'total' => $total,
         ];

@@ -11,14 +11,20 @@ use App\Models\Booking;
 use App\Models\Hotel;
 use App\Models\User;
 use App\Services\Booking\Concerns\ChargesWallet;
+use App\Services\Booking\Concerns\RecordsPriceLayers;
 use App\Services\Booking\Concerns\TransitionsBooking;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Pricing\Money;
+use App\Services\Pricing\PriceBreakdown;
+use App\Services\Pricing\PricingContextFactory;
+use App\Services\Pricing\PricingEngine;
 use App\Services\TboHotel\DTO\BookingDetailResult;
 use App\Services\TboHotel\DTO\Guest;
 use App\Services\TboHotel\DTO\PreBookResult;
 use App\Services\TboHotel\DTO\SearchInput;
 use App\Services\TboHotel\Exceptions\TboHotelException;
 use App\Services\Wallet\WalletService;
+use App\Support\TravelScopeResolver;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
@@ -35,11 +41,13 @@ use Illuminate\Support\Facades\Log;
  */
 class HotelBookingService
 {
-    use ChargesWallet, TransitionsBooking;
+    use ChargesWallet, RecordsPriceLayers, TransitionsBooking;
 
     public function __construct(
         private readonly TboHotelService $tbo,
         private readonly WalletService $wallets,
+        private readonly PricingEngine $pricing,
+        private readonly PricingContextFactory $contexts,
     ) {}
 
     /**
@@ -62,31 +70,40 @@ class HotelBookingService
         string $bookingCode,
         array $guests,
         array $contact,
-        ?float $shownFare = null,
+        ?float $shownSellFare = null,
         bool $acceptPriceChange = false,
     ): Booking {
         $quote = $this->tbo->preBook($bookingCode);
 
+        $hotel = Hotel::where('code', $quote->hotelCode ?: $search->locationCode)->first();
+
+        // Priced from PreBook's NET with the same engine and rules the rooms page used.
+        $price = $this->priceOf($quote, $search, $hotel, $user);
+
         // A price move between Search and PreBook is normal. It is only an error if
         // nobody agreed to it — booking silently at the new price spends an agency's
         // money on a figure it never saw.
-        if ($shownFare !== null && $quote->priceChanged($shownFare) && ! $acceptPriceChange) {
+        //
+        // BOTH SIDES ARE SELLING PRICES. The browser holds what the agent was shown,
+        // which is marked up; comparing that against PreBook's net would fire the gate
+        // on every single booking, the markup alone reading as a re-price. Re-running
+        // the engine on the fresh net gives a like-for-like figure, so this fires only
+        // when TBO actually moved.
+        if ($shownSellFare !== null && ! $acceptPriceChange
+            && Money::of($shownSellFare)->compare($price->sell->amount) !== 0) {
             throw new BookingException(sprintf(
                 'The hotel re-priced this room from %s to %s. Confirm the new price to continue.',
-                number_format($shownFare, 2),
-                number_format($quote->totalFare(), 2),
+                number_format($shownSellFare, 2),
+                $price->sell->amount->formatted(),
             ));
         }
 
         $guests = $this->guardGuests($guests, $search);
 
-        $hotel = Hotel::where('code', $quote->hotelCode ?: $search->locationCode)->first();
-        $total = number_format($quote->totalFare(), 2, '.', '');
-
         // PreBook above is a supplier read and stays outside the transaction. Only the
         // rows and the wallet charge go inside, so a short balance rolls the whole
         // booking back rather than leaving one nobody paid for.
-        return DB::transaction(function () use ($user, $search, $quote, $guests, $contact, $total, $hotel): Booking {
+        return DB::transaction(function () use ($user, $search, $quote, $guests, $contact, $price, $hotel): Booking {
             $booking = Booking::create([
                 'reference' => $this->reference(),
                 'product' => BookingProduct::Hotel,
@@ -96,7 +113,10 @@ class HotelBookingService
                 'environment' => $this->tbo->environment(),
                 'status' => BookingStatus::Quoted,
                 'currency' => $quote->currency,
-                'total_amount' => $total,
+                'net_amount' => (string) $price->net->amount,
+                'cost_amount' => (string) $price->cost(),
+                'total_amount' => (string) $price->sell->amount,
+                'markup_total' => (string) $price->markupTotal(),
                 'quote' => $quote->toArray(),
                 // The browser-facing snapshot above cannot rebuild a Book payload —
                 // keep what TBO actually sent.
@@ -107,10 +127,47 @@ class HotelBookingService
 
             $booking->hotel()->create($this->detail($quote, $search, $guests, $hotel));
 
-            $this->chargeWallet($booking, $user, $total);
+            $this->recordPriceLayers($booking, $price);
+
+            // The COST, not the selling price — the agency's own markup is its margin
+            // from its own customer and is not owed to the platform.
+            $this->chargeWallet($booking, $user, (string) $price->cost());
 
             return $booking;
         });
+    }
+
+    /**
+     * PreBook's net, run through the pricing engine for this booker.
+     *
+     * Built from the same shape HotelOffer::toArray() produces, so a rule that matched
+     * on the rooms page matches identically here — a rule keyed on star rating or city
+     * must not quietly stop applying between the page and the booking.
+     */
+    private function priceOf(PreBookResult $quote, SearchInput $search, ?Hotel $hotel, User $user): PriceBreakdown
+    {
+        return $this->pricing->quoteOrNet(
+            $this->contexts->forHotelRoom(
+                [
+                    'hotelCode' => $quote->hotelCode ?: $search->locationCode,
+                    'currency' => $quote->currency,
+                    'countryCode' => $hotel?->country_code,
+                    'cityCode' => $hotel?->city_code,
+                    'rating' => $hotel?->rating,
+                    'scope' => TravelScopeResolver::forCountryCode($hotel?->country_code)->value,
+                ],
+                [
+                    'totalFare' => $quote->totalFare(),
+                    'isRefundable' => $quote->room->isRefundable,
+                    'mealType' => $quote->room->mealType,
+                    'withTransfers' => $quote->room->withTransfers,
+                ],
+                nights: $search->nights(),
+                rooms: $search->roomCount(),
+                checkIn: $search->checkIn,
+            ),
+            $user->agency,
+        );
     }
 
     /**

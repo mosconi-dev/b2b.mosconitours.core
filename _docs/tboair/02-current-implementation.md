@@ -87,6 +87,7 @@ been fixed; these are what is left, all Phase 5:
 | **`refund` is live-only** | The `test` environment has no `refund` URL at all, so the flow cannot be exercised before go-live. |
 | **Void is missing entirely** | No `Queues/GetVoidAmountDetails` or `Queues/VoidRequest` keys. |
 | **`GetLastTicketDate` is missing** | Needed to respect the ticketing time limit on a held non-LCC PNR. |
+| **No meal on a non-LCC fare** | **Blocks certification cases 7 and 9**, which both specify "with meal". GetSSR is an LCC feature — TBO's guide says meal/seat "can only be availed for LCC flights" and for non-LCC are passed as **plain strings**. `TboBookPayload` sends `MealDynamic` (the LCC option-object array) and `SeatDynamic => []`, and the wizard tells the agent "No baggage or meal add-ons are available for this fare." Needs a meal-preference control for GDS fares plus the string field on Book — **ask TBO for the exact field name rather than guessing at a payload mid-certification**. |
 
 - Test search/fare/ssr: `api-stage.tboair.com/InternalAirService.svc/rest/…`; auth: `xmloutapi.tboair.com`;
   book/ticket/booking-details host: `xmloutbookingapi.tboair.com/api/v1/Booking/…`.
@@ -98,7 +99,7 @@ been fixed; these are what is left, all Phase 5:
 
 | Class | Key public API | Purpose |
 | --- | --- | --- |
-| `TboAirService` | `search(SearchInput): array` · `fareQuote(SelectionInput): FareQuote` · `fareRule(SelectionInput): FareRule` · `ssr(SelectionInput): Ssr` · `agencyBalance(fresh:): AgencyBalance` · `hasFundsFor(string): bool` · `book(Booking): BookingResult` · `ticket(Booking, ?pnr): BookingResult` · `bookingDetails(pnr): BookingResult` · `token()` · `environment()` · `tokenTtl()` · `cacheKey()` · `balanceCacheKey()` | Orchestrates token caching + the implemented calls; single `ErrorCode 6` re-auth retry; maps errors. **`agencyBalance()` skips the re-auth wrapper** — it is credential-authenticated, with no session token to expire |
+| `TboAirService` | `search(SearchInput): array` · `fareQuote(SelectionInput): FareQuote` · `fareRule(SelectionInput): FareRule` · `ssr(SelectionInput): Ssr` · `agencyBalance(fresh:): AgencyBalance` · `hasFundsFor(string): bool` · `book(Booking): BookingResult` · `ticket(Booking, ?pnr): BookingResult` · `bookingDetails(pnr): BookingResult` · `token()` · `environment()` · `tokenTtl()` · `cacheKey()` · `balanceCacheKey()` | Orchestrates token caching + the implemented calls; single `ErrorCode 6` re-auth retry; maps errors. **`agencyBalance()` skips the re-auth wrapper** — it is credential-authenticated, with no session token to expire. **`guardError()` rejects any other error TBO reports inside a 200** — see below |
 | `TboAirClient` | `authenticate()` · `agencyBalance()` · `search()` · `fareQuote()` · `fareRule()` · `ssr()` · `book()` · `ticket()` · `bookingDetails()` · `environment()` · `ipAddress()` | Thin per-env HTTP wrapper; logs every call; masks `Password`; omits `Accept: application/json` (TBO gateway can hang) |
 | `TboAirConfig` | `static for(env): array` | Flattens base + `environments[env]` into the client config shape |
 | `TboEnvironmentResolver` | `resolve(?User)` · `normalize()` | per-user override → global setting → config default; per-user `live` requires `supplier.tbo.live` |
@@ -379,6 +380,31 @@ still fails.)
 Also fixed while here: `TboAirService::firstError()` only looked for **nested** `Error` objects, so the
 **flat** `ErrorMessage` these credential calls use was dropped, and a present-but-empty message beat
 the fallback and rendered a blank error.
+
+### 3b. A supplier failure arriving inside a `200 OK`
+
+**The HTTP status says nothing about whether a TBO call worked.** On a Gulf Air result during the
+certification run, FareQuote answered `200 OK` carrying:
+
+```json
+{"Response": {"Error": {"ErrorCode": 28,
+  "ErrorMessage": "Fare Quote failed from the Supplier end. Please try again."}, "Results": []}}
+```
+
+Nothing threw. `guardSession()` only ever raised on `ErrorCode 6`, so every other code passed straight
+through: the empty body parsed into a `FareQuote` with no trips and a **net of zero**, the pricing
+engine added the agency's two flat rules to that nothing, and the wizard rendered a **bookable page at
+₱350**. The agent was looking at a fare that does not exist, on the screen they buy from.
+
+`guardError()` now rejects any non-zero code other than 6 on **FareQuote, FareRule and SSR**. Code 6
+keeps its own path so `withReauth()` can still retry a lapsed token once.
+
+The failure is also *common* rather than exotic — the same Gulf Air result refused to quote three times
+running while a Saudia one on the same search quoted cleanly. So `BookingController::create()` now
+returns the agent to **their results** with the search token intact and a red alert, rather than to an
+empty search form: one fare failing is no reason to make them search again. The alert needed the
+flash partial adding to `flights.blade.php` — it had none, so the message it already flashed had
+nowhere to render and the click looked like it did nothing.
 
 ### 4. Session handling vs the live system — one real gap
 

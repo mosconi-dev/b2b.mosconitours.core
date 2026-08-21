@@ -2,7 +2,9 @@
 
 namespace App\Services\TboHotel\DTO;
 
+use App\Enums\TravelScope;
 use App\Models\Hotel;
+use App\Support\TravelScopeResolver;
 use Illuminate\Support\Arr;
 
 /**
@@ -47,6 +49,19 @@ readonly class HotelOffer
         );
     }
 
+    /**
+     * Whether the property sits in the country we sell from.
+     *
+     * A result with no catalogue row behind it has no country to read, so it is
+     * international — the safe direction. TboHotelService drops those results before
+     * they reach a card today, so in practice `hotel` is always present here; the
+     * fallback is what keeps that an assumption this DTO does not depend on.
+     */
+    public function scope(): TravelScope
+    {
+        return TravelScopeResolver::forCountryCode($this->hotel?->country_code);
+    }
+
     public function cheapest(): ?RoomOffer
     {
         return $this->rooms[0] ?? null;
@@ -87,6 +102,10 @@ readonly class HotelOffer
             'currency' => $this->currency,
             'name' => $this->name(),
             'address' => $this->hotel?->address,
+            'countryCode' => $this->hotel?->country_code,
+            'cityCode' => $this->hotel?->city_code,
+            'scope' => $this->scope()->value,
+            'scopeLabel' => $this->scope()->label(),
             'rating' => $this->hotel?->rating,
             'latitude' => $this->hotel?->latitude,
             'longitude' => $this->hotel?->longitude,

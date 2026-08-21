@@ -9,9 +9,12 @@ use App\Enums\TboBookingStatus;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\Concerns\ChargesWallet;
+use App\Services\Booking\Concerns\RecordsPriceLayers;
 use App\Services\Booking\Concerns\TransitionsBooking;
 use App\Services\Booking\DTO\Passenger;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Pricing\PricingContextFactory;
+use App\Services\Pricing\PricingEngine;
 use App\Services\TboAir\DTO\BookingResult;
 use App\Services\TboAir\DTO\FareQuote;
 use App\Services\TboAir\DTO\SelectionInput;
@@ -30,11 +33,13 @@ use Illuminate\Support\Facades\DB;
  */
 class BookingService
 {
-    use ChargesWallet, TransitionsBooking;
+    use ChargesWallet, RecordsPriceLayers, TransitionsBooking;
 
     public function __construct(
         private readonly TboAirService $tbo,
         private readonly WalletService $wallets,
+        private readonly PricingEngine $pricing,
+        private readonly PricingContextFactory $contexts,
     ) {}
 
     /**
@@ -54,8 +59,8 @@ class BookingService
         // An international itinerary always needs a passport; a domestic one needs a
         // government ID whenever TBO's flags ask for a document at all. The route
         // decides *which* document, TBO's flags decide *whether* — see TboBookPayload.
-        if ($quote->isPassportMandatory || ! $quote->isDomestic) {
-            $document = $quote->isDomestic ? 'ID number and expiry are' : 'Passport number and expiry are';
+        if ($quote->isPassportMandatory || ! $quote->scope->isDomestic()) {
+            $document = $quote->scope->isDomestic() ? 'ID number and expiry are' : 'Passport number and expiry are';
 
             foreach ($passengers as $passenger) {
                 if (! $passenger->hasDocument()) {
@@ -71,12 +76,35 @@ class BookingService
         [$pax, $ancillaryTotal] = $this->applyAncillaries($selection, $passengers);
         $pax = $this->applyContact($pax, $contact);
 
-        $total = number_format((float) $quote->price['offeredFare'] + $ancillaryTotal, 2, '.', '');
+        // The SUPPLIER's number: what TBO charges us, ancillaries included. Never the
+        // figure the browser sent back — that is evidence about what was shown, and the
+        // fare has just been re-read from TBO above.
+        $net = number_format((float) $quote->price['offeredFare'] + $ancillaryTotal, 2, '.', '');
+
+        // Priced from that net with the same engine and rules the results list used, so
+        // the agent is charged what they were quoted.
+        $price = $this->pricing->quoteOrNet(
+            $this->contexts->forFlightOffer([
+                'scope' => $quote->scope->value,
+                'price' => [
+                    'offeredFare' => $net,
+                    'currency' => $quote->price['currency'],
+                    'baseFare' => $quote->price['baseFare'],
+                    // Declared, so a rule written on `excl_ancillaries` prices the fare
+                    // and leaves the add-ons at cost. Without it the context cannot tell
+                    // the two apart and marks up the whole of net.
+                    'ancillaries' => number_format($ancillaryTotal, 2, '.', ''),
+                ],
+                'isLcc' => $quote->isLcc,
+                'isRefundable' => $quote->isRefundable,
+            ], $quote->price['currency'], count($passengers)),
+            $user->agency,
+        );
 
         // The TBO reads above are deliberately outside the transaction — only the
         // booking row and its wallet charge go in it, so an insufficient balance
         // rolls the booking back rather than leaving one nobody paid for.
-        return DB::transaction(function () use ($user, $selection, $quote, $pax, $ancillaryTotal, $total, $contact, $seats, $resultType): Booking {
+        return DB::transaction(function () use ($user, $selection, $quote, $pax, $ancillaryTotal, $price, $contact, $seats, $resultType): Booking {
             $booking = Booking::create([
                 'reference' => $this->reference(),
                 'product' => BookingProduct::Flight,
@@ -92,7 +120,10 @@ class BookingService
                 'is_lcc' => $quote->isLcc,
                 'currency' => $quote->price['currency'],
                 'ancillary_total' => $ancillaryTotal,
-                'total_amount' => $total,
+                'net_amount' => (string) $price->net->amount,
+                'cost_amount' => (string) $price->cost(),
+                'total_amount' => (string) $price->sell->amount,
+                'markup_total' => (string) $price->markupTotal(),
                 'quote' => $quote->toArray(),
                 // The lossy UI snapshot above is not enough to build a Book payload —
                 // keep the response TBO actually sent. See the quote_raw migration.
@@ -106,7 +137,12 @@ class BookingService
                 'contact' => $contact,
             ]);
 
-            $this->chargeWallet($booking, $user, $total);
+            $this->recordPriceLayers($booking, $price);
+
+            // Debited the COST, not the selling price. The agency's own markup is its
+            // margin from its own customer and is not owed to the platform — see the
+            // wallet section of _docs/pricing/01-architecture.md.
+            $this->chargeWallet($booking, $user, (string) $price->cost());
 
             return $booking;
         });

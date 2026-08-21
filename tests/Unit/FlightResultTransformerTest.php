@@ -2,9 +2,14 @@
 
 namespace Tests\Unit;
 
+use App\Enums\TravelScope;
 use App\Services\TboAir\FlightResultTransformer;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
+/**
+ * Boots the application, unlike its sibling unit tests: the transformer now classifies
+ * each offer's TravelScope, and that reads the point of sale from config.
+ */
 class FlightResultTransformerTest extends TestCase
 {
     private function fixture(string $name): array
@@ -31,6 +36,26 @@ class FlightResultTransformerTest extends TestCase
         $this->assertSame('Economy', $first->cabin);
         $this->assertSame(4300.0, $first->price['offeredFare']);
         $this->assertSame('PHP', $first->price['currency']);
+        $this->assertSame(TravelScope::Domestic, $first->scope, 'MNL–MPH is a domestic hop');
+    }
+
+    public function test_scope_is_classified_per_offer_and_serialized_for_the_card(): void
+    {
+        $offer = (new FlightResultTransformer)->transform($this->fixture('search-oneway.json'))[0];
+
+        $this->assertSame('domestic', $offer->toArray()['scope']);
+        $this->assertSame('Domestic', $offer->toArray()['scopeLabel']);
+    }
+
+    public function test_an_offer_leaving_the_point_of_sale_is_international(): void
+    {
+        // Same fixture, different point of sale — the itinerary has not moved, but it
+        // is no longer domestic relative to where we sell from.
+        config(['pricing.point_of_sale' => 'SG']);
+
+        $offer = (new FlightResultTransformer)->transform($this->fixture('search-oneway.json'))[0];
+
+        $this->assertSame(TravelScope::International, $offer->scope);
     }
 
     public function test_envelope_agnostic_same_output(): void

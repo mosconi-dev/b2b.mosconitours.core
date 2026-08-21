@@ -235,6 +235,11 @@
                                         <span x-show="!offer.hasRefundable" x-cloak class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Non-refundable</span>
                                         <span x-show="offer.hasBreakfast" x-cloak class="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">Breakfast</span>
                                         <span x-show="offer.hasTransfers" x-cloak class="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">Transfers</span>
+                                        {{-- Both states are shown, not just international: this chip is
+                                             how the classification gets checked against real results
+                                             before pricing is allowed to depend on it. --}}
+                                        <span x-show="offer.scope === 'domestic'" x-cloak class="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700" x-text="offer.scopeLabel"></span>
+                                        <span x-show="offer.scope === 'international'" x-cloak class="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700" x-text="offer.scopeLabel"></span>
                                     </div>
 
                                     {{-- The one fact that decides a booking more often than any

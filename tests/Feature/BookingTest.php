@@ -4,10 +4,15 @@ namespace Tests\Feature;
 
 use App\Enums\BookingStatus;
 use App\Jobs\FulfilBookingJob;
+use App\Models\Agency;
 use App\Models\Booking;
+use App\Models\PricingRule;
+use App\Models\PricingStrategy;
 use App\Models\User;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\Exceptions\BookingException;
+use App\Services\Pricing\StrategyResolver;
+use App\Services\Settings\Settings;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -104,6 +109,87 @@ class BookingTest extends TestCase
             ->assertSee('Confirmation')
             ->assertSee('Fare price updated')            // the in-wizard price-change gate
             ->assertSee('Manila (MNL) → Cebu (CEB)');    // the carried search-context bar
+    }
+
+    /**
+     * The wizard prices its own quote, exactly as the fare-quote endpoint does.
+     *
+     * This page re-fetches the binding fare server-side rather than calling
+     * /flights/fare-quote, so it has to run the pricer itself. Handing the raw supplier
+     * DTO to the view showed the agent the SUPPLIER NET on the screen they book from —
+     * while the booking was written at the selling price — and shipped `baseFare`,
+     * `tax` and `publishedFare` to an agency that must never see them.
+     */
+    public function test_the_wizard_prices_the_quote_it_renders(): void
+    {
+        $this->fakeQuote();
+
+        $agency = Agency::factory()->create();
+        $mainOffice = Agency::factory()->create();
+        app(Settings::class)->set(StrategyResolver::MAIN_OFFICE_SETTING, (string) $mainOffice->id);
+
+        PricingRule::factory()->fixed(500)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $mainOffice->id])->id,
+        ]);
+
+        $user = $this->bookingUser();
+        $user->update(['agency_id' => $agency->id]);
+
+        $response = $this->actingAs($user->fresh())
+            ->get(route('flights.book', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk();
+
+        $quote = $response->viewData('quote');
+
+        $this->assertArrayHasKey('pricing', $quote, 'the view must receive a priced quote');
+        $this->assertArrayNotHasKey('baseFare', $quote['price'], 'the supplier components are the net');
+        $this->assertArrayNotHasKey('tax', $quote['price']);
+        $this->assertArrayNotHasKey('publishedFare', $quote['price']);
+        $this->assertArrayNotHasKey('net', $quote['pricing'], 'and the net is never named');
+    }
+
+    /**
+     * The add-on menu is priced too, and for the same reason the quote is.
+     *
+     * Handed over raw it listed the SUPPLIER's price for a bag and a meal, and the
+     * payment step added those net figures to an already-priced fare — so the agent
+     * approved a total below the one the booking was written at, and read our cost
+     * off the picker while they did it.
+     */
+    public function test_the_wizard_prices_the_add_ons_it_offers(): void
+    {
+        $this->fakeQuote();
+
+        $agency = Agency::factory()->create();
+        $mainOffice = Agency::factory()->create();
+        app(Settings::class)->set(StrategyResolver::MAIN_OFFICE_SETTING, (string) $mainOffice->id);
+
+        PricingRule::factory()->percentage(10)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $mainOffice->id])->id,
+        ]);
+
+        $user = $this->bookingUser();
+        $user->update(['agency_id' => $agency->id]);
+
+        $response = $this->actingAs($user->fresh())
+            ->get(route('flights.book', ['traceId' => 'trace-abc-123', 'resultIndex' => 'OB1']))
+            ->assertOk();
+
+        $ssr = $response->viewData('ssr');
+
+        // The fixture's bags cost us 1,200 and 2,000; its meals 350 and 300.
+        $this->assertSame(1320.0, $ssr['baggage'][0]['price']);
+        $this->assertSame(2200.0, $ssr['baggage'][1]['price']);
+        $this->assertSame(385.0, $ssr['meals'][0]['price']);
+        $this->assertSame(330.0, $ssr['meals'][1]['price']);
+
+        // And no supplier figure survives into what the page is handed. Asserted on
+        // the payload rather than the rendered HTML: "2000" also spells the SVG
+        // namespace, and an assertion that passes for that reason proves nothing.
+        $json = json_encode($ssr);
+        $this->assertStringNotContainsString('1200', $json, 'the supplier price of a bag');
+        $this->assertStringNotContainsString('2000', $json);
+        $this->assertStringNotContainsString('350', $json, 'the supplier price of a meal');
     }
 
     /**
@@ -214,7 +300,13 @@ class BookingTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_create_redirects_to_search_when_the_fare_is_unavailable(): void
+    /**
+     * A fare that will not quote sends the agent back to their RESULTS, not to a blank
+     * search form — one flight failing is no reason to make them search again — and it
+     * says so. Previously this dropped the `q` token and flashed a message onto a page
+     * that renders no flash at all, so the click simply appeared to do nothing.
+     */
+    public function test_create_returns_to_the_results_with_an_alert_when_the_fare_will_not_quote(): void
     {
         Http::fake([
             '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
@@ -222,8 +314,38 @@ class BookingTest extends TestCase
         ]);
 
         $this->actingAs($this->bookingUser())
-            ->get(route('flights.book', ['traceId' => 'x', 'resultIndex' => 'y']))
-            ->assertRedirect(route('flights'));
+            ->get(route('flights.book', ['traceId' => 'x', 'resultIndex' => 'y', 'q' => 'TOKEN']))
+            ->assertRedirect(route('flights', ['q' => 'TOKEN']))
+            ->assertSessionHas('error');
+    }
+
+    /** The supplier-side refusal TBO reports inside a 200 lands the same way. */
+    public function test_a_supplier_quote_refusal_also_returns_to_the_results(): void
+    {
+        Http::fake([
+            '*Authenticate*' => Http::response($this->fixture('authenticate.json'), 200),
+            '*FareQuote*' => Http::response([
+                'Response' => [
+                    'Error' => ['ErrorCode' => 28, 'ErrorMessage' => 'Fare Quote failed from the Supplier end. Please try again.'],
+                    'Results' => [],
+                ],
+            ], 200),
+        ]);
+
+        $this->actingAs($this->bookingUser())
+            ->get(route('flights.book', ['traceId' => 'x', 'resultIndex' => 'y', 'q' => 'TOKEN']))
+            ->assertRedirect(route('flights', ['q' => 'TOKEN']))
+            ->assertSessionHas('error');
+    }
+
+    /** And the alert has somewhere to render, or the redirect reads as a no-op. */
+    public function test_the_results_page_renders_the_alert(): void
+    {
+        $this->actingAs($this->bookingUser())
+            ->withSession(['error' => 'This flight could not be priced.'])
+            ->get(route('flights'))
+            ->assertOk()
+            ->assertSee('This flight could not be priced.');
     }
 
     public function test_store_requires_booking_create_permission(): void

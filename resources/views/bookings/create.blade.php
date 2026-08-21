@@ -642,7 +642,10 @@
                     </div>
                     <div class="flex items-center justify-between">
                         <span class="font-medium text-brand-900">New fare</span>
-                        <span class="font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote.price.offeredFare)"></span></span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="font-semibold text-brand-900"><span x-text="currency"></span> <span x-text="money(quote.price.offeredFare)"></span></span>
+                            @include('partials._fare-breakdown', ['pricing' => 'quote.pricing'])
+                        </span>
                     </div>
                     <div class="flex items-center justify-between border-t border-gray-100 pt-2" x-show="oldFare > 0">
                         <span class="text-gray-500">Difference</span>
@@ -658,7 +661,10 @@
                         <template x-for="(b, i) in quote.fareBreakdown" :key="i">
                             <div class="flex items-center justify-between px-3 py-2">
                                 <span class="text-gray-600"><span x-text="b.count"></span> × <span x-text="b.passengerType"></span></span>
-                                <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money((b.baseFare + b.tax) * b.count)"></span></span>
+                                {{-- `amountTotal` is the selling price allocated to this
+                                     passenger type. The baseFare+tax fallback is the raw
+                                     supplier split, kept for a viewer entitled to it. --}}
+                                <span class="text-brand-900"><span x-text="currency"></span> <span x-text="money(b.amountTotal ?? ((b.baseFare + b.tax) * b.count))"></span></span>
                             </div>
                         </template>
                     </div>

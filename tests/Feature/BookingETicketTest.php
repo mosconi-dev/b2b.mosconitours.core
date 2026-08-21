@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\BookingStatus;
 use App\Models\Agency;
 use App\Models\Booking;
+use App\Models\BookingPriceLayer;
 use App\Models\User;
 use App\Services\Booking\ETicket;
 use App\Services\TboAir\DTO\FareQuote;
@@ -165,13 +166,15 @@ class BookingETicketTest extends TestCase
     }
 
     /**
-     * The printed fare must add up.
+     * The printed fare must add up, and must be the SELLING fare.
      *
-     * The per-passenger lines sum to TBO's PublishedFare, but we charge its OfferedFare
-     * — ten centavos more on PNR 984XIX. Unreconciled, the document shows a total that
-     * disagrees with its own subtotals.
+     * The stored quote's per-passenger rows are the supplier's own and sum to the net —
+     * on PNR 984XIX, ten centavos below what we charged, and once markup is switched on,
+     * the whole markup below it. Allocating them to the selling total does both jobs at
+     * once: the document reconciles with itself, and the supplier's figures never reach
+     * the page.
      */
-    public function test_the_fare_lines_sum_to_the_total(): void
+    public function test_the_fare_lines_are_allocated_to_the_selling_total(): void
     {
         $user = $this->userWith(['booking.view']);
 
@@ -184,13 +187,45 @@ class BookingETicketTest extends TestCase
 
         $ticket = ETicket::for($booking->fresh());
 
-        $this->assertSame(0.10, $ticket->otherCharges());
+        // Nothing left over: the lines were allocated to the total rather than copied
+        // from the supplier, so there is no gap to reconcile.
+        $this->assertSame(0.0, $ticket->otherCharges());
+
+        // This viewer is platform staff, who may see the supplier's own components.
+        $this->actingAs($user)
+            ->get(route('bookings.eticket', $booking))
+            ->assertOk()
+            ->assertSee('14,858.85')
+            ->assertDontSee('Other charges');
+    }
+
+    /**
+     * The same document, printed by an agency.
+     *
+     * The supplier's base fare and tax sum to the net, so on an agency's copy they are
+     * replaced by the selling fare. Otherwise the printed ticket gives up our cost — and
+     * once markup is on, the Main Office's margin as the gap to the total beneath it.
+     */
+    public function test_an_agency_copy_carries_no_supplier_figures(): void
+    {
+        $agency = Agency::factory()->create();
+        $user = $this->agencyUserWith($agency, ['booking.view']);
+
+        $booking = $this->booking($user, ['total_amount' => '16000.00', 'agency_id' => $agency->id]);
+        $quote = $booking->quote;
+        $quote['fareBreakdown'] = [[
+            'passengerType' => 'Adult', 'count' => 2, 'baseFare' => 11852.16, 'tax' => 3006.59,
+        ]];
+        $booking->update(['quote' => $quote]);
 
         $this->actingAs($user)
             ->get(route('bookings.eticket', $booking))
             ->assertOk()
-            ->assertSee('Other charges')
-            ->assertSee('14,858.85');
+            ->assertSee('16,000.00')       // what the agency was charged
+            ->assertDontSee('11,852.16')   // the supplier's base fare
+            ->assertDontSee('3,006.59')    // and its tax
+            ->assertDontSee('14,858.75')   // which together are the net
+            ->assertDontSee('Other charges');
     }
 
     /** No reconciling line when the lines already add up. */
@@ -282,6 +317,114 @@ class BookingETicketTest extends TestCase
         $booking = $this->booking($user, ['pnr' => null, 'status' => BookingStatus::Quoted]);
 
         $this->actingAs($user)->get(route('bookings.eticket', $booking))->assertNotFound();
+    }
+
+    /**
+     * A booking with bags and meals on it, priced the way BookingService prices one:
+     * ancillaries folded into net, the sum marked up once.
+     *
+     * Net 10,000 fare + 1,000 of add-ons, a 10% office rung and a flat ₱250 agency fee
+     * → 11,000 × 1.10 + 250 = 12,350.
+     */
+    private function bookingWithAddOns(User $user): Booking
+    {
+        $booking = $this->booking($user, [
+            'is_lcc' => true,
+            'total_amount' => '12350.00',
+            'net_amount' => '11000.00',
+            'markup_total' => '1350.00',
+            'ancillary_total' => '1000.00',
+        ]);
+
+        $pax = $booking->pax;
+        $pax[0]['ssr'] = [
+            'baggage' => [['code' => 'B5', 'label' => '5 kg', 'price' => 800.0, 'origin' => 'MNL', 'destination' => 'CEB']],
+            'meal' => [['code' => 'M1', 'label' => 'Cake', 'price' => 200.0, 'origin' => 'MNL', 'destination' => 'CEB']],
+        ];
+        $booking->forceFill(['pax' => $pax])->save();
+
+        $office = Agency::factory()->create(['name' => 'Main Office']);
+
+        $booking->priceLayers()->create([
+            'level' => BookingPriceLayer::MAIN_OFFICE, 'agency_id' => $office->id, 'basis_amount' => '11000.00',
+            'markup_amount' => '1100.00', 'running_total' => '12100.00', 'created_at' => now(),
+            'rule_snapshot' => ['calc_type' => 'percentage_markup', 'applies_to' => 'total', 'value' => '10.0000'],
+        ]);
+        $booking->priceLayers()->create([
+            'level' => BookingPriceLayer::AGENCY, 'agency_id' => $booking->agency_id ?? $office->id, 'basis_amount' => '11000.00',
+            'markup_amount' => '250.00', 'running_total' => '12350.00', 'created_at' => now(),
+            'rule_snapshot' => ['calc_type' => 'fixed', 'applies_to' => 'total', 'value' => '250.0000'],
+        ]);
+
+        return $booking->fresh();
+    }
+
+    /**
+     * The add-ons were marked up when the booking was priced, so the document has to
+     * say what they SOLD for. It printed `ancillary_total` — our cost — which put the
+     * supplier's price for a bag in front of the agency and the traveller both.
+     */
+    public function test_the_add_on_lines_are_the_selling_price_not_the_supplier_price(): void
+    {
+        $user = $this->userWith(['booking.view']);
+        $booking = $this->bookingWithAddOns($user);
+
+        // 1,000 of cost carries the 10% rung — the flat ₱250 is charged once for the
+        // booking, not once per bag — so the add-ons sold for 1,100.
+        $this->assertSame('1100.00', (string) $booking->addOnSellTotal());
+
+        $rows = ETicket::for($booking, withPrices: true, viewer: $user)->addOns();
+
+        $this->assertSame(880.0, $rows[0]['price'], 'the 800 bag');
+        $this->assertSame(220.0, $rows[1]['price'], 'the 200 meal');
+        $this->assertSame(1100.0, array_sum(array_column($rows, 'price')), 'and they sum to the add-ons line');
+    }
+
+    /**
+     * The fare rows were absorbing the add-on markup: the document subtracted the
+     * ancillaries at COST from a selling total, so every passenger's fare came out
+     * overstated by a share of someone else's baggage.
+     */
+    public function test_the_fare_rows_do_not_absorb_the_add_on_markup(): void
+    {
+        $user = $this->userWith(['booking.view']);
+        $booking = $this->bookingWithAddOns($user);
+        $ticket = ETicket::for($booking, withPrices: true, viewer: $user);
+
+        $fare = array_sum(array_column($ticket->fareLines(), 'total'));
+
+        // 12,350 total less the 1,100 the add-ons sold for.
+        $this->assertSame(11250.0, round($fare, 2));
+
+        // And the document still adds up to its own total, which is the point.
+        $this->assertSame(
+            12350.0,
+            round($fare + $ticket->addOnTotal() + $ticket->otherCharges(), 2),
+        );
+    }
+
+    public function test_the_printed_document_never_shows_the_supplier_price_of_an_add_on(): void
+    {
+        $user = $this->userWith(['booking.view']);
+        $booking = $this->bookingWithAddOns($user);
+
+        $this->actingAs($user)
+            ->get(route('bookings.eticket', $booking))
+            ->assertOk()
+            ->assertSee('880.00')        // what the bag sold for
+            ->assertSee('220.00')        // and the meal
+            ->assertSee('1,100.00');     // and the add-ons line they sum to
+
+        // Absence is asserted over the row data, not the HTML: "200.00" is also a
+        // substring of the "5,200.00" sitting in the fare summary, and an assertion
+        // that can pass or fail on a coincidence proves nothing either way.
+        $supplierPrices = array_column(
+            ETicket::for($booking, withPrices: true, viewer: $user)->addOns(),
+            'price'
+        );
+
+        $this->assertNotContains(800.0, $supplierPrices, 'the supplier price of the bag');
+        $this->assertNotContains(200.0, $supplierPrices, 'the supplier price of the meal');
     }
 
     public function test_it_is_not_readable_by_another_user(): void

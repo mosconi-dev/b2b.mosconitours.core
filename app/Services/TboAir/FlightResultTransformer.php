@@ -3,6 +3,7 @@
 namespace App\Services\TboAir;
 
 use App\Services\TboAir\DTO\FlightOffer;
+use App\Support\TravelScopeResolver;
 use Illuminate\Support\Arr;
 
 class FlightResultTransformer
@@ -86,6 +87,7 @@ class FlightResultTransformer
             ],
             price: $this->mapFare($raw),
             trips: $trips,
+            scope: TravelScopeResolver::forLegs($allLegs),
         );
     }
 

@@ -82,10 +82,9 @@ return [
     |
     */
 
-    // The country we sell from. Decides which itineraries count as domestic — and so
-    // whether a passenger is asked for a passport or any government ID — and is sent
-    // to TBO as PointOfSale.
-    'point_of_sale' => env('TBOAIR_POINT_OF_SALE', 'PH'),
+    // The country we sell from moved to config/pricing.php — hotels need the same
+    // answer, and a copy per supplier is two answers waiting to disagree. TBOAIR_POINT_OF_SALE
+    // is still read there as a fallback, so no deployment has to change.
 
     'auth_mode' => env('TBOAIR_AUTH_MODE', 'API'),
 

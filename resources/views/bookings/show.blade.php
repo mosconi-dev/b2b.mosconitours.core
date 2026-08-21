@@ -47,10 +47,13 @@
                     <dt class="text-gray-500">Total</dt>
                     <dd class="font-semibold text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }}</dd>
                 </div>
+                {{-- The SELLING price of the add-ons. `ancillary_total` is what they
+                     cost us, and printing it put the supplier's figure on an agency's
+                     screen — see Booking::addOnSellTotal(). --}}
                 @if ((float) $booking->ancillary_total > 0)
                     <div>
                         <dt class="text-gray-500">Add-ons</dt>
-                        <dd class="font-medium text-brand-900">{{ $booking->currency }} {{ number_format((float) $booking->ancillary_total, 2) }}</dd>
+                        <dd class="font-medium text-brand-900">{{ $booking->currency }} {{ number_format($booking->addOnSellTotal()->toFloat(), 2) }}</dd>
                     </div>
                 @endif
                 @unless ($booking->isHotel())
@@ -622,9 +625,11 @@
             </div>
         </div>
 
-        {{-- Fare breakdown --}}
+        {{-- Fare breakdown. Selling prices — the stored quote's baseFare/tax rows sum to
+             the supplier net, so they are never rendered here. See
+             Booking::fareLinesFor(). --}}
         @php
-            $breakdown = data_get($booking->quote, 'fareBreakdown', []);
+            $breakdown = $booking->fareLinesFor(auth()->user());
         @endphp
         @if (! empty($breakdown))
             <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -632,18 +637,11 @@
                 <div class="mt-4 divide-y divide-gray-100 text-sm">
                     @foreach ($breakdown as $b)
                         <div class="flex items-center justify-between py-2">
-                            @php
-                                // TBO's FareBreakdown entry already covers every passenger of
-                                // that type — BaseFare and Tax are the combined figures, not
-                                // per-head. Multiplying by count again doubled the line.
-                                $line = ((float) ($b['baseFare'] ?? 0)) + ((float) ($b['tax'] ?? 0));
-                                $count = max((int) ($b['count'] ?? 1), 1);
-                            @endphp
                             <span class="text-gray-600">
-                                {{ $count }} × {{ $b['passengerType'] ?? 'Passenger' }}
-                                <span class="text-gray-400">· {{ $booking->currency }} {{ number_format($line / $count, 2) }} each</span>
+                                {{ $b['count'] }} × {{ $b['label'] }}
+                                <span class="text-gray-400">· {{ $booking->currency }} {{ number_format($b['each'], 2) }} each</span>
                             </span>
-                            <span class="text-brand-900">{{ $booking->currency }} {{ number_format($line, 2) }}</span>
+                            <span class="text-brand-900">{{ $booking->currency }} {{ number_format($b['total'], 2) }}</span>
                         </div>
                     @endforeach
                 </div>

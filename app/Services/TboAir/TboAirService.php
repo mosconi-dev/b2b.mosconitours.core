@@ -2,6 +2,7 @@
 
 namespace App\Services\TboAir;
 
+use App\Enums\TravelScope;
 use App\Enums\TripType;
 use App\Models\Booking;
 use App\Services\Settings\Settings;
@@ -14,7 +15,7 @@ use App\Services\TboAir\DTO\SearchInput;
 use App\Services\TboAir\DTO\SelectionInput;
 use App\Services\TboAir\DTO\Ssr;
 use App\Services\TboAir\Exceptions\TboAirException;
-use App\Support\Airports;
+use App\Support\TravelScopeResolver;
 use Illuminate\Support\Facades\Cache;
 
 class TboAirService
@@ -263,6 +264,7 @@ class TboAirService
     {
         $data = $this->client->fareQuote($this->detailPayload($selection, $token));
         $this->guardSession($data);
+        $this->guardError($data);
 
         return FareQuote::fromResponse($data);
     }
@@ -271,6 +273,7 @@ class TboAirService
     {
         $data = $this->client->fareRule($this->detailPayload($selection, $token));
         $this->guardSession($data);
+        $this->guardError($data);
 
         return FareRule::fromResponse($data, $selection->resultIndex);
     }
@@ -279,6 +282,7 @@ class TboAirService
     {
         $data = $this->client->ssr($this->detailPayload($selection, $token));
         $this->guardSession($data);
+        $this->guardError($data);
 
         return Ssr::fromResponse($data, $selection->resultIndex);
     }
@@ -332,6 +336,38 @@ class TboAirService
     }
 
     /**
+     * Any other error TBO reports inside a 200.
+     *
+     * The HTTP status says nothing about whether the call worked: a supplier-side
+     * failure arrives as `200 OK` carrying `Response.Error.ErrorCode`. Observed as
+     * code 28, "Fare Quote failed from the Supplier end", which parsed into an EMPTY
+     * FareQuote — no trips, no fare breakdown, a net of zero — and the wizard then
+     * rendered a bookable page priced at the agency's flat rules alone. The agent was
+     * looking at ₱350 for a fare that does not exist.
+     *
+     * Session expiry (code 6) is not handled here: guardSession turns that into an
+     * auth error so withReauth can retry it once.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function guardError(array $data): void
+    {
+        if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
+            $data = $data[0];
+        }
+
+        $errorCode = (int) data_get($data, 'Response.Error.ErrorCode', data_get($data, 'Error.ErrorCode', 0));
+
+        if ($errorCode === 0 || $errorCode === 6) {
+            return;
+        }
+
+        throw new TboAirException(
+            $this->firstError($data, 'The flight provider could not price this fare.')
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function buildPayload(SearchInput $input, string $token): array
@@ -350,7 +386,7 @@ class TboAirService
             'AdultCount' => $input->adults,
             'ChildCount' => $input->children,
             'InfantCount' => $input->infants,
-            'IsDomestic' => $this->isDomestic($effective),
+            'IsDomestic' => $this->scopeOf($effective)->isDomestic(),
             'BookingMode' => config('tboair.booking_mode'),
             'DirectFlight' => false,
             'OneStopFlight' => false,
@@ -373,24 +409,25 @@ class TboAirService
     }
 
     /**
-     * Domestic when every segment stays within the Philippines.
+     * The scope of a search, from the requested airports alone.
+     *
+     * This is the one moment the curated list has to answer on its own — the request
+     * has not been sent, so TBO has told us nothing yet. Delegated to the shared
+     * resolver so it cannot drift from the answer FareQuote and the Book payload give
+     * later on the same itinerary.
      *
      * @param  array<int, array{origin: string, destination: string, departure: string}>  $segments
      */
-    private function isDomestic(array $segments): bool
+    private function scopeOf(array $segments): TravelScope
     {
-        $domestic = array_column(
-            array_filter(Airports::all(), fn (array $a): bool => ($a['country'] ?? '') === 'Philippines'),
-            'code'
-        );
+        $codes = [];
 
         foreach ($segments as $s) {
-            if (! in_array($s['origin'], $domestic, true) || ! in_array($s['destination'], $domestic, true)) {
-                return false;
-            }
+            $codes[] = $s['origin'];
+            $codes[] = $s['destination'];
         }
 
-        return true;
+        return TravelScopeResolver::forAirports($codes);
     }
 
     /**

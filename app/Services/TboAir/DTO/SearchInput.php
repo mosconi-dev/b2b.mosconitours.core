@@ -21,6 +21,18 @@ class SearchInput
     ) {}
 
     /**
+     * Everyone on the booking, infants included.
+     *
+     * Infants count: a per-passenger markup that skipped them would under-price a
+     * family, and whether they *should* be charged one is a pricing rule's decision,
+     * not this DTO's.
+     */
+    public function passengerCount(): int
+    {
+        return $this->adults + $this->children + $this->infants;
+    }
+
+    /**
      * Canonical representation, used to derive a deterministic cache key.
      *
      * @return array<string, mixed>

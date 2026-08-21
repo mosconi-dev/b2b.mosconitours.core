@@ -3,7 +3,9 @@
 namespace App\Services\Booking;
 
 use App\Models\Booking;
+use App\Models\User;
 use App\Services\Booking\Concerns\IssuedByAgency;
+use App\Services\Pricing\FareAllocation;
 use Illuminate\Support\Carbon;
 
 /**
@@ -27,11 +29,12 @@ class ETicket
     private function __construct(
         public readonly Booking $booking,
         public readonly bool $withPrices,
+        public readonly ?User $viewer = null,
     ) {}
 
-    public static function for(Booking $booking, bool $withPrices = true): self
+    public static function for(Booking $booking, bool $withPrices = true, ?User $viewer = null): self
     {
-        return new self($booking, $withPrices);
+        return new self($booking, $withPrices, $viewer);
     }
 
     /**
@@ -240,11 +243,42 @@ class ETicket
                         'type' => $label,
                         'description' => $item['label'] ?? '',
                         'route' => trim(($item['origin'] ?? '').' – '.($item['destination'] ?? ''), ' –'),
+                        // The SUPPLIER's price for this option, replaced below by what
+                        // it sold for. Kept here only as the weight for that split.
                         'price' => (float) ($item['price'] ?? 0),
                         'currency' => $item['currency'] ?? $this->booking->currency,
                     ];
                 }
             }
+        }
+
+        return $this->atSellingPrices($rows);
+    }
+
+    /**
+     * Re-price the add-on rows from our cost to what the agency paid.
+     *
+     * The stored options carry TBO's price — that is the figure Book echoes back, so it
+     * has to stay what it is — and printing it handed the reader our cost for a bag.
+     * The selling total is spread back over the rows in proportion to it, which keeps
+     * the rows summing to the add-ons line beside them.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function atSellingPrices(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $sold = FareAllocation::spread(
+            array_column($rows, 'price'),
+            $this->booking->addOnSellTotal(),
+        );
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['price'] = $sold[$i]->toFloat();
         }
 
         return $rows;
@@ -259,27 +293,26 @@ class ETicket
      *
      * @return array<int, array{label: string, count: int, each: float, total: float, baseFare: float, tax: float}>
      */
+    /**
+     * The fare summary, at selling prices.
+     *
+     * The supplier's own `baseFare` and `tax` are present only for a viewer entitled to
+     * the net — see Booking::fareLinesFor(). On an agency's copy the lines carry the
+     * selling figures, which is also what the passenger holding the document should be
+     * reading.
+     */
     public function fareLines(): array
     {
-        return array_map(function (array $b): array {
-            $count = max((int) ($b['count'] ?? 1), 1);
-            $base = (float) ($b['baseFare'] ?? 0);
-            $tax = (float) ($b['tax'] ?? 0);
-
-            return [
-                'label' => $b['passengerType'] ?? 'Passenger',
-                'count' => $count,
-                'baseFare' => $base,
-                'tax' => $tax,
-                'total' => $base + $tax,
-                'each' => ($base + $tax) / $count,
-            ];
-        }, data_get($this->booking->quote, 'fareBreakdown', []));
+        return $this->booking->fareLinesFor($this->viewer);
     }
 
+    /**
+     * The SELLING price of the add-ons. `ancillary_total` is what they cost us, and
+     * printing that put our cost on the document an agency reads.
+     */
     public function addOnTotal(): float
     {
-        return (float) $this->booking->ancillary_total;
+        return $this->booking->addOnSellTotal()->toFloat();
     }
 
     /**
