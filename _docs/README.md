@@ -22,4 +22,6 @@ Project documentation for `b2b.mosconitours.core`.
   against both suppliers; not yet switched on for live trading.
   [`00-overview.md`](pricing/00-overview.md) is the investigation of what existed before it;
   [`01-architecture.md`](pricing/01-architecture.md) is the domain model, schema, resolution
-  algorithm and the open business questions.
+  algorithm and the open business questions;
+  [`02-strategy-catalogue.md`](pricing/02-strategy-catalogue.md) catalogues the calculation types and
+  office-to-ITP models the engine could carry next, each costed against the code as built.
