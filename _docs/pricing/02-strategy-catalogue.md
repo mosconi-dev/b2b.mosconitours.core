@@ -17,6 +17,7 @@ The tags are [`01`](01-architecture.md)'s, carried forward:
 | Tag | Meaning |
 | --- | --- |
 | **[EXISTING]** | How the application already behaves, with the code that proves it. |
+| **[BUILT]** | Was a recommendation here, and has since shipped. The increment is named. |
 | **[RECOMMENDED]** | A proposal. Reversible — argue with it. |
 | **[UNRESOLVED]** | A business decision nobody has made yet. Listed in §8. |
 
@@ -57,24 +58,25 @@ further code at all.** §3 is entirely built on this.
 **[EXISTING]** The gap between what the schema accepts and what anyone can reach is larger than it
 looks, and it differs between the two forms:
 
-| Field | Office form | Agency form | Validated in `StorePricingRuleRequest` |
+**Increment 1 closed most of this gap** — the table below is the position *before* it, kept because
+§1 and §7 are written against it:
+
+| Field | Office form | Agency form | Now |
 | --- | --- | --- | --- |
-| `product`, `scope`, `calc_type`, `value`, `description` | yes | yes | yes |
-| `supplier` | yes | hidden, `""` | yes |
-| `min_markup` / `max_markup` | yes — *Floor* and *Cap* | **no** | yes |
-| `applies_to` | hidden, `total` | hidden, `total` | yes |
-| `rounding` | hidden, `none` | hidden, `none` | yes |
-| `matchers` | **no** | **no** | yes |
-| `valid_from` / `valid_to` | **no** | **no** | yes |
-| `basis` | forced `net` | forced `net` | forced in `prepareForValidation()` `:42` |
-| `priority` | not asked | not asked | defaulted to `100`, `:42` |
+| `product`, `scope`, `calc_type`, `value`, `description` | yes | yes | unchanged |
+| `supplier` | yes | hidden, `""` | unchanged |
+| `min_markup` / `max_markup` | yes — *Floor* and *Cap* | **no** | **both** |
+| `applies_to` | hidden, `total` | hidden, `total` | **both** |
+| `matchers` | **no** | **no** | **both**, as JSON |
+| `valid_from` / `valid_to` | **no** | **no** | **both** |
+| `rounding` | hidden, `none` | hidden, `none` | still hidden |
+| `basis` | forced `net` | forced `net` | forced, deliberately |
+| `priority` | not asked | not asked | defaulted, deliberately |
 
-Office form: `resources/views/admin/pricing/index.blade.php:160-186`, hidden inputs at `:204-207`.
-Agency form: `resources/views/admin/agencies/_markup.blade.php:225-247`, hidden inputs at `:263-267`.
-
-`basis` and `priority` are deliberate — C5 removed both as user-facing controls, and forcing them
-server-side rather than trusting a hidden field is the correct implementation of that decision. The
-rest are simply unbuilt.
+`basis` and `priority` stay off both forms — C5 removed them as user-facing controls, and forcing
+them server-side rather than trusting a hidden field is the correct implementation of that decision.
+`rounding` per rule is the one field still unreachable, and it is the least useful of the set: the
+selling price is rounded once at the end anyway.
 
 ---
 
@@ -93,10 +95,14 @@ nobody has surfaced. **Cost: form.**
 | **Targeted by attribute** | The `matchers` JSON. Flights carry `airline`, `cabin`, `isLcc`, `isRefundable`, `stops`, `origin`, `destination`; hotels carry `hotelCode`, `countryCode`, `cityCode`, `rating`, `isRefundable`, `mealType`, `withTransfers` | `{"rating": [4, 5]}` |
 | **Markup on fare, not tax** | `applies_to` = `base_fare` or `excl_ancillaries` — the industry norm on long-haul, where tax can approach half the ticket (D2 in [`00`](00-overview.md) §7) | 12% of base fare |
 
-**[RECOMMENDED]** Surface `matchers`, `valid_from`/`valid_to` and `applies_to` in both forms, and
-`min_markup`/`max_markup` in the **agency** form, before writing a single new calculator. It is the
-cheapest flexibility available and it is the flexibility most often actually asked for — a seasonal
-rule and an airline-specific rule cover a large share of real requests.
+**[BUILT — increment 1]** All four are on both forms. Matcher keys are validated against
+`PricingContextFactory::MATCHABLE_KEYS`, because a key no context emits reads as null, the comparison
+fails, and the rule silently never fires.
+
+> **One defect came out of this.** `forFareQuote()` emitted no `stops`, while `forFlightOffer()` did
+> — so a rule narrowed on stops matched at search and missed at booking, moving the price for a
+> reason the supplier had nothing to do with. It counts stops from the segments now, and
+> `MatchableKeysTest` pins the two flight contexts to the same key set.
 
 One caution on `applies_to`: it is honoured only when `basis` is `net` (`PricingEngine.php:130-143`),
 and on hotels there is no fare/tax split on the context, so `base_fare` silently falls back to the
@@ -109,9 +115,10 @@ hotel rule is excluding something.
 
 ### 2.1 The five already declared
 
-**[EXISTING]** These are enum cases with no class behind them. Each is one implementation of
-`Calculator::compute()` plus a registry line plus an entry in `implemented()`. **Cost: class**, except
-where noted.
+**[BUILT — increment 1]** Four of these five now have calculators; `tiered` does not, for the reason
+in §2.3. Each cost exactly what this section predicted: one implementation of `Calculator::compute()`,
+one registry line, one entry in `implemented()`. The engine, the matcher, the resolver and the layers
+table were not touched.
 
 | Type | Arithmetic | Where it earns its place |
 | --- | --- | --- |
@@ -127,7 +134,7 @@ where noted.
 
 | Type | Arithmetic | Rationale | Cost |
 | --- | --- | --- | --- |
-| **`per_segment`** | `v × segments` | A multi-city itinerary is more work than a one-way, and per-pax does not capture it. The flight branch of the factory does not emit a segment count today. | class + context |
+| **`per_segment`** | `v × segments` | A multi-city itinerary is more work than a one-way, and per-pax does not capture it. **Cheaper than it was:** increment 1 put `stops` on both flight contexts, and segments are `stops + 1`. | class |
 | **`price_point`** | markup sized so sell lands on a chosen ending | ₱7,999 rather than ₱7,847.63. Broader than `pricing.rounding`, which only rounds **up to a step** and only once, globally, at the end (`PricingEngine.php:106-111`). | class + column |
 | **`fee_gross_up`** | `basis × f ÷ (100 − f)` | Absorbs a payment-gateway or VAT percentage so the amount **retained** is the number that was intended. Arithmetically identical to `percentage_margin`; kept separate so the margin report can distinguish *our margin* from *cost recovery*, which is exactly what D9 (VAT) will need. | class |
 
@@ -297,9 +304,9 @@ so each needs a business answer before it becomes code.
 **[RECOMMENDED]** Four increments, ordered by value per unit of risk, each shippable and testable
 alone.
 
-### Increment 1 — Finish the declared enum, open the forms
+### Increment 1 — Finish the declared enum, open the forms ✅
 
-*No schema change.*
+**Built.** *No schema change, as predicted.*
 
 - Four calculators: `percentage_margin`, `per_pax`, `per_room_night`, `none`. Each is a class, a
   registry line and an entry in `implemented()`.
