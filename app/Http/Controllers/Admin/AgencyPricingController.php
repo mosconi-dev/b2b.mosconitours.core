@@ -16,6 +16,7 @@ use App\Services\Pricing\Money;
 use App\Services\Pricing\NetPrice;
 use App\Services\Pricing\PricingAdminService;
 use App\Services\Pricing\PricingContext;
+use App\Services\Pricing\PricingContextFactory;
 use App\Services\Pricing\PricingEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -151,6 +152,8 @@ class AgencyPricingController extends Controller
             // Every product's allowed types, so the form can narrow the select without a
             // round trip. Advisory here; StoreAgencyPricingRuleRequest is what binds it.
             'calcTypesByProduct' => CalcType::optionsByProduct(),
+            'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),
+            'appliesTo' => PricingController::APPLIES_TO,
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(
                 BookingProduct::cases(),
                 fn (array $c, BookingProduct $p): array => $c + [$p->value => $p->label()],

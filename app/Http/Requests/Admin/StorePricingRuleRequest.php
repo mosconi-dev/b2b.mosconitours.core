@@ -8,6 +8,7 @@ use App\Enums\PricingBasis;
 use App\Enums\Supplier;
 use App\Enums\TravelScope;
 use App\Models\PricingRule;
+use App\Services\Pricing\PricingContextFactory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -52,6 +53,20 @@ class StorePricingRuleRequest extends FormRequest
         if ($this->input('calc_type') === CalcType::None->value) {
             $this->merge(['value' => 0]);
         }
+
+        // The form posts matchers as JSON text, because the matchable set differs per
+        // product and grows with each one — which is why the column is JSON too.
+        // Unparseable input is left as the string it came in as, so the `array` rule
+        // rejects it and messages() explains the shape rather than this method guessing.
+        $raw = $this->input('matchers');
+
+        if (is_string($raw)) {
+            $trimmed = trim($raw);
+
+            $this->merge([
+                'matchers' => $trimmed === '' ? null : (json_decode($trimmed, true) ?? $raw),
+            ]);
+        }
     }
 
     /**
@@ -95,6 +110,8 @@ class StorePricingRuleRequest extends FormRequest
         return [
             'value.min' => 'A markup cannot be negative. Discounts are a separate mechanism.',
             'max_markup.gte' => 'The cap must be at least the floor, or the rule can never be satisfied.',
+            'matchers.array' => 'Narrowing must be written as JSON — {"airline": "PR"} for one value, '
+                .'{"rating": [4, 5]} for any of several. Leave it empty to match everything.',
         ];
     }
 
@@ -125,6 +142,28 @@ class StorePricingRuleRequest extends FormRequest
                     "{$chosen->label()} is {$chosen->productRestriction()}. "
                     .'Choose that product on this rule, or pick a type that means the same thing on all of them.'
                 );
+            }
+
+            // A matcher key the context never emits reads as null, the comparison fails,
+            // and the rule quietly never fires. A rule that charges nothing because of a
+            // typo is indistinguishable from one nobody wrote, so the typo is caught here
+            // rather than discovered in a margin report.
+            $matchers = $this->input('matchers');
+
+            if (is_array($matchers) && $product !== '') {
+                $allowed = PricingContextFactory::matchableKeys($product);
+
+                foreach (array_keys($matchers) as $key) {
+                    if (in_array((string) $key, $allowed, true)) {
+                        continue;
+                    }
+
+                    $validator->errors()->add(
+                        'matchers',
+                        "\"{$key}\" is not something this product carries, so the rule would never fire. "
+                        .'Use one of: '.implode(', ', $allowed).'.'
+                    );
+                }
             }
 
             // A margin is a share of the selling price, so 100% of it needs a selling

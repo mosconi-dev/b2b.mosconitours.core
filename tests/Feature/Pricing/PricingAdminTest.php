@@ -259,6 +259,128 @@ class PricingAdminTest extends TestCase
             ->assertSessionHasErrors('max_markup');
     }
 
+    // ---------------------------------------------- the fields the form now has ----
+
+    public function test_a_rule_can_be_narrowed_to_named_airlines(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'flight', 'matchers' => '{"airline": ["PR", "5J"]}',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(['airline' => ['PR', '5J']], PricingRule::latest('id')->first()->matchers);
+    }
+
+    public function test_narrowing_that_is_not_json_is_refused_with_the_shape(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData(['matchers' => 'airline = PR']))
+            ->assertSessionHasErrors('matchers');
+    }
+
+    public function test_a_misspelt_matcher_key_is_refused_rather_than_silently_never_firing(): void
+    {
+        // `airlineCode` reads as null on every context, the comparison fails, and the
+        // rule charges nothing. That is indistinguishable from a rule nobody wrote.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'flight', 'matchers' => '{"airlineCode": "PR"}',
+            ]))
+            ->assertSessionHasErrors('matchers');
+    }
+
+    public function test_a_matcher_key_from_the_wrong_product_is_refused(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'hotel', 'matchers' => '{"airline": "PR"}',
+            ]))
+            ->assertSessionHasErrors('matchers');
+
+        // The same key on a rule that matches every product is allowed: odd, but it
+        // simply never fires on a hotel, and refusing it decides a question nobody asked.
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => '*', 'matchers' => '{"airline": "PR"}',
+            ]))
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_empty_narrowing_is_stored_as_nothing_rather_than_an_empty_object(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData(['matchers' => '   ']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull(PricingRule::latest('id')->first()->matchers);
+    }
+
+    public function test_a_seasonal_window_reaches_the_rule(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'valid_from' => '2026-12-15', 'valid_to' => '2027-01-05',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $rule = PricingRule::latest('id')->first();
+
+        $this->assertSame('2026-12-15', $rule->valid_from->toDateString());
+        $this->assertSame('2027-01-05', $rule->valid_to->toDateString());
+    }
+
+    public function test_a_window_that_ends_before_it_starts_is_refused(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'valid_from' => '2027-01-05', 'valid_to' => '2026-12-15',
+            ]))
+            ->assertSessionHasErrors('valid_to');
+    }
+
+    public function test_a_percentage_can_be_taken_of_the_base_fare_alone(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'percentage_markup', 'value' => '12', 'applies_to' => 'base_fare',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('base_fare', PricingRule::latest('id')->first()->applies_to);
+    }
+
+    public function test_the_form_offers_the_fields_the_schema_already_carried(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('name="matchers"', false)
+            ->assertSee('name="valid_from"', false)
+            ->assertSee('name="valid_to"', false)
+            ->assertSee('name="applies_to"', false)
+            // ...and no longer smuggles applies_to through a hidden input.
+            ->assertDontSee('<input type="hidden" name="applies_to"', false);
+    }
+
     public function test_editing_a_rule_bumps_its_version(): void
     {
         $this->configureRoot();

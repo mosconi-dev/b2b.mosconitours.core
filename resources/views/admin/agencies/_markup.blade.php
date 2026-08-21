@@ -225,7 +225,7 @@
                      wrong ones out — StoreAgencyPricingRuleRequest is what refuses them,
                      so a form posted without JavaScript is held to the same rule. --}}
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-                     x-data="{ product: @js(old('product', '*')), calcType: @js(old('calc_type', 'fixed')), byProduct: @js($options['calcTypesByProduct']) }"
+                     x-data="{ product: @js(old('product', '*')), calcType: @js(old('calc_type', 'fixed')), byProduct: @js($options['calcTypesByProduct']), matchable: @js($options['matchableKeys']) }"
                      x-effect="if (! (calcType in byProduct[product])) calcType = 'fixed'">
                     <div>
                         <label for="ag-product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
@@ -262,6 +262,60 @@
                         <input id="ag-value" name="value" type="number" step="0.01" value="{{ old('value') }}" required
                                class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                     </div>
+                    {{-- Floor and cap: "10%, at least 500" and "10%, at most 3,000" are
+                         the two shapes most often asked for, and both are one clamp the
+                         engine already applies. --}}
+                    @foreach ([
+                        ['min_markup', 'Floor'],
+                        ['max_markup', 'Cap'],
+                    ] as [$field, $label])
+                        <div>
+                            <label for="ag-{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">
+                                {{ $label }} <span class="font-normal text-gray-400">— optional</span>
+                            </label>
+                            <input id="ag-{{ $field }}" name="{{ $field }}" type="number" step="0.01" value="{{ old($field) }}"
+                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        </div>
+                    @endforeach
+
+                    <div>
+                        <label for="ag-applies_to" class="mb-1 block text-xs font-medium text-gray-600">Charged on</label>
+                        <select id="ag-applies_to" name="applies_to" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                            @foreach ($options['appliesTo'] as $value => $text)
+                                <option value="{{ $value }}" @selected(old('applies_to', 'total') === (string) $value)>{{ $text }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    {{-- Measured against the TRAVEL date when the context knows one: a
+                         December peak-season rule is about when the guest flies, not when
+                         the agent happened to book. --}}
+                    @foreach ([
+                        ['valid_from', 'Travelling from'],
+                        ['valid_to', 'Travelling until'],
+                    ] as [$field, $label])
+                        <div>
+                            <label for="ag-{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">
+                                {{ $label }} <span class="font-normal text-gray-400">— optional</span>
+                            </label>
+                            <input id="ag-{{ $field }}" name="{{ $field }}" type="date" value="{{ old($field) }}"
+                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        </div>
+                    @endforeach
+
+                    <div class="sm:col-span-2 lg:col-span-3">
+                        <label for="ag-matchers" class="mb-1 block text-xs font-medium text-gray-600">
+                            Narrow it further <span class="font-normal text-gray-400">— optional, JSON</span>
+                        </label>
+                        <input id="ag-matchers" name="matchers" type="text" value="{{ old('matchers') }}"
+                               placeholder='{"airline": ["PR", "5J"]}'
+                               class="w-full rounded-lg border-gray-300 font-mono text-sm focus:border-brand-500 focus:ring-brand-500">
+                        <p class="mt-1 text-xs text-gray-400">
+                            A list means any of them. This product carries:
+                            <span class="font-mono" x-text="matchable[product].join(', ')"></span>
+                        </p>
+                    </div>
+
                     <div class="sm:col-span-2 lg:col-span-3">
                         <label for="ag-description" class="mb-1 block text-xs font-medium text-gray-600">
                             Note <span class="font-normal text-gray-400">— optional, why this rule exists</span>
@@ -282,7 +336,6 @@
                          either way; this field only keeps the form honest. --}}
                     <input type="hidden" name="basis" value="net">
                     <input type="hidden" name="supplier" value="">
-                    <input type="hidden" name="applies_to" value="total">
                     <input type="hidden" name="rounding" value="none">
                     <input type="hidden" name="is_active" value="1">
                 </div>

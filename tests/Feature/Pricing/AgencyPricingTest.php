@@ -114,6 +114,39 @@ class AgencyPricingTest extends TestCase
      * from its figures; why it was added is not, and that is the thing anyone needs
      * months later when deciding whether it can go.
      */
+    public function test_an_agency_can_bound_its_own_percentage(): void
+    {
+        // "10%, at least 500" — validated and honoured since the engine shipped, and
+        // until now reachable only from the office screen.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'calc_type' => 'percentage_markup', 'value' => '10', 'min_markup' => '500', 'max_markup' => '3000',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $rule = PricingRule::latest('id')->first();
+
+        $this->assertSame('500.00', $rule->min_markup);
+        $this->assertSame('3000.00', $rule->max_markup);
+    }
+
+    public function test_the_agency_form_offers_the_fields_the_office_form_does(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $response = $this->actingAs($user)
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'markup']))
+            ->assertOk();
+
+        foreach (['min_markup', 'max_markup', 'matchers', 'valid_from', 'valid_to', 'applies_to'] as $field) {
+            $response->assertSee('name="'.$field.'"', false);
+        }
+
+        $response->assertDontSee('<input type="hidden" name="applies_to"', false);
+    }
+
     public function test_an_agency_is_held_to_the_same_product_gate_as_the_office(): void
     {
         // StoreAgencyPricingRuleRequest extends the office request precisely so a rule

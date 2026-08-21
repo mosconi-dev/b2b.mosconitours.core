@@ -15,6 +15,7 @@ use App\Services\Pricing\Exceptions\PricingException;
 use App\Services\Pricing\NetPrice;
 use App\Services\Pricing\PricingAdminService;
 use App\Services\Pricing\PricingContext;
+use App\Services\Pricing\PricingContextFactory;
 use App\Services\Pricing\PricingEngine;
 use App\Services\Pricing\StrategyResolver;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +32,19 @@ use Illuminate\View\View;
  */
 class PricingController extends Controller
 {
+    /**
+     * What part of the supplier's rate a percentage may be taken of.
+     *
+     * Flights split fare from tax; hotels do not, so PricingContext::basisFor() falls
+     * back to the whole rate there rather than pricing a room at zero. The form says so
+     * rather than letting an office user believe a hotel rule is excluding something.
+     */
+    public const APPLIES_TO = [
+        'total' => 'The whole supplier rate',
+        'base_fare' => 'Base fare only — excludes tax (flights)',
+        'excl_ancillaries' => 'Everything except add-ons (flights)',
+    ];
+
     public function __construct(
         private readonly PricingAdminService $admin,
         private readonly StrategyResolver $resolver,
@@ -186,6 +200,10 @@ class PricingController extends Controller
             // Every product's allowed types, so the form can narrow the select without a
             // round trip. Advisory here; StorePricingRuleRequest is what binds it.
             'calcTypesByProduct' => CalcType::optionsByProduct(),
+            // What a rule may narrow on, per product. The factory owns this list because
+            // it is the only class that knows what a product's context carries.
+            'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),
+            'appliesTo' => self::APPLIES_TO,
             'bases' => PricingBasis::options(),
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(
                 BookingProduct::cases(),
