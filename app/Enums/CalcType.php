@@ -81,7 +81,7 @@ enum CalcType: string
         }
 
         $amount = $this->isPercentage()
-            ? rtrim(rtrim((string) $value, '0'), '.').'%'
+            ? self::trimPercent($value).'%'
             : number_format((float) $value, 2);
 
         $unit = $this->unitLabel();
@@ -89,10 +89,65 @@ enum CalcType: string
         return $unit === null ? $amount : "{$amount} {$unit}";
     }
 
+    /**
+     * A percentage without its trailing zeros: 8.0000 reads as 8, 7.5000 as 7.5.
+     *
+     * Normalised to four places FIRST, which is the whole job. Trimming zeros off a bare
+     * "20" takes the zero that belongs to the twenty and prints 2% — invisible while the
+     * only caller was an Eloquent `decimal:4` attribute that always carried a point, and
+     * a wrong number on a pricing screen the moment anything else called it.
+     */
+    private static function trimPercent(string|float|int|null $value): string
+    {
+        $trimmed = rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.');
+
+        return $trimmed === '' || $trimmed === '-' ? '0' : $trimmed;
+    }
+
     /** Whether the rule's `value` means anything. It does not for an explicit zero. */
     public function usesValue(): bool
     {
         return $this !== self::None;
+    }
+
+    /**
+     * What this type is, in a sentence, for whoever is choosing one.
+     *
+     * Written for an office or agency user rather than a developer: what it does, and
+     * when you would reach for it. The arithmetic is NOT spelled out here — CalcTypeGuide
+     * runs the real calculator to produce a worked example, so the numbers beside this
+     * sentence can never disagree with what a booking is charged.
+     */
+    public function guidance(): string
+    {
+        return match ($this) {
+            self::Fixed => 'The same amount on every booking, whatever the fare costs. '
+                .'The right shape for thin-margin inventory, where a percentage that suits a full-service '
+                .'international ticket would price a budget domestic seat out of the market.',
+
+            self::PercentageMarkup => 'A percentage of what the supplier charges. '
+                .'The usual choice for hotels and full-service fares, because the margin grows with the '
+                .'value of what is being sold.',
+
+            self::PercentageMargin => 'A percentage of the price the customer pays, not of the cost. '
+                .'Reach for this when the figure you have been given is a share of the SELLING price — '
+                .'it is what a finance team usually means by a margin, and it always adds more than a '
+                .'markup at the same number.',
+
+            self::PerPax => 'A fixed amount for every passenger on the booking. '
+                .'The air trade norm — a service fee per ticket issued — so a family of five pays five.',
+
+            self::PerRoomNight => 'A fixed amount for every room, every night. '
+                .'The axis a hotel rate actually moves on: two rooms for three nights is six of these. '
+                .'Head count is deliberately not a factor, because the supplier does not charge on it.',
+
+            self::Tiered => 'A different percentage for each band of supplier rate. Not yet available.',
+
+            self::None => 'Takes nothing, on purpose. '
+                .'Use it for a negotiated corporate rate or a staff booking, so the list says somebody '
+                .'decided to pass this through at cost — rather than leaving a gap that looks like a rule '
+                .'nobody got round to writing.',
+        };
     }
 
     /**

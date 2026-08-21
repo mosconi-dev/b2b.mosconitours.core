@@ -9,6 +9,7 @@ use App\Enums\TravelScope;
 use App\Models\Agency;
 use App\Models\PricingRule;
 use App\Models\PricingStrategy;
+use App\Services\Pricing\CalcTypeGuide;
 use App\Services\Pricing\Calculators\CalculatorRegistry;
 use App\Services\Pricing\NetPrice;
 use App\Services\Pricing\PricingContext;
@@ -223,6 +224,70 @@ class CalculatorTypesTest extends TestCase
 
         // 5,000 + 1,250 + (350 x 2) + 150. Every match contributes; none compounds.
         $this->assertSame('7100.00', $this->sell($this->flight(5000, pax: 2)));
+    }
+
+    // ------------------------------------------------------- the worked guide ----
+
+    public function test_every_offered_type_is_demonstrated_by_the_real_calculator(): void
+    {
+        $examples = collect(app(CalcTypeGuide::class)->examples())->keyBy('value');
+
+        $this->assertSame(
+            array_column(array_map(fn (CalcType $t): array => ['v' => $t->value], CalcType::implemented()), 'v'),
+            $examples->keys()->all(),
+            'the guide covers exactly the types the form offers, in the same order',
+        );
+
+        foreach ($examples as $value => $example) {
+            $this->assertNotSame('', $example['guidance'], "{$value} has no explanation");
+            $this->assertNotSame('', $example['working'], "{$value} has no arithmetic");
+        }
+
+        // The one type with nothing to type in says so, rather than asking for "No markup".
+        $this->assertNull($examples['none']['entered']);
+        $this->assertSame('5,000.00', $examples['none']['sells']);
+    }
+
+    public function test_each_type_has_its_own_sample_rather_than_borrowing_one(): void
+    {
+        // example() falls back to the fixed sample so a new type can never blank the
+        // screen — but a fallback that silently demonstrates the WRONG arithmetic is the
+        // whole failure this guide exists to prevent, so the coverage is pinned here.
+        $examples = collect(app(CalcTypeGuide::class)->examples())->keyBy('value');
+
+        $this->assertSame('350.00 per passenger', $examples['per_pax']['entered']);
+        $this->assertSame('200.00 per room-night', $examples['per_room_night']['entered']);
+        $this->assertStringContainsString('2 passengers', $examples['per_pax']['working']);
+        $this->assertStringContainsString('2 rooms', $examples['per_room_night']['working']);
+        $this->assertStringContainsString('3 nights', $examples['per_room_night']['working']);
+    }
+
+    public function test_the_guide_shows_markup_and_margin_diverging_at_the_same_number(): void
+    {
+        // The point of demonstrating both at 20%: one adds 1,000 and the other 1,250 on
+        // the same rate, which is the most expensive misreading available on the screen.
+        $examples = collect(app(CalcTypeGuide::class)->examples())->keyBy('value');
+
+        $this->assertSame('20%', $examples['percentage_markup']['entered']);
+        $this->assertSame('20%', $examples['percentage_margin']['entered']);
+
+        $this->assertSame('1,000.00', $examples['percentage_markup']['adds']);
+        $this->assertSame('1,250.00', $examples['percentage_margin']['adds']);
+        $this->assertSame('6,250.00', $examples['percentage_margin']['sells']);
+    }
+
+    public function test_a_whole_percentage_is_not_mangled_by_trimming_its_zeros(): void
+    {
+        // "20" trimmed of trailing zeros is "2". Invisible while the only caller was an
+        // Eloquent decimal:4 attribute, which always carries a point.
+        $markup = CalcType::PercentageMarkup;
+
+        $this->assertSame('20%', $markup->describeAmount('20'));
+        $this->assertSame('20%', $markup->describeAmount(20));
+        $this->assertSame('20%', $markup->describeAmount('20.0000'));
+        $this->assertSame('7.5%', $markup->describeAmount('7.5000'));
+        $this->assertSame('100%', $markup->describeAmount('100'));
+        $this->assertSame('0%', $markup->describeAmount('0.0000'));
     }
 
     // ---------------------------------------------------------- what it reads ----

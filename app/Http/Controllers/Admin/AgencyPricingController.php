@@ -11,6 +11,7 @@ use App\Http\Requests\Admin\StoreAgencyPricingRuleRequest;
 use App\Models\Agency;
 use App\Models\PricingRule;
 use App\Services\Pricing\AgencyPriceView;
+use App\Services\Pricing\CalcTypeGuide;
 use App\Services\Pricing\Exceptions\PricingException;
 use App\Services\Pricing\Money;
 use App\Services\Pricing\NetPrice;
@@ -160,6 +161,7 @@ class AgencyPricingController extends Controller
             // Every product's allowed types, so the form can narrow the select without a
             // round trip. Advisory here; StoreAgencyPricingRuleRequest is what binds it.
             'calcTypesByProduct' => CalcType::optionsByProduct(),
+            'calcTypeGuide' => app(CalcTypeGuide::class)->examples(),
             'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),
             'appliesTo' => PricingController::APPLIES_TO,
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(

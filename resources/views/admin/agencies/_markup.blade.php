@@ -29,6 +29,9 @@
         </div>
     @endif
 
+    {{-- -------------------------------------------------------- how it works ---- --}}
+    @include('admin.pricing._how-it-works', ['audience' => 'agency'])
+
     {{-- ------------------------------------------------------------- preview ---- --}}
     <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
          x-data="agencyMarkupPreview({ url: '{{ route('admin.agencies.markup.preview', $agency) }}' })">
@@ -276,6 +279,11 @@
                             @endforeach
                         </select>
                     </div>
+
+                    @include('admin.pricing._calc-type-help', [
+                        'span' => 'sm:col-span-3 lg:col-span-5',
+                        'calcTypeGuide' => $options['calcTypeGuide'],
+                    ])
 
                     <div>
                         <label for="ag-value" class="mb-1 block text-xs font-medium text-gray-600">Amount or %</label>

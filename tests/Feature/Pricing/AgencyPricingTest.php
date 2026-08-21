@@ -147,6 +147,22 @@ class AgencyPricingTest extends TestCase
         $response->assertDontSee('<input type="hidden" name="applies_to"', false);
     }
 
+    public function test_the_agency_tab_teaches_the_ladder_in_its_own_terms(): void
+    {
+        // The same explainer, addressed to the level reading it — an agency's rung is
+        // "You", and it is told its own markup does not move when the office's does.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'markup']))
+            ->assertOk()
+            ->assertSee('How a price is built')
+            ->assertSee('+ You, 10%')
+            ->assertSee('what you add does not')
+            // ...and the per-type worked examples, the same ones the office screen has.
+            ->assertSee('20% of the 6,250.00 it sells for');
+    }
+
     public function test_an_agency_is_held_to_the_same_product_gate_as_the_office(): void
     {
         // StoreAgencyPricingRuleRequest extends the office request precisely so a rule

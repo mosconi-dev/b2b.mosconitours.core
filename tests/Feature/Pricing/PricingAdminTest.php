@@ -382,6 +382,36 @@ class PricingAdminTest extends TestCase
             ->assertDontSee('<input type="hidden" name="applies_to"', false);
     }
 
+    // ------------------------------------------------------------ the teaching ----
+
+    public function test_the_rule_form_explains_each_type_with_its_own_numbers(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            // The explanations...
+            ->assertSee('A percentage of the price the customer pays, not of the cost.')
+            ->assertSee('The axis a hotel rate actually moves on', false)
+            // ...and the arithmetic beside them, computed by the calculators themselves.
+            ->assertSee('20% of the 6,250.00 it sells for')
+            ->assertSee('200 × 2 rooms × 3 nights', false);
+    }
+
+    public function test_the_page_explains_how_the_ladder_adds_up(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('How a price is built')
+            ->assertSee('Every rule that matches applies, and they add up.')
+            ->assertSee("Every percentage is of the supplier's rate.", false)
+            ->assertSee('The selling price is rounded once, at the end.');
+    }
+
     public function test_editing_a_rule_bumps_its_version(): void
     {
         $this->configureRoot();

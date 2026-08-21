@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StorePricingRuleRequest;
 use App\Models\Agency;
 use App\Models\PricingRule;
+use App\Services\Pricing\CalcTypeGuide;
 use App\Services\Pricing\Exceptions\PricingException;
 use App\Services\Pricing\NetPrice;
 use App\Services\Pricing\PricingAdminService;
@@ -255,6 +256,8 @@ class PricingController extends Controller
             // Every product's allowed types, so the form can narrow the select without a
             // round trip. Advisory here; StorePricingRuleRequest is what binds it.
             'calcTypesByProduct' => CalcType::optionsByProduct(),
+            // Worked examples, computed by the real calculators. See CalcTypeGuide.
+            'calcTypeGuide' => app(CalcTypeGuide::class)->examples(),
             // What a rule may narrow on, per product. The factory owns this list because
             // it is the only class that knows what a product's context carries.
             'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),

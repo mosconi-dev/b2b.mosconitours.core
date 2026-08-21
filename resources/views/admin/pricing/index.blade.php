@@ -74,6 +74,9 @@
                 @endunless
             </div>
 
+            {{-- ------------------------------------------------- how it works ---- --}}
+            @include('admin.pricing._how-it-works', ['audience' => 'office'])
+
             {{-- ---------------------------------------------------------- rules ---- --}}
             <div class="rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div class="border-b border-gray-100 px-6 py-4">
@@ -195,6 +198,8 @@
                                     @endforeach
                                 </select>
                             </div>
+
+                            @include('admin.pricing._calc-type-help', ['span' => 'sm:col-span-2 lg:col-span-4'])
 
                             @foreach ([
                                 ['value', 'Amount or %', 'number', old('value'), 'required'],
