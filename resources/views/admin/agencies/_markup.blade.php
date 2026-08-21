@@ -56,7 +56,7 @@
             </p>
         @endunless
 
-        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div>
                 <label for="markup-cost" class="mb-1 block text-xs font-medium text-gray-600">A price you were quoted</label>
                 <input id="markup-cost" x-model="form.net" type="number" step="0.01"
@@ -75,6 +75,26 @@
                     <option value="domestic">Domestic</option>
                     <option value="international">International</option>
                 </select>
+            </div>
+
+            {{-- The counts a per-unit rule multiplies by. Per product, because a fare has
+                 no rooms and a room rate has no head count. --}}
+            <div x-show="form.product === 'flight'">
+                <label for="markup-pax" class="mb-1 block text-xs font-medium text-gray-600">Passengers</label>
+                <input id="markup-pax" x-model="form.pax" type="number" min="1" max="9" step="1"
+                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+            </div>
+
+            <div x-show="form.product === 'hotel'" x-cloak>
+                <label for="markup-rooms" class="mb-1 block text-xs font-medium text-gray-600">Rooms</label>
+                <input id="markup-rooms" x-model="form.rooms" type="number" min="1" max="6" step="1"
+                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+            </div>
+
+            <div x-show="form.product === 'hotel'" x-cloak>
+                <label for="markup-nights" class="mb-1 block text-xs font-medium text-gray-600">Nights</label>
+                <input id="markup-nights" x-model="form.nights" type="number" min="1" max="30" step="1"
+                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
             </div>
         </div>
 

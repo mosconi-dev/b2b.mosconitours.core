@@ -2467,7 +2467,7 @@ Alpine.data('ladderPreview', (config = {}) => ({
     loading: false,
     error: '',
     result: null,
-    form: { agency_id: '', net: '5000.00', product: 'flight', scope: 'domestic' },
+    form: { agency_id: '', net: '5000.00', product: 'flight', scope: 'domestic', pax: 1, rooms: 1, nights: 1 },
 
     init() {
         // Start on whatever the select already shows, so the first Preview click works
@@ -2530,7 +2530,7 @@ Alpine.data('agencyMarkupPreview', (config = {}) => ({
     loading: false,
     error: '',
     result: null,
-    form: { net: '5000.00', product: 'flight', scope: 'domestic' },
+    form: { net: '5000.00', product: 'flight', scope: 'domestic', pax: 1, rooms: 1, nights: 1 },
 
     money(value) {
         return Number(value ?? 0).toLocaleString(undefined, {

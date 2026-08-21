@@ -99,10 +99,15 @@ class AgencyPricingController extends Controller
 
         Gate::authorize('view', $strategy);
 
+        // Nullable and defaulted to one — see PricingController::preview() for why the
+        // counts are here at all, and where the ceilings come from.
         $data = $request->validate([
             'net' => ['required', 'numeric', 'min:0'],
             'product' => ['required', 'in:flight,hotel'],
             'scope' => ['required', 'in:domestic,international'],
+            'pax' => ['nullable', 'integer', 'min:1', 'max:9'],
+            'rooms' => ['nullable', 'integer', 'min:1', 'max:6'],
+            'nights' => ['nullable', 'integer', 'min:1', 'max:30'],
         ]);
 
         $product = BookingProduct::from($data['product']);
@@ -118,6 +123,9 @@ class AgencyPricingController extends Controller
                     // "supplier net". Either way the engine is given the supplier's
                     // number and the viewer filter decides what comes back.
                     net: NetPrice::of($data['net']),
+                    paxCount: (int) ($data['pax'] ?? 1),
+                    roomCount: (int) ($data['rooms'] ?? 1),
+                    nights: (int) ($data['nights'] ?? 1),
                 ),
                 $agency,
             );

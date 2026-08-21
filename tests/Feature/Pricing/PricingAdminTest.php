@@ -506,6 +506,77 @@ class PricingAdminTest extends TestCase
         );
     }
 
+    public function test_the_preview_can_price_more_than_one_passenger(): void
+    {
+        // Without a head count the preview always sent one, so a per-passenger rule
+        // showed its unit price and never what it charges — the only thing anyone opens
+        // this panel to find out.
+        $this->configureRoot();
+        $agency = Agency::factory()->create(['name' => 'Agency ABC']);
+
+        PricingRule::factory()->perPax(350)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $this->actingAs($this->editor())
+            ->postJson(route('admin.pricing.preview'), [
+                'agency_id' => $agency->id, 'net' => '5000', 'product' => 'flight', 'scope' => 'domestic', 'pax' => 2,
+            ])
+            ->assertOk()
+            ->assertJson(['sell' => '5700.00', 'markupTotal' => '700.00']);
+    }
+
+    public function test_the_preview_can_price_more_than_one_room_night(): void
+    {
+        $this->configureRoot();
+        $agency = Agency::factory()->create(['name' => 'Agency ABC']);
+
+        PricingRule::factory()->perRoomNight(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+            'product' => 'hotel',
+        ]);
+
+        $this->actingAs($this->editor())
+            ->postJson(route('admin.pricing.preview'), [
+                'agency_id' => $agency->id, 'net' => '5000', 'product' => 'hotel', 'scope' => 'domestic',
+                'rooms' => 2, 'nights' => 3,
+            ])
+            ->assertOk()
+            ->assertJson(['sell' => '6200.00', 'markupTotal' => '1200.00']);
+    }
+
+    public function test_the_preview_still_prices_when_no_counts_are_sent(): void
+    {
+        // Nullable and defaulted to one, so nothing that predates the counts breaks.
+        $this->configureRoot();
+        $agency = Agency::factory()->create(['name' => 'Agency ABC']);
+
+        PricingRule::factory()->perPax(350)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $this->actingAs($this->editor())
+            ->postJson(route('admin.pricing.preview'), [
+                'agency_id' => $agency->id, 'net' => '5000', 'product' => 'flight', 'scope' => 'domestic',
+            ])
+            ->assertOk()
+            ->assertJson(['sell' => '5350.00']);
+    }
+
+    public function test_the_preview_refuses_a_head_count_the_booking_forms_would_refuse(): void
+    {
+        $this->configureRoot();
+        $agency = Agency::factory()->create(['name' => 'Agency ABC']);
+
+        $this->actingAs($this->editor())
+            ->postJson(route('admin.pricing.preview'), [
+                'agency_id' => $agency->id, 'net' => '5000', 'product' => 'flight', 'scope' => 'domestic', 'pax' => 40,
+            ])
+            ->assertStatus(422);
+    }
+
     public function test_the_preview_explains_a_missing_pricing_root_rather_than_failing(): void
     {
         $agency = Agency::factory()->create();

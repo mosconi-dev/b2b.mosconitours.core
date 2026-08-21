@@ -13,7 +13,7 @@
         What an agency would actually be charged, computed by the pricing engine itself.
     </p>
 
-    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div>
             <label for="preview-agency" class="mb-1 block text-xs font-medium text-gray-600">Agency</label>
             <select id="preview-agency" x-model="form.agency_id" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
@@ -40,6 +40,27 @@
                 <option value="domestic">Domestic</option>
                 <option value="international">International</option>
             </select>
+        </div>
+
+        {{-- The counts a per-unit rule multiplies by. Shown per product because a fare
+             has no rooms and a room rate has no head count — which is the whole reason
+             those two calculation types are gated by product in the first place. --}}
+        <div x-show="form.product === 'flight'">
+            <label for="preview-pax" class="mb-1 block text-xs font-medium text-gray-600">Passengers</label>
+            <input id="preview-pax" x-model="form.pax" type="number" min="1" max="9" step="1"
+                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+        </div>
+
+        <div x-show="form.product === 'hotel'" x-cloak>
+            <label for="preview-rooms" class="mb-1 block text-xs font-medium text-gray-600">Rooms</label>
+            <input id="preview-rooms" x-model="form.rooms" type="number" min="1" max="6" step="1"
+                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+        </div>
+
+        <div x-show="form.product === 'hotel'" x-cloak>
+            <label for="preview-nights" class="mb-1 block text-xs font-medium text-gray-600">Nights</label>
+            <input id="preview-nights" x-model="form.nights" type="number" min="1" max="30" step="1"
+                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
         </div>
     </div>
 

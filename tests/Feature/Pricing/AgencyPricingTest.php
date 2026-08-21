@@ -313,6 +313,23 @@ class AgencyPricingTest extends TestCase
         $this->assertNull($response->json('ownLayers.0.basisAmount'));
     }
 
+    public function test_the_agency_preview_can_price_more_than_one_passenger(): void
+    {
+        PricingRule::factory()->perPax(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.agencies.markup.preview', $this->agency), [
+                'net' => '5000', 'product' => 'flight', 'scope' => 'domestic', 'pax' => 3,
+            ])
+            ->assertOk()
+            ->assertJson(['cost' => '5000.00', 'markup' => '600.00', 'sell' => '5600.00']);
+    }
+
     public function test_the_agency_preview_shows_only_its_own_rung(): void
     {
         PricingRule::factory()->fixed(500)->create([

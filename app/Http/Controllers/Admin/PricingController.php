@@ -128,11 +128,17 @@ class PricingController extends Controller
      */
     public function preview(Request $request, PricingEngine $engine): JsonResponse
     {
+        // The counts are nullable and default to one, so a caller that predates them —
+        // or a flight preview, which has no rooms — still prices. Their ceilings are the
+        // search forms' own: nine passengers, six rooms.
         $data = $request->validate([
             'agency_id' => ['required', 'exists:agencies,id'],
             'net' => ['required', 'numeric', 'min:0'],
             'product' => ['required', 'in:flight,hotel'],
             'scope' => ['required', 'in:domestic,international'],
+            'pax' => ['nullable', 'integer', 'min:1', 'max:9'],
+            'rooms' => ['nullable', 'integer', 'min:1', 'max:6'],
+            'nights' => ['nullable', 'integer', 'min:1', 'max:30'],
         ]);
 
         $agency = Agency::findOrFail($data['agency_id']);
@@ -145,6 +151,12 @@ class PricingController extends Controller
                     supplier: $product->defaultSupplier(),
                     scope: TravelScope::from($data['scope']),
                     net: NetPrice::of($data['net']),
+                    // A per-passenger or per-room-night rule multiplies by these, so a
+                    // preview that always sent one could never show what such a rule
+                    // actually charges — which is the only question it is asked.
+                    paxCount: (int) ($data['pax'] ?? 1),
+                    roomCount: (int) ($data['rooms'] ?? 1),
+                    nights: (int) ($data['nights'] ?? 1),
                 ),
                 $agency,
             );
