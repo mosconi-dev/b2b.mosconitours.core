@@ -163,6 +163,20 @@ class AgencyPricingTest extends TestCase
             ->assertSee('20% of the 6,250.00 it sells for');
     }
 
+    public function test_the_agency_form_defines_its_fields_but_not_the_ones_it_lacks(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'markup']))
+            ->assertOk()
+            ->assertSee('What each field means')
+            ->assertSee('but never less than 500')
+            // Supplier is a hidden blank on this form, so defining it would send somebody
+            // looking for a box that is not there.
+            ->assertDontSee("Limits the rule to one supplier's inventory.", false);
+    }
+
     public function test_an_agency_is_held_to_the_same_product_gate_as_the_office(): void
     {
         // StoreAgencyPricingRuleRequest extends the office request precisely so a rule

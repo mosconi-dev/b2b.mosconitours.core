@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\AppliesTo;
 use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\Supplier;
@@ -163,7 +164,8 @@ class AgencyPricingController extends Controller
             'calcTypesByProduct' => CalcType::optionsByProduct(),
             'calcTypeGuide' => app(CalcTypeGuide::class)->examples(),
             'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),
-            'appliesTo' => PricingController::APPLIES_TO,
+            'appliesTo' => AppliesTo::options(),
+            'appliesToByProduct' => AppliesTo::optionsByProduct(),
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(
                 BookingProduct::cases(),
                 fn (array $c, BookingProduct $p): array => $c + [$p->value => $p->label()],

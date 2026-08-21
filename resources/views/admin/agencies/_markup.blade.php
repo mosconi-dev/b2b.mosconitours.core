@@ -242,14 +242,26 @@
                 @csrf
                 <h3 class="mb-3 text-sm font-semibold text-brand-900">Add a rule</h3>
 
+                @include('admin.pricing._field-guide', ['audience' => 'agency'])
+
                 {{-- Product and Type are bound together: a per-passenger fee is
                      meaningless on a hotel and a per-room-night one on a flight, so
                      choosing a product narrows the types on offer. Alpine only greys the
                      wrong ones out — StoreAgencyPricingRuleRequest is what refuses them,
                      so a form posted without JavaScript is held to the same rule. --}}
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-                     x-data="{ product: @js(old('product', '*')), calcType: @js(old('calc_type', 'fixed')), byProduct: @js($options['calcTypesByProduct']), matchable: @js($options['matchableKeys']) }"
-                     x-effect="if (! (calcType in byProduct[product])) calcType = 'fixed'">
+                     x-data="{
+                         product: @js(old('product', '*')),
+                         calcType: @js(old('calc_type', 'fixed')),
+                         chargedOn: @js(old('applies_to', 'total')),
+                         byProduct: @js($options['calcTypesByProduct']),
+                         chargedOnByProduct: @js($options['appliesToByProduct']),
+                         matchable: @js($options['matchableKeys']),
+                     }"
+                     x-effect="
+                         if (! (calcType in byProduct[product])) calcType = 'fixed';
+                         if (! (chargedOn in chargedOnByProduct[product])) chargedOn = 'total';
+                     ">
                     <div>
                         <label for="ag-product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
                         <select id="ag-product" name="product" x-model="product" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
@@ -308,9 +320,12 @@
 
                     <div>
                         <label for="ag-applies_to" class="mb-1 block text-xs font-medium text-gray-600">Charged on</label>
-                        <select id="ag-applies_to" name="applies_to" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                        <select id="ag-applies_to" name="applies_to" x-model="chargedOn" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                             @foreach ($options['appliesTo'] as $value => $text)
-                                <option value="{{ $value }}" @selected(old('applies_to', 'total') === (string) $value)>{{ $text }}</option>
+                                @php $chargedOnRestriction = \App\Enums\AppliesTo::from($value)->productRestriction(); @endphp
+                                <option value="{{ $value }}"
+                                        :disabled="! (@js($value) in chargedOnByProduct[product])"
+                                        @selected(old('applies_to', 'total') === (string) $value)>{{ $text }}@if ($chargedOnRestriction) — {{ $chargedOnRestriction }}@endif</option>
                             @endforeach
                         </select>
                     </div>

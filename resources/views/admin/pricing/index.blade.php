@@ -155,6 +155,8 @@
                         @csrf
                         <h3 class="mb-3 text-sm font-semibold text-brand-900">Add a rule</h3>
 
+                        @include('admin.pricing._field-guide', ['audience' => 'office'])
+
                         {{-- Product and Type are bound together: a per-passenger fee is
                              meaningless on a hotel and a per-room-night one on a flight,
                              so choosing a product narrows the types on offer. Alpine only
@@ -162,8 +164,18 @@
                              refuses them, so a form posted without JavaScript is still
                              held to the same rule. --}}
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4"
-                             x-data="{ product: @js(old('product', '*')), calcType: @js(old('calc_type', 'fixed')), byProduct: @js($calcTypesByProduct), matchable: @js($matchableKeys) }"
-                             x-effect="if (! (calcType in byProduct[product])) calcType = 'fixed'">
+                             x-data="{
+                                 product: @js(old('product', '*')),
+                                 calcType: @js(old('calc_type', 'fixed')),
+                                 chargedOn: @js(old('applies_to', 'total')),
+                                 byProduct: @js($calcTypesByProduct),
+                                 chargedOnByProduct: @js($appliesToByProduct),
+                                 matchable: @js($matchableKeys),
+                             }"
+                             x-effect="
+                                 if (! (calcType in byProduct[product])) calcType = 'fixed';
+                                 if (! (chargedOn in chargedOnByProduct[product])) chargedOn = 'total';
+                             ">
                             <div>
                                 <label for="product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
                                 <select id="product" name="product" x-model="product" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
@@ -213,11 +225,17 @@
                                 </div>
                             @endforeach
 
+                            {{-- Gated by product exactly as Type is, and for the same
+                                 reason: only a flight arrives with its fare and its tax
+                                 apart. The request refuses the combination too. --}}
                             <div>
                                 <label for="applies_to" class="mb-1 block text-xs font-medium text-gray-600">Charged on</label>
-                                <select id="applies_to" name="applies_to" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                <select id="applies_to" name="applies_to" x-model="chargedOn" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                                     @foreach ($appliesTo as $value => $text)
-                                        <option value="{{ $value }}" @selected(old('applies_to', 'total') === (string) $value)>{{ $text }}</option>
+                                        @php $chargedOnRestriction = \App\Enums\AppliesTo::from($value)->productRestriction(); @endphp
+                                        <option value="{{ $value }}"
+                                                :disabled="! (@js($value) in chargedOnByProduct[product])"
+                                                @selected(old('applies_to', 'total') === (string) $value)>{{ $text }}@if ($chargedOnRestriction) — {{ $chargedOnRestriction }}@endif</option>
                                     @endforeach
                                 </select>
                             </div>

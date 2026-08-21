@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Enums\AppliesTo;
 use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
@@ -86,7 +87,7 @@ class StorePricingRuleRequest extends FormRequest
             'calc_type' => ['required', Rule::in(array_keys(CalcType::options()))],
             'value' => ['required', 'numeric', 'min:0'],
             'basis' => ['required', Rule::in(array_keys(PricingBasis::options()))],
-            'applies_to' => ['required', Rule::in(['total', 'base_fare', 'excl_ancillaries'])],
+            'applies_to' => ['required', Rule::in(AppliesTo::values())],
 
             'min_markup' => ['nullable', 'numeric', 'min:0'],
             'max_markup' => ['nullable', 'numeric', 'min:0', 'gte:min_markup'],
@@ -141,6 +142,21 @@ class StorePricingRuleRequest extends FormRequest
                     'calc_type',
                     "{$chosen->label()} is {$chosen->productRestriction()}. "
                     .'Choose that product on this rule, or pick a type that means the same thing on all of them.'
+                );
+            }
+
+            // Only a flight arrives with its fare and its tax separable. A hotel rate is
+            // one number, so `basisFor()` falls back to the whole of it — safely, but a
+            // rule that says it excludes tax and excludes nothing is a lie the form
+            // should not let anybody write.
+            $chargedOn = AppliesTo::tryFrom((string) $this->input('applies_to'));
+
+            if ($chargedOn !== null && $product !== '' && ! $chargedOn->appliesToProduct($product)) {
+                $validator->errors()->add(
+                    'applies_to',
+                    "\"{$chargedOn->label()}\" is {$chargedOn->productRestriction()} — only a flight arrives "
+                    .'with its fare and its tax apart. Charge this rule on the whole supplier rate, or set its '
+                    .'product to Flight.'
                 );
             }
 

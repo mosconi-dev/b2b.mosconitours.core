@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\AppliesTo;
 use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
@@ -33,19 +34,6 @@ use Illuminate\View\View;
  */
 class PricingController extends Controller
 {
-    /**
-     * What part of the supplier's rate a percentage may be taken of.
-     *
-     * Flights split fare from tax; hotels do not, so PricingContext::basisFor() falls
-     * back to the whole rate there rather than pricing a room at zero. The form says so
-     * rather than letting an office user believe a hotel rule is excluding something.
-     */
-    public const APPLIES_TO = [
-        'total' => 'The whole supplier rate',
-        'base_fare' => 'Base fare only — excludes tax (flights)',
-        'excl_ancillaries' => 'Everything except add-ons (flights)',
-    ];
-
     public function __construct(
         private readonly PricingAdminService $admin,
         private readonly StrategyResolver $resolver,
@@ -261,7 +249,8 @@ class PricingController extends Controller
             // What a rule may narrow on, per product. The factory owns this list because
             // it is the only class that knows what a product's context carries.
             'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),
-            'appliesTo' => self::APPLIES_TO,
+            'appliesTo' => AppliesTo::options(),
+            'appliesToByProduct' => AppliesTo::optionsByProduct(),
             'bases' => PricingBasis::options(),
             'products' => [PricingRule::ANY => 'All products'] + array_reduce(
                 BookingProduct::cases(),

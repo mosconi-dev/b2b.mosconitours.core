@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Pricing;
 
+use App\Enums\AppliesTo;
 use App\Enums\BookingProduct;
 use App\Models\Agency;
 use App\Models\PricingRule;
@@ -360,11 +361,55 @@ class PricingAdminTest extends TestCase
 
         $this->actingAs($this->editor())
             ->post(route('admin.pricing.rules.store'), $this->ruleData([
-                'calc_type' => 'percentage_markup', 'value' => '12', 'applies_to' => 'base_fare',
+                'product' => 'flight', 'calc_type' => 'percentage_markup', 'value' => '12',
+                'applies_to' => 'base_fare',
             ]))
             ->assertSessionHasNoErrors();
 
         $this->assertSame('base_fare', PricingRule::latest('id')->first()->applies_to);
+    }
+
+    public function test_charging_on_the_base_fare_is_refused_where_there_is_no_base_fare(): void
+    {
+        // A hotel rate arrives as one number, so `basisFor()` falls back to the whole of
+        // it. Safe, but it makes a rule that says it excludes tax exclude nothing — and
+        // a rule matching every product would do one on flights and the other on hotels.
+        $this->configureRoot();
+
+        foreach (['hotel', '*'] as $product) {
+            foreach (['base_fare', 'excl_ancillaries'] as $chargedOn) {
+                $this->actingAs($this->editor())
+                    ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                        'product' => $product, 'applies_to' => $chargedOn,
+                    ]))
+                    ->assertSessionHasErrors('applies_to');
+            }
+        }
+    }
+
+    public function test_the_whole_supplier_rate_is_chargeable_on_every_product(): void
+    {
+        $this->configureRoot();
+
+        foreach (['flight', 'hotel', '*'] as $product) {
+            $this->actingAs($this->editor())
+                ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                    'product' => $product, 'applies_to' => 'total',
+                ]))
+                ->assertSessionHasNoErrors();
+        }
+    }
+
+    public function test_the_form_says_why_a_charged_on_option_is_unavailable(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('Base fare only, before tax')
+            // The same phrasing the Type select uses for its own restrictions.
+            ->assertSeeInOrder(['Base fare only, before tax', 'flights only'], false);
     }
 
     public function test_the_form_offers_the_fields_the_schema_already_carried(): void
@@ -397,6 +442,35 @@ class PricingAdminTest extends TestCase
             // ...and the arithmetic beside them, computed by the calculators themselves.
             ->assertSee('20% of the 6,250.00 it sells for')
             ->assertSee('200 × 2 rooms × 3 nights', false);
+    }
+
+    public function test_the_form_defines_its_own_fields(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('What each field means')
+            ->assertSee('but never less than 500')
+            ->assertSee('but never more than 3,000')
+            ->assertSee('a December peak-season rule is about the trip, not the purchase.', false)
+            ->assertSee('Extra conditions, written as JSON.')
+            // The Charged on definitions come off the enum, so they cannot drift from
+            // the select and the validator that use the same source.
+            ->assertSee(AppliesTo::BaseFare->guidance());
+    }
+
+    public function test_an_agency_only_field_is_not_defined_on_a_form_that_lacks_it(): void
+    {
+        // The agency form posts a blank supplier; defining a field it cannot see would
+        // send somebody looking for a box that is not there.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee("Limits the rule to one supplier's inventory.", false);
     }
 
     public function test_the_page_explains_how_the_ladder_adds_up(): void
