@@ -64,6 +64,31 @@ enum CalcType: string
         };
     }
 
+    /**
+     * What a rule of this type adds, as a phrase — "10%", "350.00 per passenger",
+     * "No markup".
+     *
+     * The one home for this vocabulary. The rule list, the ladder preview and the
+     * agency's own panel all render it, and the two previews used to decide it in
+     * JavaScript from `calcType` — so every type added here was silently labelled "flat"
+     * in the browser until somebody noticed. Deciding it server-side means a new type is
+     * still just a class and a registry line.
+     */
+    public function describeAmount(string|float|int|null $value): string
+    {
+        if (! $this->usesValue()) {
+            return $this->label();
+        }
+
+        $amount = $this->isPercentage()
+            ? rtrim(rtrim((string) $value, '0'), '.').'%'
+            : number_format((float) $value, 2);
+
+        $unit = $this->unitLabel();
+
+        return $unit === null ? $amount : "{$amount} {$unit}";
+    }
+
     /** Whether the rule's `value` means anything. It does not for an explicit zero. */
     public function usesValue(): bool
     {

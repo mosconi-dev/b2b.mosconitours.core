@@ -287,6 +287,32 @@ class AgencyPricingTest extends TestCase
      * typed would give up the Main Office's ₱500 as the difference — the amount that
      * must stay opaque.
      */
+    public function test_an_agency_rung_carries_its_own_label_and_no_more_than_before(): void
+    {
+        // Its panel used to phrase this in JavaScript and called anything that was not a
+        // percentage "a flat X" — wrong for a per-passenger fee the moment that type
+        // existed. The label is derived from calcType and value, both of which this
+        // payload already carried, so it discloses nothing new.
+        PricingRule::factory()->perPax(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $response = $this->actingAs($user)
+            ->postJson(route('admin.agencies.markup.preview', $this->agency), [
+                'net' => '5000', 'product' => 'flight', 'scope' => 'domestic',
+            ])
+            ->assertOk();
+
+        $this->assertSame('200.00 per passenger', $response->json('ownLayers.0.label'));
+
+        // The boundary is unmoved: still no supplier net and no basis amount.
+        $this->assertNull($response->json('net'));
+        $this->assertNull($response->json('ownLayers.0.basisAmount'));
+    }
+
     public function test_the_agency_preview_shows_only_its_own_rung(): void
     {
         PricingRule::factory()->fixed(500)->create([

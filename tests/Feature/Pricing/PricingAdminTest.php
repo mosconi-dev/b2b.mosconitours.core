@@ -454,6 +454,58 @@ class PricingAdminTest extends TestCase
             ]);
     }
 
+    public function test_two_rules_at_one_level_are_two_rungs_the_preview_can_tell_apart(): void
+    {
+        // A level is cumulative, so `level` is NOT unique across the rungs. The preview
+        // keyed its list on it and dropped one of every pair; it keys on level + rule
+        // now, which is what booking_price_layers is unique on for the same reason.
+        $this->configureRoot();
+        $agency = Agency::factory()->create(['name' => 'Agency ABC']);
+        $strategy = PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id]);
+
+        PricingRule::factory()->fixed(500)->create(['pricing_strategy_id' => $strategy->id]);
+        PricingRule::factory()->fixed(200)->create(['pricing_strategy_id' => $strategy->id]);
+
+        $layers = $this->actingAs($this->editor())
+            ->postJson(route('admin.pricing.preview'), [
+                'agency_id' => $agency->id, 'net' => '5000', 'product' => 'flight', 'scope' => 'domestic',
+            ])
+            ->assertOk()
+            ->json('layers');
+
+        $this->assertCount(2, $layers);
+        $this->assertSame([0, 0], array_column($layers, 'level'), 'both rungs are the same level');
+
+        $keys = array_map(fn (array $l): string => $l['level'].':'.$l['ruleId'], $layers);
+        $this->assertSame($keys, array_unique($keys), 'and the key the preview uses still separates them');
+    }
+
+    public function test_every_rung_arrives_with_its_own_label(): void
+    {
+        // The browser used to decide this from `calcType` and called everything that was
+        // not a percentage "fixed" — so each type added to the engine was mislabelled
+        // until somebody noticed. The server says it now.
+        $this->configureRoot();
+        $agency = Agency::factory()->create(['name' => 'Agency ABC']);
+        $strategy = PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id]);
+
+        PricingRule::factory()->perPax(350)->create(['pricing_strategy_id' => $strategy->id, 'product' => 'flight']);
+        PricingRule::factory()->margin(20)->create(['pricing_strategy_id' => $strategy->id]);
+        PricingRule::factory()->fixed(150)->create(['pricing_strategy_id' => $strategy->id]);
+
+        $layers = $this->actingAs($this->editor())
+            ->postJson(route('admin.pricing.preview'), [
+                'agency_id' => $agency->id, 'net' => '5000', 'product' => 'flight', 'scope' => 'domestic',
+            ])
+            ->assertOk()
+            ->json('layers');
+
+        $this->assertSame(
+            ['350.00 per passenger', '20%', '150.00'],
+            array_column($layers, 'label'),
+        );
+    }
+
     public function test_the_preview_explains_a_missing_pricing_root_rather_than_failing(): void
     {
         $agency = Agency::factory()->create();

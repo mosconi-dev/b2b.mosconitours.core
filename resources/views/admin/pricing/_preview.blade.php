@@ -56,11 +56,15 @@
             <span class="tabular-nums text-brand-900" x-text="money(result.net)"></span>
         </div>
 
-        <template x-for="layer in result.layers" :key="layer.level">
+        {{-- Keyed on the rule, not the level. A level is CUMULATIVE — every matching
+             rule contributes its own rung — so two office rules produce two rungs both
+             carrying level 0, and Alpine drops one of them on a duplicate key. The pair
+             is what `booking_price_layers` is unique on, for the same reason. --}}
+        <template x-for="layer in result.layers" :key="layer.level + ':' + layer.ruleId">
             <div class="flex justify-between py-1.5">
                 <span class="text-gray-600">
                     + <span x-text="layer.agencyName"></span>
-                    <span class="text-xs text-gray-400" x-text="describe(layer)"></span>
+                    <span class="text-xs text-gray-400" x-text="layer.label"></span>
                 </span>
                 <span class="tabular-nums text-gray-700" x-text="money(layer.markup)"></span>
             </div>

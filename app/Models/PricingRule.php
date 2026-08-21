@@ -215,16 +215,6 @@ class PricingRule extends Model
      */
     public function amountLabel(): string
     {
-        if (! $this->calc_type->usesValue()) {
-            return $this->calc_type->label();
-        }
-
-        $amount = $this->calc_type->isPercentage()
-            ? rtrim(rtrim((string) $this->value, '0'), '.').'%'
-            : number_format((float) $this->value, 2);
-
-        $unit = $this->calc_type->unitLabel();
-
-        return $unit === null ? $amount : "{$amount} {$unit}";
+        return $this->calc_type->describeAmount($this->value);
     }
 }
