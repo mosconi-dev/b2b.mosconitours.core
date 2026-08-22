@@ -2467,7 +2467,7 @@ Alpine.data('ladderPreview', (config = {}) => ({
     loading: false,
     error: '',
     result: null,
-    form: { agency_id: '', net: '5000.00', product: 'flight', scope: 'domestic' },
+    form: { agency_id: '', net: '5000.00', product: 'flight', scope: 'domestic', pax: 1, rooms: 1, nights: 1 },
 
     init() {
         // Start on whatever the select already shows, so the first Preview click works
@@ -2480,15 +2480,6 @@ Alpine.data('ladderPreview', (config = {}) => ({
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         });
-    },
-
-    /** "(15%)" or "(fixed)" beside a rung, so the number is traceable to its rule. */
-    describe(layer) {
-        if (! layer.calcType) {
-            return '';
-        }
-
-        return layer.calcType === 'percentage_markup' ? `(${parseFloat(layer.value)}%)` : '(fixed)';
     },
 
     async run() {
@@ -2539,7 +2530,7 @@ Alpine.data('agencyMarkupPreview', (config = {}) => ({
     loading: false,
     error: '',
     result: null,
-    form: { net: '5000.00', product: 'flight', scope: 'domestic' },
+    form: { net: '5000.00', product: 'flight', scope: 'domestic', pax: 1, rooms: 1, nights: 1 },
 
     money(value) {
         return Number(value ?? 0).toLocaleString(undefined, {
@@ -2566,22 +2557,29 @@ Alpine.data('agencyMarkupPreview', (config = {}) => ({
         return ['percentage_markup', 'percentage_margin'].includes(layer?.calcType);
     },
 
-    /** "8% of the supplier rate", or "a flat ₱200". */
+    /**
+     * "8% of the supplier rate", or "350.00 per passenger".
+     *
+     * The amount itself comes from the server as `layer.label`, because deciding it here
+     * meant every calculation type added to the engine was silently labelled "flat" in
+     * the browser. All this adds is what a PERCENTAGE is a percentage of, which is the
+     * one part of the phrase the server cannot know from the type alone.
+     */
     ruleLabel(layer) {
         if (this.isPercentage(layer)) {
             const of = layer.basis === 'running' ? 'of your cost' : 'of the supplier rate';
 
-            return `${this.trim(layer.value)}% ${of}`;
+            return `${layer.label} ${of}`;
         }
 
-        return `a flat ${this.money(layer.value)}`;
+        return layer.label;
     },
 
     /** The arithmetic, spelled out: "8% × 5,000.00". */
     workingOut(layer) {
         return this.isPercentage(layer)
             ? `${this.trim(layer.value)}% × ${this.money(this.result.cost)}`
-            : 'flat amount';
+            : layer.label;
     },
 
     /** What the rule matched on, as chips. */

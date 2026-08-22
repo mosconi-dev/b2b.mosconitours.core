@@ -23,6 +23,60 @@ use Illuminate\Support\Carbon;
 class PricingContextFactory
 {
     /**
+     * The attribute keys each product's contexts actually carry.
+     *
+     * Declared here because this class is the only one that knows a product's shape, and
+     * these are exactly the keys the methods below put on `attributes`. Keep the two in
+     * step: a rule may match on anything in this list and on nothing outside it.
+     *
+     * **Why it is validated at all.** A matcher key the context never emits reads as
+     * null, the comparison fails, and the rule quietly never fires. A rule that charges
+     * nothing because of a typo is indistinguishable from one nobody wrote — so the
+     * typo is caught in the form instead.
+     *
+     * @var array<string, array<int, string>>
+     */
+    public const MATCHABLE_KEYS = [
+        'flight' => ['airline', 'cabin', 'isLcc', 'isRefundable', 'stops', 'origin', 'destination'],
+        'hotel' => ['hotelCode', 'countryCode', 'cityCode', 'rating', 'isRefundable', 'mealType', 'withTransfers'],
+    ];
+
+    /**
+     * What a rule on this product may match on.
+     *
+     * A rule matching every product gets the UNION rather than the intersection. A
+     * `{"airline": "PR"}` matcher on an all-products rule is odd but not wrong — it
+     * simply never fires on a hotel — and refusing it would be this validator deciding a
+     * question it was not asked. What it still catches is the typo.
+     *
+     * @return array<int, string>
+     */
+    public static function matchableKeys(string $product): array
+    {
+        if (array_key_exists($product, self::MATCHABLE_KEYS)) {
+            return self::MATCHABLE_KEYS[$product];
+        }
+
+        return array_values(array_unique(array_merge(...array_values(self::MATCHABLE_KEYS))));
+    }
+
+    /**
+     * Every product's matchable keys, for a form that switches between them.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function matchableKeysByProduct(): array
+    {
+        $products = array_merge(['*'], BookingProduct::values());
+
+        return array_reduce(
+            $products,
+            fn (array $carry, string $product): array => $carry + [$product => self::matchableKeys($product)],
+            [],
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $offer  one entry of FlightOffer::toArray()
      */
     public function forFlightOffer(array $offer, string $currency = 'PHP', int $paxCount = 1): PricingContext
@@ -69,6 +123,12 @@ class PricingContextFactory
                 'cabin' => Arr::get($trip, 'cabin'),
                 'isLcc' => (bool) Arr::get($quote, 'isLcc', false),
                 'isRefundable' => (bool) Arr::get($quote, 'isRefundable', false),
+                // Counted from the segments rather than read from a field, because the
+                // quote has no `stops` of its own — and the SEARCH context has one. A
+                // rule narrowed on stops that matched at search and missed here would
+                // move the price between the two, which is the one failure this module
+                // must not have.
+                'stops' => max(0, count((array) Arr::get($quote, 'trips.0.segments', [])) - 1),
                 'origin' => Arr::get($trip, 'origin.code'),
                 'destination' => Arr::get($quote, 'trips.0.segments.'.(count((array) Arr::get($quote, 'trips.0.segments', [])) - 1).'.destination.code'),
             ],

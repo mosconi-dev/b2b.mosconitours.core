@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\TravelScope;
 use App\Services\Pricing\PricingContext;
+use App\Services\Pricing\TieredBands;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,7 +26,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'pricing_strategy_id', 'description', 'product', 'supplier', 'scope', 'matchers',
-    'calc_type', 'value', 'basis', 'applies_to',
+    'calc_type', 'value', 'params', 'basis', 'applies_to',
     'min_markup', 'max_markup', 'rounding', 'priority',
     'valid_from', 'valid_to', 'is_active',
 ])]
@@ -42,6 +44,7 @@ class PricingRule extends Model
             'calc_type' => CalcType::class,
             'basis' => PricingBasis::class,
             'value' => 'decimal:4',
+            'params' => 'array',
             'min_markup' => 'decimal:2',
             'max_markup' => 'decimal:2',
             'priority' => 'integer',
@@ -184,6 +187,10 @@ class PricingRule extends Model
             'matchers' => $this->matchers,
             'calc_type' => $this->calc_type->value,
             'value' => (string) $this->value,
+            // Copied, not referenced. A booking priced on the 10k/50k bands cannot
+            // account for itself a year later if the bands have since moved and only
+            // `value` — which a tiered rule does not even use — was kept.
+            'params' => $this->params,
             'basis' => $this->basis->value,
             'applies_to' => $this->applies_to,
             'min_markup' => $this->min_markup,
@@ -198,13 +205,58 @@ class PricingRule extends Model
      */
     public function summary(): string
     {
-        $amount = $this->calc_type->isPercentage()
-            ? rtrim(rtrim((string) $this->value, '0'), '.').'%'
-            : number_format((float) $this->value, 2);
+        $amount = $this->amountLabel();
 
         $product = $this->product === self::ANY ? 'all products' : $this->product;
         $scope = $this->scope === 'any' ? '' : ' '.TravelScope::from($this->scope)->label();
 
         return trim("{$amount} on {$product}{$scope}");
+    }
+
+    /**
+     * What the rule adds, as a phrase — "10%", "500.00 per passenger", "No markup".
+     *
+     * The unit is part of the amount, not decoration: a flat 500 and a 500 per passenger
+     * are the same three characters otherwise, and the second one costs a family of five
+     * five times the first.
+     */
+    /**
+     * The service line this rule prices — its product and its scope, as one phrase.
+     *
+     * "Domestic Flight", "International Hotel", "All products". A pricing screen groups
+     * by this because a rule is written for a line of business, not for a column: the
+     * question somebody arrives with is "what do we charge on domestic flights", and the
+     * answer is however many rules share that pair.
+     */
+    public function serviceLine(): string
+    {
+        $product = $this->product === self::ANY
+            ? 'All products'
+            : BookingProduct::from($this->product)->label();
+
+        if ($this->scope === 'any') {
+            return $product;
+        }
+
+        $scope = TravelScope::from($this->scope)->label();
+
+        return $this->product === self::ANY ? "{$scope}, all products" : "{$scope} {$product}";
+    }
+
+    /**
+     * What groups a rule with its siblings. The label is a presentation of this pair, not
+     * the other way round — two lines that read alike must never merge by accident.
+     */
+    public function serviceLineKey(): string
+    {
+        return $this->product.'|'.$this->scope;
+    }
+
+    public function amountLabel(): string
+    {
+        // A tiered rule has no single amount — its numbers are all in its bands.
+        return $this->calc_type === CalcType::Tiered
+            ? TieredBands::label($this->params)
+            : $this->calc_type->describeAmount($this->value);
     }
 }

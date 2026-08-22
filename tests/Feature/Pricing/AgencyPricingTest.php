@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Pricing;
 
+use App\Enums\CalcType;
+use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Http\Requests\Admin\StoreAgencyPricingRuleRequest;
 use App\Models\Agency;
 use App\Models\Booking;
@@ -70,6 +73,181 @@ class AgencyPricingTest extends TestCase
         ], $overrides);
     }
 
+    // ----------------------------------------------------------- editing a rule ----
+
+    public function test_an_agency_can_edit_its_own_rule(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $rule = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            'description' => 'Booking fee',
+        ]);
+        $version = $rule->version;
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.markup.rules.edit', [$this->agency, $rule]))
+            ->assertOk()
+            ->assertSee('Booking fee')
+            ->assertSee('value="200"', false);
+
+        $this->actingAs($user)
+            ->put(route('admin.agencies.markup.rules.update', [$this->agency, $rule]), $this->ruleData([
+                'calc_type' => 'percentage_markup', 'value' => '6', 'description' => 'Now a percentage',
+            ]))
+            ->assertRedirect(route('admin.agencies.show', $this->agency));
+
+        $rule->refresh();
+
+        $this->assertSame('percentage_markup', $rule->calc_type->value);
+        $this->assertSame('6.0000', $rule->value);
+        $this->assertGreaterThan($version, $rule->version);
+    }
+
+    public function test_an_agency_cannot_edit_another_agencys_rule(): void
+    {
+        // 404 rather than 403: whether the rival's rule exists is not this agency's
+        // business, and confirming it would answer a question nobody may ask.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $theirs = PricingRule::factory()->fixed(999)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->rival->id])->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.markup.rules.edit', [$this->agency, $theirs]))
+            ->assertNotFound();
+
+        $this->actingAs($user)
+            ->put(route('admin.agencies.markup.rules.update', [$this->agency, $theirs]), $this->ruleData())
+            ->assertNotFound();
+
+        $this->assertSame('999.0000', $theirs->refresh()->value);
+    }
+
+    public function test_editing_needs_more_than_permission_to_look(): void
+    {
+        $viewer = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $rule = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.agencies.markup.rules.edit', [$this->agency, $rule]))
+            ->assertForbidden();
+    }
+
+    public function test_an_agency_edit_is_held_to_every_rule_its_add_form_is(): void
+    {
+        // Same request class, so the cliff check and the product gates apply either way.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $rule = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('admin.agencies.markup.rules.update', [$this->agency, $rule]), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => ['mode' => 'whole', 'bands' => [
+                    ['up_to' => '10000', 'calc_type' => 'percentage_markup', 'value' => '12'],
+                    ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => '8'],
+                ]],
+            ]))
+            ->assertSessionHasErrors('params');
+
+        $this->assertSame('fixed', $rule->refresh()->calc_type->value);
+    }
+
+    public function test_the_agency_rules_table_offers_an_edit_and_a_rate_sheet(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $rule = PricingRule::factory()
+            ->tiered([[10000, CalcType::Fixed, 300], [null, CalcType::Fixed, 500]], TierMode::Whole, TierUnit::Booking)
+            ->create([
+                'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', $this->agency))
+            ->assertOk()
+            ->assertSee(route('admin.agencies.markup.rules.edit', [$this->agency, $rule]), false)
+            ->assertSeeInOrder(['Class 1', '0.00', '10,000.00', '300.00'])
+            ->assertSeeInOrder(['Class 2', '10,000.01', 'No limit', '500.00']);
+    }
+
+    public function test_both_screens_write_a_rule_with_the_same_fields(): void
+    {
+        // They drifted once — floor and cap were missing here for months. One partial is
+        // what stops it happening again, so this is what says the partial is shared.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', $this->agency))
+            ->assertOk()
+            ->assertSee('name="min_markup"', false)
+            ->assertSee('name="max_markup"', false)
+            ->assertSee('name="applies_to"', false)
+            ->assertSee('name="matchers"', false)
+            ->assertSee('name="params[bands_on]"', false)
+            // ...and the one field it deliberately does not offer.
+            ->assertSee('<input type="hidden" name="supplier" value="">', false)
+            ->assertDontSee('id="ag-supplier"', false);
+    }
+
+    // ------------------------------------------------------------- tier tables ----
+
+    public function test_an_agency_can_write_a_tier_table_of_its_own(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => ['mode' => 'marginal', 'bands' => [
+                    ['up_to' => '10000', 'calc_type' => 'percentage_markup', 'value' => '12'],
+                    ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => '8'],
+                ]],
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $rule = PricingRule::firstOrFail();
+
+        $this->assertSame('tiered', $rule->calc_type->value);
+        $this->assertSame('marginal', $rule->params['mode']);
+        $this->assertSame('Tiered: 12% / 8%', $rule->amountLabel());
+    }
+
+    public function test_an_agency_is_held_to_the_same_cliff_check_as_the_office(): void
+    {
+        // The validation lives in the parent request, so both forms refuse the same table.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => ['mode' => 'whole', 'bands' => [
+                    ['up_to' => '10000', 'calc_type' => 'percentage_markup', 'value' => '12'],
+                    ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => '8'],
+                ]],
+            ]))
+            ->assertSessionHasErrors('params');
+    }
+
+    public function test_the_agency_form_carries_the_band_editor(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', $this->agency))
+            ->assertOk()
+            ->assertSee('name="params[mode]"', false)
+            ->assertSee('params[bands][', false)
+            ->assertSee('Each band charges only its own slice of the fare');
+    }
+
     // ------------------------------------------------------------------ scope ----
 
     public function test_an_agency_can_add_its_own_rule(): void
@@ -114,6 +292,88 @@ class AgencyPricingTest extends TestCase
      * from its figures; why it was added is not, and that is the thing anyone needs
      * months later when deciding whether it can go.
      */
+    public function test_an_agency_can_bound_its_own_percentage(): void
+    {
+        // "10%, at least 500" — validated and honoured since the engine shipped, and
+        // until now reachable only from the office screen.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'calc_type' => 'percentage_markup', 'value' => '10', 'min_markup' => '500', 'max_markup' => '3000',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $rule = PricingRule::latest('id')->first();
+
+        $this->assertSame('500.00', $rule->min_markup);
+        $this->assertSame('3000.00', $rule->max_markup);
+    }
+
+    public function test_the_agency_form_offers_the_fields_the_office_form_does(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $response = $this->actingAs($user)
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'markup']))
+            ->assertOk();
+
+        foreach (['min_markup', 'max_markup', 'matchers', 'valid_from', 'valid_to', 'applies_to'] as $field) {
+            $response->assertSee('name="'.$field.'"', false);
+        }
+
+        $response->assertDontSee('<input type="hidden" name="applies_to"', false);
+    }
+
+    public function test_the_agency_tab_teaches_the_ladder_in_its_own_terms(): void
+    {
+        // The same explainer, addressed to the level reading it — an agency's rung is
+        // "You", and it is told its own markup does not move when the office's does.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'markup']))
+            ->assertOk()
+            ->assertSee('How a price is built')
+            ->assertSee('+ You, 10%')
+            ->assertSee('what you add does not')
+            // ...and the per-type worked examples, the same ones the office screen has.
+            ->assertSee('20% of the 6,250.00 it sells for');
+    }
+
+    public function test_the_agency_form_defines_its_fields_but_not_the_ones_it_lacks(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', ['agency' => $this->agency, 'tab' => 'markup']))
+            ->assertOk()
+            ->assertSee('What each field means')
+            ->assertSee('but never less than 500')
+            // Supplier is a hidden blank on this form, so defining it would send somebody
+            // looking for a box that is not there.
+            ->assertDontSee("Limits the rule to one supplier's inventory.", false);
+    }
+
+    public function test_an_agency_is_held_to_the_same_product_gate_as_the_office(): void
+    {
+        // StoreAgencyPricingRuleRequest extends the office request precisely so a rule
+        // cannot be shaped differently depending on which screen it was written on.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_pax', 'value' => '150',
+            ]))
+            ->assertSessionHasErrors('calc_type');
+
+        $this->actingAs($user)
+            ->post(route('admin.agencies.markup.rules.store', $this->agency), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_room_night', 'value' => '150',
+            ]))
+            ->assertSessionHasNoErrors();
+    }
+
     public function test_a_rule_keeps_the_note_explaining_why_it_exists(): void
     {
         $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
@@ -235,6 +495,77 @@ class AgencyPricingTest extends TestCase
      * typed would give up the Main Office's ₱500 as the difference — the amount that
      * must stay opaque.
      */
+    public function test_an_agency_rung_carries_its_own_label_and_no_more_than_before(): void
+    {
+        // Its panel used to phrase this in JavaScript and called anything that was not a
+        // percentage "a flat X" — wrong for a per-passenger fee the moment that type
+        // existed. The label is derived from calcType and value, both of which this
+        // payload already carried, so it discloses nothing new.
+        PricingRule::factory()->perPax(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $response = $this->actingAs($user)
+            ->postJson(route('admin.agencies.markup.preview', $this->agency), [
+                'net' => '5000', 'product' => 'flight', 'scope' => 'domestic',
+            ])
+            ->assertOk();
+
+        $this->assertSame('200.00 per passenger', $response->json('ownLayers.0.label'));
+
+        // The boundary is unmoved: still no supplier net and no basis amount.
+        $this->assertNull($response->json('net'));
+        $this->assertNull($response->json('ownLayers.0.basisAmount'));
+    }
+
+    public function test_the_agency_preview_can_price_more_than_one_passenger(): void
+    {
+        PricingRule::factory()->perPax(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            'product' => 'flight',
+        ]);
+
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.agencies.markup.preview', $this->agency), [
+                'net' => '5000', 'product' => 'flight', 'scope' => 'domestic', 'pax' => 3,
+            ])
+            ->assertOk()
+            ->assertJson(['cost' => '5000.00', 'markup' => '600.00', 'sell' => '5600.00']);
+    }
+
+    public function test_an_office_tier_table_never_reaches_the_agency(): void
+    {
+        // A tiered label carries the band boundaries, which is fine for a rule the agency
+        // wrote and would be a disclosure for one the office did. The office rung is
+        // redacted whole, so the table goes with it.
+        PricingRule::factory()
+            ->tiered([[10000, CalcType::PercentageMarkup, 12], [null, CalcType::PercentageMarkup, 8]], TierMode::Marginal)
+            ->create([
+                'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id])->id,
+            ]);
+        PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $json = $this->actingAs($user)
+            ->postJson(route('admin.agencies.markup.preview', $this->agency), [
+                'net' => '5000', 'product' => 'flight', 'scope' => 'domestic',
+            ])
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('12%', $json);
+        $this->assertStringNotContainsString('10,000.00', $json);
+        $this->assertStringNotContainsString('Tiered', $json);
+    }
+
     public function test_the_agency_preview_shows_only_its_own_rung(): void
     {
         PricingRule::factory()->fixed(500)->create([

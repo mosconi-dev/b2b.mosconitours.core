@@ -13,7 +13,7 @@
         What an agency would actually be charged, computed by the pricing engine itself.
     </p>
 
-    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div>
             <label for="preview-agency" class="mb-1 block text-xs font-medium text-gray-600">Agency</label>
             <select id="preview-agency" x-model="form.agency_id" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
@@ -41,6 +41,27 @@
                 <option value="international">International</option>
             </select>
         </div>
+
+        {{-- The counts a per-unit rule multiplies by. Shown per product because a fare
+             has no rooms and a room rate has no head count — which is the whole reason
+             those two calculation types are gated by product in the first place. --}}
+        <div x-show="form.product === 'flight'">
+            <label for="preview-pax" class="mb-1 block text-xs font-medium text-gray-600">Passengers</label>
+            <input id="preview-pax" x-model="form.pax" type="number" min="1" max="9" step="1"
+                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+        </div>
+
+        <div x-show="form.product === 'hotel'" x-cloak>
+            <label for="preview-rooms" class="mb-1 block text-xs font-medium text-gray-600">Rooms</label>
+            <input id="preview-rooms" x-model="form.rooms" type="number" min="1" max="6" step="1"
+                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+        </div>
+
+        <div x-show="form.product === 'hotel'" x-cloak>
+            <label for="preview-nights" class="mb-1 block text-xs font-medium text-gray-600">Nights</label>
+            <input id="preview-nights" x-model="form.nights" type="number" min="1" max="30" step="1"
+                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+        </div>
     </div>
 
     <button type="button" @click="run()" :disabled="loading"
@@ -56,11 +77,15 @@
             <span class="tabular-nums text-brand-900" x-text="money(result.net)"></span>
         </div>
 
-        <template x-for="layer in result.layers" :key="layer.level">
+        {{-- Keyed on the rule, not the level. A level is CUMULATIVE — every matching
+             rule contributes its own rung — so two office rules produce two rungs both
+             carrying level 0, and Alpine drops one of them on a duplicate key. The pair
+             is what `booking_price_layers` is unique on, for the same reason. --}}
+        <template x-for="layer in result.layers" :key="layer.level + ':' + layer.ruleId">
             <div class="flex justify-between py-1.5">
                 <span class="text-gray-600">
                     + <span x-text="layer.agencyName"></span>
-                    <span class="text-xs text-gray-400" x-text="describe(layer)"></span>
+                    <span class="text-xs text-gray-400" x-text="layer.label"></span>
                 </span>
                 <span class="tabular-nums text-gray-700" x-text="money(layer.markup)"></span>
             </div>

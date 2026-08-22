@@ -72,11 +72,57 @@ final readonly class Money implements Stringable
     }
 
     /**
+     * Split into equal parts — one passenger's share of a fare, one room-night's share of
+     * a stay.
+     *
+     * Rounded to the cent rather than kept at working precision, and deliberately: a
+     * per-passenger figure is a real amount that a real ticket is priced at, not an
+     * intermediate step. Three seats in a 10,000.00 fare are 3,333.33 each, and the
+     * centavo that does not divide is not conjured back.
+     */
+    public function dividedBy(int $parts): self
+    {
+        if ($parts < 1) {
+            throw new InvalidArgumentException("Money cannot be divided into {$parts} parts.");
+        }
+
+        return new self(bcdiv($this->amount, (string) $parts, self::SCALE));
+    }
+
+    /**
      * A percentage of this amount. `percent` is the human figure — 10 means 10%.
      */
     public function percent(string|float|int $percent): self
     {
         return $this->times(bcdiv((string) $percent, '100', self::PRECISION));
+    }
+
+    /**
+     * A percentage of the SELLING price, expressed as a markup on this amount.
+     *
+     * The other half of percent(). A 20% *markup* on 5,000 adds 1,000 and sells at
+     * 6,000; a 20% *margin* adds 1,250 and sells at 6,250, because 1,250 is 20% of the
+     * 6,250 it sells for. Both are what somebody means by "we work on 20%", and the
+     * difference is 250 a booking.
+     *
+     * Solving `markup = (this + markup) x p/100` for markup gives `this x p/(100-p)`,
+     * which is what this computes — at six places, so the division is not rounded before
+     * times() rounds the product.
+     */
+    public function margin(string|float|int $percent): self
+    {
+        $remainder = bcsub('100', (string) $percent, self::PRECISION);
+
+        // At 100% the selling price would have to be infinite, and beyond it the sign
+        // flips and a "margin" quietly becomes a discount. Neither is a rule anyone
+        // meant to write, so neither is computed. Validation refuses these at the form.
+        if (bccomp($remainder, '0', self::PRECISION) <= 0) {
+            throw new InvalidArgumentException(
+                "A margin of {$percent}% cannot be reached: it needs a selling price of infinity."
+            );
+        }
+
+        return $this->times(bcdiv((string) $percent, $remainder, self::PRECISION));
     }
 
     public function isZero(): bool

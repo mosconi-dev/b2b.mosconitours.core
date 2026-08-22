@@ -181,6 +181,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
                 ->middleware('can:markup.view');
             Route::post('/rules', [AgencyPricingController::class, 'storeRule'])->name('rules.store')
                 ->middleware('can:markup.edit');
+            Route::get('/rules/{rule}/edit', [AgencyPricingController::class, 'editRule'])->name('rules.edit')
+                ->middleware('can:markup.edit');
             Route::put('/rules/{rule}', [AgencyPricingController::class, 'updateRule'])->name('rules.update')
                 ->middleware('can:markup.edit');
             Route::delete('/rules/{rule}', [AgencyPricingController::class, 'destroyRule'])->name('rules.destroy')
@@ -240,6 +242,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
         Route::patch('/toggle', [PricingController::class, 'toggleStrategy'])->name('toggle')
             ->middleware('can:markup.office.edit');
         Route::post('/rules', [PricingController::class, 'storeRule'])->name('rules.store')
+            ->middleware('can:markup.office.edit');
+        Route::get('/rules/{rule}/edit', [PricingController::class, 'editRule'])->name('rules.edit')
             ->middleware('can:markup.office.edit');
         Route::put('/rules/{rule}', [PricingController::class, 'updateRule'])->name('rules.update')
             ->middleware('can:markup.office.edit');

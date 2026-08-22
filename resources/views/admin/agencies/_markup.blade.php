@@ -29,6 +29,9 @@
         </div>
     @endif
 
+    {{-- -------------------------------------------------------- how it works ---- --}}
+    @include('admin.pricing._how-it-works', ['audience' => 'agency'])
+
     {{-- ------------------------------------------------------------- preview ---- --}}
     <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
          x-data="agencyMarkupPreview({ url: '{{ route('admin.agencies.markup.preview', $agency) }}' })">
@@ -56,7 +59,7 @@
             </p>
         @endunless
 
-        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div>
                 <label for="markup-cost" class="mb-1 block text-xs font-medium text-gray-600">A price you were quoted</label>
                 <input id="markup-cost" x-model="form.net" type="number" step="0.01"
@@ -75,6 +78,26 @@
                     <option value="domestic">Domestic</option>
                     <option value="international">International</option>
                 </select>
+            </div>
+
+            {{-- The counts a per-unit rule multiplies by. Per product, because a fare has
+                 no rooms and a room rate has no head count. --}}
+            <div x-show="form.product === 'flight'">
+                <label for="markup-pax" class="mb-1 block text-xs font-medium text-gray-600">Passengers</label>
+                <input id="markup-pax" x-model="form.pax" type="number" min="1" max="9" step="1"
+                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+            </div>
+
+            <div x-show="form.product === 'hotel'" x-cloak>
+                <label for="markup-rooms" class="mb-1 block text-xs font-medium text-gray-600">Rooms</label>
+                <input id="markup-rooms" x-model="form.rooms" type="number" min="1" max="6" step="1"
+                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+            </div>
+
+            <div x-show="form.product === 'hotel'" x-cloak>
+                <label for="markup-nights" class="mb-1 block text-xs font-medium text-gray-600">Nights</label>
+                <input id="markup-nights" x-model="form.nights" type="number" min="1" max="30" step="1"
+                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
             </div>
         </div>
 
@@ -193,16 +216,16 @@
                                     @endif
                                 </td>
                                 <td class="px-6 py-3 font-semibold text-brand-900">
+                                    {{ $rule->amountLabel() }}
                                     @if ($rule->calc_type->isPercentage())
-                                        {{ rtrim(rtrim((string) $rule->value, '0'), '.') }}%
                                         <span class="ml-1 text-xs font-normal text-gray-400">of the supplier rate</span>
-                                    @else
-                                        {{ number_format((float) $rule->value, 2) }}
                                     @endif
                                 </td>
-                                <td class="px-6 py-3 text-right">
+                                <td class="px-6 py-3 text-right whitespace-nowrap">
                                     @if ($editable)
-                                        <form method="POST" action="{{ route('admin.agencies.markup.rules.destroy', [$agency, $rule]) }}"
+                                        <a href="{{ route('admin.agencies.markup.rules.edit', [$agency, $rule]) }}"
+                                           class="text-xs font-medium text-brand-700 hover:text-brand-900">Edit</a>
+                                        <form method="POST" action="{{ route('admin.agencies.markup.rules.destroy', [$agency, $rule]) }}" class="ml-2 inline"
                                               onsubmit="return confirm('Remove this rule? Your selling prices change on the next search.')">
                                             @csrf @method('DELETE')
                                             <button type="submit" class="text-xs font-medium text-red-600 hover:text-red-700">Remove</button>
@@ -210,6 +233,40 @@
                                     @endif
                                 </td>
                             </tr>
+
+                            {{-- A tier table is a rate sheet, so it is shown as one here
+                                 too rather than folded into "Tiered: 300.00 / 500.00". --}}
+                            @if ($rule->calc_type === \App\Enums\CalcType::Tiered)
+                                @php $table = \App\Services\Pricing\TieredBands::fromParams($rule->params); @endphp
+                                <tr class="{{ $rule->is_active ? '' : 'opacity-50' }}">
+                                    <td colspan="3" class="px-6 pb-3">
+                                        <table class="min-w-full rounded-lg bg-gray-50 text-xs">
+                                            <thead class="text-left uppercase tracking-wide text-gray-400">
+                                                <tr>
+                                                    <th class="px-3 py-1.5 font-medium">Tier</th>
+                                                    <th class="px-3 py-1.5 font-medium">Min amount</th>
+                                                    <th class="px-3 py-1.5 font-medium">Max amount</th>
+                                                    <th class="px-3 py-1.5 font-medium">You add</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach ($table->grid() as $band)
+                                                    <tr class="border-t border-gray-200/70">
+                                                        <td class="px-3 py-1.5 text-gray-500">Class {{ $band['tier'] }}</td>
+                                                        <td class="px-3 py-1.5 tabular-nums text-gray-700">{{ $band['from']->formatted() }}</td>
+                                                        <td class="px-3 py-1.5 tabular-nums text-gray-700">{{ $band['to']?->formatted() ?? 'No limit' }}</td>
+                                                        <td class="px-3 py-1.5 font-medium text-brand-900">{{ $band['charge'] }}</td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                        <p class="mt-1 px-3 text-[11px] text-gray-400">
+                                            Read at {{ strtolower($table->unit()->label()) }},
+                                            {{ $table->mode() === \App\Enums\TierMode::Marginal ? 'each band charging only its own slice' : 'one band charging the whole amount' }}.
+                                        </p>
+                                    </td>
+                                </tr>
+                            @endif
                         @endforeach
                     </tbody>
                 </table>
@@ -221,51 +278,20 @@
                 @csrf
                 <h3 class="mb-3 text-sm font-semibold text-brand-900">Add a rule</h3>
 
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    @foreach ([
-                        ['product', 'Product', $options['products'], '*'],
-                        ['scope', 'Scope', $options['scopes'], 'any'],
-                        ['calc_type', 'Type', \App\Enums\CalcType::options(), 'fixed'],
-                    ] as [$field, $label, $opts, $default])
-                        <div>
-                            <label for="ag-{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
-                            <select id="ag-{{ $field }}" name="{{ $field }}" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                                @foreach ($opts as $value => $text)
-                                    <option value="{{ $value }}" @selected(old($field, $default) === (string) $value)>{{ $text }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                    @endforeach
+                @include('admin.pricing._field-guide', ['audience' => 'agency'])
 
-                    <div>
-                        <label for="ag-value" class="mb-1 block text-xs font-medium text-gray-600">Amount or %</label>
-                        <input id="ag-value" name="value" type="number" step="0.01" value="{{ old('value') }}" required
-                               class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                    </div>
-                    <div class="sm:col-span-2 lg:col-span-3">
-                        <label for="ag-description" class="mb-1 block text-xs font-medium text-gray-600">
-                            Note <span class="font-normal text-gray-400">— optional, why this rule exists</span>
-                        </label>
-                        <input id="ag-description" name="description" type="text" maxlength="255"
-                               value="{{ old('description') }}"
-                               placeholder="e.g. Peak season surcharge agreed with the office"
-                               class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                    </div>
-                    {{-- No order field here, deliberately. Every rule of an agency's is
-                         pinned to the supplier net, so their contributions are all of the
-                         same figure and addition commutes — the order they run in cannot
-                         change the total. It is only load-bearing for a rule that
-                         compounds, which is the Main Office screen's to offer. --}}
-
-                    {{-- A percentage here is of the supplier rate, so the levels do not
-                         compound — see StoreAgencyPricingRuleRequest. The server pins it
-                         either way; this field only keeps the form honest. --}}
-                    <input type="hidden" name="basis" value="net">
-                    <input type="hidden" name="supplier" value="">
-                    <input type="hidden" name="applies_to" value="total">
-                    <input type="hidden" name="rounding" value="none">
-                    <input type="hidden" name="is_active" value="1">
-                </div>
+                {{-- The same fields the Main Office screen writes a rule with, from the
+                     same partial. They drifted once — floor and cap were missing here for
+                     months — and one copy is the only thing that stops it happening
+                     again. `rule` is null explicitly: the rules table above is a @foreach
+                     over $rule, and Blade compiles that to a plain PHP loop whose
+                     variable outlives it. --}}
+                @include('admin.pricing._rule-fields', [
+                    ...$options,
+                    'rule' => null,
+                    'audience' => 'agency',
+                    'idPrefix' => 'ag-',
+                ])
 
                 @if ($errors->any())
                     <ul class="mt-3 space-y-1 text-sm font-medium text-red-700">

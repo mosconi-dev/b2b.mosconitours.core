@@ -2,6 +2,7 @@
 
 namespace App\Services\Pricing;
 
+use App\Enums\CalcType;
 use App\Models\Agency;
 use App\Models\PricingRule;
 
@@ -48,6 +49,27 @@ final readonly class PricingLayer
         );
     }
 
+    /**
+     * What this rung added, as a phrase the browser can print without knowing what a
+     * calculation type is.
+     *
+     * Derived from the snapshot rather than the rule, like everything else here — the
+     * rule may already have changed, and a rung must still describe what it actually
+     * charged.
+     */
+    public function amountLabel(): string
+    {
+        $type = CalcType::tryFrom((string) ($this->ruleSnapshot['calc_type'] ?? ''));
+
+        // A tiered rung names the band it actually landed in, which is the only thing
+        // that explains its number — the table alone would not.
+        if ($type === CalcType::Tiered) {
+            return TieredBands::labelFor($this->ruleSnapshot['params'] ?? null, $this->basis);
+        }
+
+        return $type?->describeAmount($this->ruleSnapshot['value'] ?? null) ?? '';
+    }
+
     /** The row shape for `booking_price_layers`. */
     public function toRow(): array
     {
@@ -82,6 +104,7 @@ final readonly class PricingLayer
             'ruleId' => $this->ruleId,
             'calcType' => $this->ruleSnapshot['calc_type'] ?? null,
             'value' => $this->ruleSnapshot['value'] ?? null,
+            'label' => $this->amountLabel(),
             'description' => $this->ruleSnapshot['description'] ?? null,
             'basisAmount' => (string) $this->basis,
             'markup' => (string) $this->markup,
@@ -112,6 +135,12 @@ final readonly class PricingLayer
             'agencyName' => $this->agency->name,
             'calcType' => $this->ruleSnapshot['calc_type'] ?? null,
             'value' => $this->ruleSnapshot['value'] ?? null,
+            // Derived from the snapshot. For a tiered rule that means its band table, so
+            // this is the one field here that says more than calcType and value do —
+            // safely, because toViewerArray() is only ever called on an agency's OWN
+            // rungs, and those are its own rules. The office's are redacted whole by
+            // AgencyPriceView, band table included.
+            'label' => $this->amountLabel(),
             'markup' => (string) $this->markup,
             // Which of their own rules fired, why it exists, and what it matched on.
             'description' => $this->ruleSnapshot['description'] ?? null,
