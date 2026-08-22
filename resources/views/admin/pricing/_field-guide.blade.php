@@ -89,6 +89,28 @@
         </div>
 
         <div>
+            <dt class="font-semibold text-brand-900">What the bands read</dt>
+            <dd>
+                Whether the limits you typed are read against the whole booking or against one unit of it.
+                Three seats at 10,000 are either a 30,000 booking or three 10,000 tickets, and the table
+                lands in a different band each way. A flight starts on the per-ticket reading, because that
+                is what a tier table means in the air trade — it is what stops a family of five paying the
+                long-haul rate on a domestic fare. Per unit, one unit is priced and multiplied back up, so
+                a flat band becomes an amount per ticket.
+                <ul class="mt-1 space-y-1">
+                    @foreach (\App\Enums\TierUnit::cases() as $case)
+                        <li>
+                            <span class="font-medium text-gray-700">{{ $case->label() }}</span>@if ($case->productRestriction())
+                                <span class="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">{{ $case->productRestriction() }}</span>
+                            @endif
+                            — {{ $case->guidance() }}
+                        </li>
+                    @endforeach
+                </ul>
+            </dd>
+        </div>
+
+        <div>
             <dt class="font-semibold text-brand-900">Floor</dt>
             <dd>
                 The <strong>least</strong> this rule may add. "10%, but never less than 500" is a single rule:

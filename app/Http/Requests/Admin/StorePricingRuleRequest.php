@@ -8,6 +8,7 @@ use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\Supplier;
 use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Enums\TravelScope;
 use App\Models\PricingRule;
 use App\Services\Pricing\PricingContextFactory;
@@ -93,10 +94,14 @@ class StorePricingRuleRequest extends FormRequest
      * The editor keeps a blank row at the bottom to type into. Counting it would fail
      * every table for a band that does not exist yet.
      *
-     * A missing mode is filled in, so a stored table always says how it is charged rather
-     * than leaning on a default that could later move under a booking that has already
-     * been priced. A mode that is present but nonsense is passed through untouched —
-     * TieredBands is what decides whether a mode is a mode, and it refuses one that is not.
+     * A missing mode or unit is filled in, so a stored table always says how it is charged
+     * and what it reads rather than leaning on defaults that could later move under a
+     * booking already priced. The unit falls back to the whole booking rather than to
+     * TierUnit::defaultFor() — the form is where the per-ticket default belongs, because
+     * a caller that did not name a unit did not ask for its fare to be divided.
+     *
+     * A mode or unit that is present but nonsense is passed through untouched: TieredBands
+     * decides what those are, and refuses what they are not.
      *
      * @return array<string, mixed>|null
      */
@@ -124,7 +129,13 @@ class StorePricingRuleRequest extends FormRequest
 
         $mode = is_array($params) ? ($params['mode'] ?? null) : null;
 
-        return ['mode' => blank($mode) ? TierMode::default()->value : $mode, 'bands' => $filled];
+        $unit = is_array($params) ? ($params['bands_on'] ?? null) : null;
+
+        return [
+            'mode' => blank($mode) ? TierMode::default()->value : $mode,
+            'bands_on' => blank($unit) ? TierUnit::Booking->value : $unit,
+            'bands' => $filled,
+        ];
     }
 
     /**
@@ -255,6 +266,22 @@ class StorePricingRuleRequest extends FormRequest
                         'matchers',
                         "\"{$key}\" is not something this product carries, so the rule would never fire. "
                         .'Use one of: '.implode(', ', $allowed).'.'
+                    );
+                }
+            }
+
+            // The unit belongs to the product, exactly as it does for the per-passenger
+            // and per-room-night types: head count is not what a hotel charges on. Same
+            // gate, one level down.
+            if ($type === CalcType::Tiered->value) {
+                $params = $this->input('params');
+                $unit = TierUnit::tryFrom((string) (is_array($params) ? ($params['bands_on'] ?? '') : ''));
+
+                if ($unit !== null && $product !== '' && ! $unit->appliesToProduct($product)) {
+                    $validator->errors()->add(
+                        'params.bands_on',
+                        "Reading the table at {$unit->label()} is {$unit->productRestriction()}. "
+                        .'Choose that product on this rule, or read the table at the whole booking.'
                     );
                 }
             }

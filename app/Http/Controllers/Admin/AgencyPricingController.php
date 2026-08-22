@@ -7,6 +7,7 @@ use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\Supplier;
 use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Enums\TravelScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreAgencyPricingRuleRequest;
@@ -169,6 +170,11 @@ class AgencyPricingController extends Controller
             // A tier table's own vocabulary: the modes it can be charged in, and the
             // subset of types a band may use (context-free ones only — see TieredBand).
             'tierModes' => TierMode::options(),
+            'tierUnits' => TierUnit::options(),
+            'tierUnitsByProduct' => TierUnit::optionsByProduct(),
+            // A flight tier table means a per-TICKET table to the people who write one,
+            // so the form starts there and follows the product until somebody chooses.
+            'tierUnitDefaults' => TierUnit::defaultsByProduct(),
             'bandCalcTypes' => array_reduce(
                 TieredBand::allowedTypes(),
                 fn (array $c, CalcType $t): array => $c + [$t->value => $t->label()],

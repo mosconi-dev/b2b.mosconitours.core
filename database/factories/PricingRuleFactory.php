@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Models\PricingRule;
 use App\Models\PricingStrategy;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -64,13 +65,13 @@ class PricingRuleFactory extends Factory
      *
      * @param  array<int, array{0: string|float|null, 1: CalcType, 2: string|float}>  $bands
      */
-    public function tiered(array $bands, TierMode $mode = TierMode::Whole): static
+    public function tiered(array $bands, TierMode $mode = TierMode::Whole, TierUnit $unit = TierUnit::Booking): static
     {
         return $this->state([
             'calc_type' => CalcType::Tiered,
             // A tiered rule's numbers are all in its bands; `value` is NOT NULL and unread.
             'value' => 0,
-            'params' => ['mode' => $mode->value, 'bands' => array_map(fn (array $band): array => [
+            'params' => ['mode' => $mode->value, 'bands_on' => $unit->value, 'bands' => array_map(fn (array $band): array => [
                 'up_to' => $band[0] === null ? null : (string) $band[0],
                 'calc_type' => $band[1]->value,
                 'value' => (string) $band[2],

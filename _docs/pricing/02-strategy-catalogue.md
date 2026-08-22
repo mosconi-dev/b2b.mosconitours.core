@@ -127,7 +127,7 @@ touched by any of them.
 | **`per_pax`** | `v × paxCount` | The air-trade norm: a transaction fee per ticket issued. `paxCount` is on the context (`PricingContext.php:33`) and no calculator reads it. |
 | **`per_room_night`** | `v × roomCount × nights` | The correct axis for hotels. `roomCount` and `nights` are on the context (`:34-35`) and likewise unread. |
 | **`none`** | `0` | An **explicit** zero for negotiated corporate and staff rates, so nobody wonders whether a rule was missing. Also the honest way to say "this supplier is pass-through". |
-| **`tiered`** | band lookup on the basis, or a sum over slices | 12% under ₱10k, 8% to ₱50k, 5% above. Protects the margin on cheap fares without making long-haul uncompetitive, and it is the single most requested shape in travel retail. **Built** on `params` (§2.3) — and the table in this cell is only writable one of the two ways, which §2.4 is about. |
+| **`tiered`** | band lookup on the basis or one unit of it, or a sum over slices | 12% under ₱10k, 8% to ₱50k, 5% above. Protects the margin on cheap fares without making long-haul uncompetitive, and it is the single most requested shape in travel retail. **Built** on `params` (§2.3) — and the table in this cell is only writable one of the two ways, which §2.4 is about. |
 
 ### 2.2 Three worth adding
 
@@ -187,6 +187,41 @@ with a second rule; contributions are cumulative, so it adds on top.
 `TieredBands` owns the table, its arithmetic, its checks and its labels, so the engine and the form
 can never disagree about what a usable table is. A priced rung names the band it landed in
 (`8% (10,000.00–50,000.00)`), which is the only thing that explains its number.
+
+### 2.5 What the bands read
+
+**[CONFIRMED]** A ₱30,000 fare for three passengers is either one ₱30,000 booking or three ₱10,000
+tickets, and a band table lands in a different rung each way. The air trade reads it the second way:
+a tier table is a **per-ticket** table, and reading it at the booking is what makes a family of five
+pay the long-haul rate on a domestic fare.
+
+So `params.bands_on`, an enum of three (`App\Enums\TierUnit`) gated by product exactly as `calc_type`
+and `applies_to` are, and for the same reason — head count is not what a hotel charges on:
+
+| Unit | Divisor | Product |
+| --- | --- | --- |
+| **`booking`** | 1 | every product; the only reading that means the same thing on all of them |
+| **`passenger`** | `paxCount` | flights only |
+| **`room_night`** | `roomCount × nights` | hotels only |
+
+Per unit, **one unit is priced from the unit fare and the markup multiplied back up** — so a flat
+band means ₱800 *a ticket*, which is the only reading that makes a flat band useful in a per-ticket
+table. `Money::dividedBy()` rounds the unit fare to the cent, deliberately: one passenger's share is
+a real amount a real ticket is priced at, not an intermediate step.
+
+**Defaults split between the form and the request.** A flight rule's editor starts on `passenger`
+and follows the product until somebody chooses otherwise; a request that names no unit stores
+`booking`, because a caller that did not ask for its fare to be divided did not ask for it.
+
+**This does not weaken §2.4.** A unit count is a positive constant that multiplies the whole table
+uniformly, so it cannot move anything across a boundary and the inversion check stays exactly as
+valid. That is also why a per-unit *reading* is allowed while a per-passenger *band* is not: the band
+would change one rung's arithmetic relative to its neighbours, which is precisely what the cliff
+check has to be able to see when the table is written.
+
+One thing it costs: a rung records the booking's basis, not its head count, so a per-unit table's
+layer cannot say which band fired. It reports the table and the unit — `12% / 8% / 5%, per passenger`
+— rather than guessing.
 
 ---
 
@@ -367,8 +402,8 @@ untouched, and 4 still waits on §8.
 **`params` and `tiered` are built.** `price_point` is not, and is the whole of what is left here.
 
 - ✅ `params` JSON on `pricing_rules`, carried into `PricingRule::snapshot()` (§2.3).
-- ✅ `tiered`, with the two modes and the boundary check that §2.4 is about — the one part of this
-  plan that turned out to be more than a calculator.
+- ✅ `tiered`, with the two modes and the boundary check that §2.4 is about, and the per-ticket
+  reading of §2.5 — the one part of this plan that turned out to be more than a calculator.
 - ✅ A band editor on both admin forms, and a worked example computed by the real calculator like
   every other type's.
 - ⬜ `price_point`. Still a pure calculator now that the column exists.

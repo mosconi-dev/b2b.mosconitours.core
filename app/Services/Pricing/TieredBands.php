@@ -4,6 +4,7 @@ namespace App\Services\Pricing;
 
 use App\Enums\CalcType;
 use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Services\Pricing\Exceptions\PricingException;
 
 /**
@@ -29,6 +30,7 @@ final class TieredBands
     private function __construct(
         private readonly array $bands,
         private readonly TierMode $mode,
+        private readonly TierUnit $unit,
     ) {}
 
     /**
@@ -44,7 +46,7 @@ final class TieredBands
             throw new PricingException('This tier table cannot be used: '.$problems[0]);
         }
 
-        return self::fromRows(self::rows($params), self::modeOf($params));
+        return self::fromRows(self::rows($params), self::modeOf($params), self::unitOf($params));
     }
 
     /**
@@ -64,6 +66,12 @@ final class TieredBands
             return ['a tier table is charged either on the whole fare or by slice, and this one says neither.'];
         }
 
+        $unit = is_array($params) ? ($params['bands_on'] ?? null) : null;
+
+        if (! self::blank($unit) && (! is_string($unit) || TierUnit::tryFrom($unit) === null)) {
+            return ['a tier table reads either the whole booking or one unit of it, and this one says neither.'];
+        }
+
         $rows = self::rows($params);
 
         if ($rows === []) {
@@ -76,7 +84,9 @@ final class TieredBands
 
         $problems = self::structuralProblems($rows);
 
-        return $problems === [] ? self::fromRows($rows, self::modeOf($params))->inversionProblems() : $problems;
+        return $problems === []
+            ? self::fromRows($rows, self::modeOf($params), self::unitOf($params))->inversionProblems()
+            : $problems;
     }
 
     /**
@@ -155,12 +165,23 @@ final class TieredBands
      * In `whole` mode one band prices the entire fare. In `marginal` mode every band
      * prices its own slice and they are summed, which is why marginal can never invert.
      */
-    public function markupOn(Money $basis): Money
+    public function markupOn(Money $basis, int $units = 1): Money
     {
-        if ($this->mode === TierMode::Whole) {
-            return $this->forAmount($basis)->markupOn($basis);
-        }
+        // One unit is priced, then multiplied back up: the bands read a ticket rather
+        // than a booking, and a flat band means an amount per ticket. `units` is a
+        // positive constant, so it scales both sides of every boundary equally and
+        // leaves the inversion check below exactly as valid as it was.
+        $each = $units > 1 ? $basis->dividedBy($units) : $basis;
 
+        $markup = $this->mode === TierMode::Whole
+            ? $this->forAmount($each)->markupOn($each)
+            : $this->sumOfSlices($each);
+
+        return $units > 1 ? $markup->times($units) : $markup;
+    }
+
+    private function sumOfSlices(Money $basis): Money
+    {
         $markup = Money::zero();
 
         foreach ($this->slices($basis) as $slice) {
@@ -282,7 +303,10 @@ final class TieredBands
     public static function label(mixed $params): string
     {
         try {
-            return 'Tiered: '.self::fromParams($params)->summary();
+            $table = self::fromParams($params);
+            $unit = $table->unit->shortLabel();
+
+            return 'Tiered: '.$table->summary().($unit === null ? '' : ", {$unit}");
         } catch (PricingException) {
             return CalcType::Tiered->label();
         }
@@ -298,8 +322,15 @@ final class TieredBands
         try {
             $table = self::fromParams($params);
 
-            // Marginal pricing used every band up to the fare, so naming one would be a
-            // lie. The table itself is the honest answer.
+            // A per-unit table was read at a fare this rung does not record — a layer
+            // keeps the booking's basis, not its head count — so naming one band would be
+            // a guess. Marginal pricing used every band up to the fare, so naming one
+            // would be a lie. Either way the table and how it was read is what can be
+            // said truthfully.
+            if ($table->unit !== TierUnit::Booking) {
+                return $table->summary().', '.$table->unit->shortLabel();
+            }
+
             if ($table->mode === TierMode::Marginal) {
                 return $table->summary().', by slice';
             }
@@ -348,7 +379,7 @@ final class TieredBands
     /**
      * @param  array<int, array<string, mixed>>  $rows
      */
-    private static function fromRows(array $rows, TierMode $mode): self
+    private static function fromRows(array $rows, TierMode $mode, TierUnit $unit): self
     {
         $bands = [];
 
@@ -360,7 +391,7 @@ final class TieredBands
             );
         }
 
-        return new self($bands, $mode);
+        return new self($bands, $mode, $unit);
     }
 
     /**
@@ -377,6 +408,22 @@ final class TieredBands
     public function mode(): TierMode
     {
         return $this->mode;
+    }
+
+    /**
+     * What a table declares it measures, defaulting to the whole booking — the reading a
+     * table written before there was a choice was made under.
+     */
+    public static function unitOf(mixed $params): TierUnit
+    {
+        $unit = is_array($params) ? ($params['bands_on'] ?? null) : null;
+
+        return (is_string($unit) ? TierUnit::tryFrom($unit) : null) ?? TierUnit::Booking;
+    }
+
+    public function unit(): TierUnit
+    {
+        return $this->unit;
     }
 
     /**

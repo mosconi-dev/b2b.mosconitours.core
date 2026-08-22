@@ -548,6 +548,81 @@ class PricingAdminTest extends TestCase
             ->assertSee('Tiered: 800.00 / 10%');
     }
 
+    public function test_a_table_read_per_passenger_needs_a_flight(): void
+    {
+        // The unit belongs to the product exactly as it does for the per-passenger type:
+        // two adults in one double room pay one room rate.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'hotel',
+                'calc_type' => 'tiered',
+                'params' => $this->bands(
+                    [['10000', 'fixed', '800'], ['', 'percentage_markup', '10']],
+                    'whole',
+                    'passenger',
+                ),
+            ]))
+            ->assertSessionHasErrors('params.bands_on');
+
+        $this->assertDatabaseCount('pricing_rules', 0);
+    }
+
+    public function test_a_flight_table_may_be_read_per_passenger(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'flight',
+                'calc_type' => 'tiered',
+                'params' => $this->bands(
+                    [['10000', 'fixed', '800'], ['', 'percentage_markup', '10']],
+                    'whole',
+                    'passenger',
+                ),
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('passenger', PricingRule::firstOrFail()->params['bands_on']);
+    }
+
+    public function test_a_table_that_does_not_say_what_it_reads_reads_the_whole_booking(): void
+    {
+        // The form always posts it. A caller that did not name a unit did not ask for its
+        // fare to be divided, so the stored table says so out loud rather than defaulting
+        // later against a booking already priced.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => ['bands' => [
+                    ['up_to' => '10000', 'calc_type' => 'fixed', 'value' => '800'],
+                    ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => '10'],
+                ]],
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('booking', PricingRule::firstOrFail()->params['bands_on']);
+    }
+
+    public function test_the_editor_asks_what_the_bands_read(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('name="params[bands_on]"', false)
+            ->assertSee('Each passenger&#039;s share — flights only', false)
+            ->assertSee('Each room-night&#039;s share — hotels only', false)
+            // Gated by product like Type is, and starting where the product says.
+            ->assertSee('in unitByProduct[product]', false)
+            ->assertSee('unit = unitDefaults[product]', false);
+    }
+
     // ------------------------------------------------- supplier, gated by product ----
 
     public function test_a_supplier_the_product_is_never_bought_from_is_refused(): void
@@ -1028,9 +1103,9 @@ class PricingAdminTest extends TestCase
      * @param  array<int, array{0: string, 1: string, 2: string}>  $bands
      * @return array<string, mixed>
      */
-    private function bands(array $bands, string $mode = 'whole'): array
+    private function bands(array $bands, string $mode = 'whole', string $unit = 'booking'): array
     {
-        return ['mode' => $mode, 'bands' => array_map(fn (array $band): array => [
+        return ['mode' => $mode, 'bands_on' => $unit, 'bands' => array_map(fn (array $band): array => [
             'up_to' => $band[0], 'calc_type' => $band[1], 'value' => $band[2],
         ], $bands)];
     }

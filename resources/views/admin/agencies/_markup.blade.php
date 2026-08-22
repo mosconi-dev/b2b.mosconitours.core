@@ -302,6 +302,9 @@
                         'span' => 'sm:col-span-3 lg:col-span-5',
                         'idPrefix' => 'ag-',
                         'tierModes' => $options['tierModes'],
+                        'tierUnits' => $options['tierUnits'],
+                        'tierUnitsByProduct' => $options['tierUnitsByProduct'],
+                        'tierUnitDefaults' => $options['tierUnitDefaults'],
                         'bandCalcTypes' => $options['bandCalcTypes'],
                     ])
 

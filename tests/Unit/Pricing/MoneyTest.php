@@ -52,6 +52,30 @@ class MoneyTest extends TestCase
         $this->assertSame('92.59', (string) Money::of('1234.56')->percent('7.5'));
     }
 
+    public function test_dividing_into_equal_parts(): void
+    {
+        $this->assertSame('2500.00', (string) Money::of(5000)->dividedBy(2));
+        $this->assertSame('10000.00', (string) Money::of(30000)->dividedBy(3));
+    }
+
+    public function test_a_share_that_does_not_divide_keeps_the_centavo_it_has(): void
+    {
+        // One passenger's share is a real amount that a real ticket is priced at, not an
+        // intermediate step — so it is rounded to the cent, and the third of a centavo
+        // that does not divide is not conjured back by multiplying up again.
+        $each = Money::of(10000)->dividedBy(3);
+
+        $this->assertSame('3333.33', (string) $each);
+        $this->assertSame('9999.99', (string) $each->times(3));
+    }
+
+    public function test_it_refuses_to_divide_into_no_parts(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        Money::of(5000)->dividedBy(0);
+    }
+
     public function test_a_margin_is_a_share_of_the_selling_price(): void
     {
         // 20% margin on 5,000 adds 1,250 and sells at 6,250 — and 1,250 IS 20% of 6,250.

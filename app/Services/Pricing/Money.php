@@ -72,6 +72,24 @@ final readonly class Money implements Stringable
     }
 
     /**
+     * Split into equal parts — one passenger's share of a fare, one room-night's share of
+     * a stay.
+     *
+     * Rounded to the cent rather than kept at working precision, and deliberately: a
+     * per-passenger figure is a real amount that a real ticket is priced at, not an
+     * intermediate step. Three seats in a 10,000.00 fare are 3,333.33 each, and the
+     * centavo that does not divide is not conjured back.
+     */
+    public function dividedBy(int $parts): self
+    {
+        if ($parts < 1) {
+            throw new InvalidArgumentException("Money cannot be divided into {$parts} parts.");
+        }
+
+        return new self(bcdiv($this->amount, (string) $parts, self::SCALE));
+    }
+
+    /**
      * A percentage of this amount. `percent` is the human figure — 10 means 10%.
      */
     public function percent(string|float|int $percent): self

@@ -144,7 +144,8 @@ enum CalcType: string
                 .'lands in charges the whole fare, or whether each band charges only its own slice the way '
                 .'tax brackets do. Rates that FALL as the fare climbs — 12%, then 8%, then 5% — are only '
                 .'writable by slice: on the whole fare they would make a dearer booking sell for less, and '
-                .'that is refused. Bands read the whole booking, never per passenger.',
+                .'that is refused. Choose too what the bands read — a flight table is read one ticket at a '
+                .'time by default, so three seats at 10,000 are banded at 10,000 rather than at 30,000.',
 
             self::None => 'Takes nothing, on purpose. '
                 .'Use it for a negotiated corporate rate or a staff booking, so the list says somebody '

@@ -9,9 +9,10 @@
     `bands` and `mode` belong here. The rows are posted as params[bands][i][...], which
     is the shape TieredBands reads out of the column.
 
-    Expects: $tierModes, $bandCalcTypes, and a `calcType` property on the surrounding
-    x-data. $span sets the grid width; $idPrefix keeps the field ids unique on a screen
-    that carries more than one of these.
+    Expects: $tierModes, $tierUnits, $tierUnitsByProduct, $tierUnitDefaults,
+    $bandCalcTypes, and `calcType` and `product` properties on the surrounding x-data.
+    $span sets the grid width; $idPrefix keeps the field ids unique on a screen that
+    carries more than one of these.
 --}}
 @php
     // Two rows, because a one-band table is just that band — and a blank third row to
@@ -33,10 +34,18 @@
      x-data="{
          bands: @js($tierRows),
          mode: @js(old('params.mode', 'whole')),
+         unit: @js(old('params.bands_on', $tierUnitDefaults[old('product', '*')] ?? 'booking')),
+         unitChosen: @js(filled(old('params.bands_on'))),
+         unitByProduct: @js($tierUnitsByProduct),
+         unitDefaults: @js($tierUnitDefaults),
          nextUid: {{ count($tierRows) }},
          add() { this.bands.push({ uid: this.nextUid++, up_to: '', calc_type: 'percentage_markup', value: '' }) },
          remove(uid) { this.bands = this.bands.filter(band => band.uid !== uid) },
-     }">
+     }"
+     x-effect="
+         if (! unitChosen) unit = unitDefaults[product];
+         else if (! (unit in unitByProduct[product])) unit = 'booking';
+     ">
     <div class="rounded-lg border border-brand-200 bg-brand-50/40 px-3 py-3">
         <div class="mb-2 flex items-baseline justify-between gap-3">
             <p class="text-xs font-semibold text-brand-900">The tier table</p>
@@ -58,6 +67,29 @@
                    x-show="mode === @js($value)"
                    @if (old('params.mode', 'whole') !== (string) $value) x-cloak @endif>
                     {{ \App\Enums\TierMode::from($value)->guidance() }}
+                </p>
+            @endforeach
+        </div>
+
+        {{-- What the bands read. A ₱30,000 fare for three is either one ₱30,000 booking
+             or three ₱10,000 tickets, and the table means something different in each.
+             Gated by product like Type is — head count is not what a hotel charges on —
+             and it follows the product's default until somebody chooses for themselves,
+             because a flight tier table means a per-ticket table to whoever writes one. --}}
+        <div class="mb-3">
+            <label for="{{ $idPrefix ?? '' }}tier_unit" class="mb-1 block text-xs font-medium text-gray-600">What the bands read</label>
+            <select id="{{ $idPrefix ?? '' }}tier_unit" name="params[bands_on]" x-model="unit" x-on:change="unitChosen = true"
+                    class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                @foreach ($tierUnits as $value => $text)
+                    @php $unitRestriction = \App\Enums\TierUnit::from($value)->productRestriction(); @endphp
+                    <option value="{{ $value }}"
+                            :disabled="! (@js($value) in unitByProduct[product])">{{ $text }}@if ($unitRestriction) — {{ $unitRestriction }}@endif</option>
+                @endforeach
+            </select>
+
+            @foreach ($tierUnits as $value => $text)
+                <p class="mt-1 text-[11px] leading-relaxed text-gray-500" x-show="unit === @js($value)" x-cloak>
+                    {{ \App\Enums\TierUnit::from($value)->guidance() }}
                 </p>
             @endforeach
         </div>

@@ -31,9 +31,10 @@ final class CalcTypeGuide
      * 1,000 and a margin adds 1,250 — the difference between them is the single most
      * expensive misunderstanding available on this screen, and showing it costs nothing.
      *
-     * `tiered` is the one shown against a bigger rate than the rest: at the shared 5,000
-     * the fare never leaves the first band, and a tier table that demonstrates one band
-     * demonstrates nothing.
+     * `tiered` is the one shown against a bigger rate than the rest, and for more than one
+     * passenger: at the shared 5,000 the fare never leaves the first band, and at one
+     * passenger the per-ticket reading it defaults to is invisible. A tier table that
+     * demonstrates one band, read one way, demonstrates nothing.
      *
      * @var array<string, array{value: string, product: BookingProduct, pax: int, rooms: int, nights: int, params?: array<string, mixed>, net?: string}>
      */
@@ -44,10 +45,11 @@ final class CalcTypeGuide
         'per_pax' => ['value' => '350', 'product' => BookingProduct::Flight, 'pax' => 2, 'rooms' => 1, 'nights' => 1],
         'per_room_night' => ['value' => '200', 'product' => BookingProduct::Hotel, 'pax' => 2, 'rooms' => 2, 'nights' => 3],
         'tiered' => [
-            'value' => '0', 'product' => BookingProduct::Flight, 'pax' => 1, 'rooms' => 1, 'nights' => 1,
+            'value' => '0', 'product' => BookingProduct::Flight, 'pax' => 3, 'rooms' => 1, 'nights' => 1,
             'net' => '30000',
             'params' => [
                 'mode' => 'marginal',
+                'bands_on' => 'passenger',
                 'bands' => [
                     ['up_to' => '10000', 'calc_type' => 'percentage_markup', 'value' => '12'],
                     ['up_to' => '50000', 'calc_type' => 'percentage_markup', 'value' => '8'],
@@ -109,7 +111,7 @@ final class CalcTypeGuide
             // Null for a type with nothing to enter, so the screen does not print
             // "Enter No markup" at somebody.
             'entered' => $this->entered($type, $sample),
-            'working' => $this->working($type, $sample, $net, $markup),
+            'working' => $this->working($type, $sample, $net, $markup, $context),
             'adds' => $markup->formatted(),
             'sells' => $net->plus($markup)->formatted(),
             'net' => $net->formatted(),
@@ -130,8 +132,9 @@ final class CalcTypeGuide
     {
         if ($type === CalcType::Tiered) {
             $table = TieredBands::fromParams($sample['params'] ?? null);
+            $unit = $table->unit()->shortLabel();
 
-            return $table->summary().($table->mode() === TierMode::Marginal ? ', by slice' : ', on the whole fare');
+            return $table->summary().($unit === null ? '' : ", {$unit}");
         }
 
         return $type->usesValue() ? $type->describeAmount($sample['value']) : null;
@@ -145,7 +148,7 @@ final class CalcTypeGuide
      *
      * @param  array{value: string, product: BookingProduct, pax: int, rooms: int, nights: int}  $sample
      */
-    private function working(CalcType $type, array $sample, Money $net, Money $markup): string
+    private function working(CalcType $type, array $sample, Money $net, Money $markup, PricingContext $context): string
     {
         // describeAmount() already knows how to print a percentage without mangling it.
         $percent = $type->describeAmount($sample['value']);
@@ -156,7 +159,7 @@ final class CalcTypeGuide
             CalcType::PercentageMargin => "{$percent} of the {$net->plus($markup)->formatted()} it sells for",
             CalcType::PerPax => "{$sample['value']} × {$sample['pax']} passengers",
             CalcType::PerRoomNight => "{$sample['value']} × {$sample['rooms']} rooms × {$sample['nights']} nights",
-            CalcType::Tiered => $this->tieredWorking(TieredBands::fromParams($sample['params'] ?? null), $net),
+            CalcType::Tiered => $this->tieredWorking(TieredBands::fromParams($sample['params'] ?? null), $net, $context),
             default => 'nothing, deliberately',
         };
     }
@@ -166,15 +169,20 @@ final class CalcTypeGuide
      * from TieredBands rather than reconstructed, so the working cannot drift from the
      * number beside it.
      */
-    private function tieredWorking(TieredBands $table, Money $net): string
+    private function tieredWorking(TieredBands $table, Money $net, PricingContext $context): string
     {
-        if ($table->mode() === TierMode::Whole) {
-            return $table->forAmount($net)->amountLabel()." of the whole {$net->formatted()}";
-        }
+        $units = $table->unit()->unitsIn($context);
+        $each = $units > 1 ? $net->dividedBy($units) : $net;
 
-        return implode(' + ', array_map(
-            fn (array $slice): string => $slice['band']->amountLabel().' of '.$slice['amount']->formatted(),
-            $table->slices($net),
-        ));
+        $working = $table->mode() === TierMode::Whole
+            ? $table->forAmount($each)->amountLabel().' of '.$each->formatted()
+            : implode(' + ', array_map(
+                fn (array $slice): string => $slice['band']->amountLabel().' of '.$slice['amount']->formatted(),
+                $table->slices($each),
+            ));
+
+        // The division is the interesting half of a per-ticket table, so it is shown
+        // rather than folded away into a single product.
+        return $units > 1 ? "({$working}) × {$table->unit()->countLabel($units)}" : $working;
     }
 }
