@@ -168,13 +168,16 @@
                                  product: @js(old('product', '*')),
                                  calcType: @js(old('calc_type', 'fixed')),
                                  chargedOn: @js(old('applies_to', 'total')),
+                                 supplier: @js(old('supplier', '')),
                                  byProduct: @js($calcTypesByProduct),
                                  chargedOnByProduct: @js($appliesToByProduct),
+                                 supplierByProduct: @js($suppliersByProduct),
                                  matchable: @js($matchableKeys),
                              }"
                              x-effect="
                                  if (! (calcType in byProduct[product])) calcType = 'fixed';
                                  if (! (chargedOn in chargedOnByProduct[product])) chargedOn = 'total';
+                                 if (! (supplier in supplierByProduct[product])) supplier = '';
                              ">
                             <div>
                                 <label for="product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
@@ -185,19 +188,31 @@
                                 </select>
                             </div>
 
-                            @foreach ([
-                                ['scope', 'Scope', $scopes, 'any'],
-                                ['supplier', 'Supplier', $suppliers, ''],
-                            ] as [$field, $label, $options, $default])
-                                <div>
-                                    <label for="{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
-                                    <select id="{{ $field }}" name="{{ $field }}" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                                        @foreach ($options as $value => $text)
-                                            <option value="{{ $value }}" @selected(old($field, $default) === (string) $value)>{{ $text }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                            @endforeach
+                            <div>
+                                <label for="scope" class="mb-1 block text-xs font-medium text-gray-600">Scope</label>
+                                <select id="scope" name="scope" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                    @foreach ($scopes as $value => $text)
+                                        <option value="{{ $value }}" @selected(old('scope', 'any') === (string) $value)>{{ $text }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            {{-- Gated by product like Type, and for a blunter reason: a
+                                 flight is only ever bought from TBO Air, so a flight rule
+                                 narrowed to TBO Hotel matches no booking that will ever
+                                 exist. It would save, sit in the list looking live, and
+                                 charge nothing. Any supplier stays offered throughout. --}}
+                            <div>
+                                <label for="supplier" class="mb-1 block text-xs font-medium text-gray-600">Supplier</label>
+                                <select id="supplier" name="supplier" x-model="supplier" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                                    @foreach ($suppliers as $value => $text)
+                                        @php $supplierRestriction = filled($value) ? \App\Enums\Supplier::from($value)->productRestriction() : null; @endphp
+                                        <option value="{{ $value }}"
+                                                :disabled="! (@js($value) in supplierByProduct[product])"
+                                                @selected(old('supplier', '') === (string) $value)>{{ $text }}@if ($supplierRestriction) — {{ $supplierRestriction }}@endif</option>
+                                    @endforeach
+                                </select>
+                            </div>
 
                             <div>
                                 <label for="calc_type" class="mb-1 block text-xs font-medium text-gray-600">Type</label>

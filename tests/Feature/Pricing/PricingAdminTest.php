@@ -412,6 +412,94 @@ class PricingAdminTest extends TestCase
             ->assertSeeInOrder(['Base fare only, before tax', 'flights only'], false);
     }
 
+    // ------------------------------------------------- supplier, gated by product ----
+
+    public function test_a_supplier_the_product_is_never_bought_from_is_refused(): void
+    {
+        // A flight always arrives carrying TBO Air, so this rule passes matchesProduct(),
+        // fails matchesSupplier(), and charges nothing on every booking there will ever
+        // be — while sitting in the list looking live.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'flight', 'supplier' => 'tbohotel',
+            ]))
+            ->assertSessionHasErrors('supplier');
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'hotel', 'supplier' => 'tboair',
+            ]))
+            ->assertSessionHasErrors('supplier');
+
+        $this->assertDatabaseCount('pricing_rules', 0);
+    }
+
+    public function test_the_supplier_a_product_is_bought_from_is_allowed(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'flight', 'supplier' => 'tboair',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'product' => 'hotel', 'supplier' => 'tbohotel',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('pricing_rules', ['product' => 'flight', 'supplier' => 'tboair']);
+        $this->assertDatabaseHas('pricing_rules', ['product' => 'hotel', 'supplier' => 'tbohotel']);
+    }
+
+    public function test_any_supplier_stays_available_on_every_product(): void
+    {
+        // The wildcard is never the wrong answer, so the gate must not narrow it away.
+        $this->configureRoot();
+
+        foreach (['*', 'flight', 'hotel'] as $product) {
+            $this->actingAs($this->editor())
+                ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                    'product' => $product, 'supplier' => '',
+                ]))
+                ->assertSessionHasNoErrors();
+        }
+    }
+
+    public function test_a_rule_matching_every_product_may_still_name_a_supplier(): void
+    {
+        // Unlike a per-passenger fee on a hotel, this one is not a lie: "all products
+        // from TBO Air" is a roundabout way of saying flights, and it does match them.
+        $this->configureRoot();
+
+        foreach (['tboair', 'tbohotel'] as $supplier) {
+            $this->actingAs($this->editor())
+                ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                    'product' => '*', 'supplier' => $supplier,
+                ]))
+                ->assertSessionHasNoErrors();
+        }
+    }
+
+    public function test_the_form_says_why_a_supplier_is_unavailable(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            // The same phrasing the Type and Charged-on selects use, on the option
+            // itself — "flights only" alone would pass off the Type select below it.
+            ->assertSee('TBO Air — flights only', false)
+            ->assertSee('TBO Hotel — hotels only', false)
+            // And the greying-out is bound to the product, not baked in.
+            ->assertSee('in supplierByProduct[product]', false);
+    }
+
     public function test_the_form_offers_the_fields_the_schema_already_carried(): void
     {
         $this->configureRoot();

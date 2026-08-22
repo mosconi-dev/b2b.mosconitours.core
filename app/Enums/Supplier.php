@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use Illuminate\Support\Str;
+
 /**
  * The external inventory sources we transact with.
  *
@@ -63,6 +65,87 @@ enum Supplier: string
     public function livePermission(): string
     {
         return $this->module().'.live';
+    }
+
+    /**
+     * The products this supplier's inventory answers for.
+     *
+     * The inverse of BookingProduct::defaultSupplier(), and a list rather than a single
+     * case for the same reason that one is a *default*: the day a second hotel source
+     * exists, this is where it says so, and every form gated on it narrows correctly
+     * without being touched.
+     *
+     * @return array<int, BookingProduct>
+     */
+    public function products(): array
+    {
+        return match ($this) {
+            self::TboAir => [BookingProduct::Flight],
+            self::TboHotel => [BookingProduct::Hotel],
+        };
+    }
+
+    /**
+     * Whether a rule on this product could ever match this supplier.
+     *
+     * It could not: a flight context always arrives carrying TboAir, so a flight rule
+     * narrowed to TboHotel passes matchesProduct() and fails matchesSupplier() on every
+     * booking there will ever be. The rule saves, sits in the list looking live, and
+     * charges nothing. That is the combination this refuses.
+     *
+     * A rule matching every product keeps both: narrowing "all products" to TboAir is a
+     * roundabout way of saying flights, but it is not a lie.
+     */
+    public function appliesToProduct(string $product): bool
+    {
+        $booking = BookingProduct::tryFrom($product);
+
+        return $booking === null || in_array($booking, $this->products(), true);
+    }
+
+    /**
+     * Why a supplier is unavailable, for the form to say out loud — same phrasing the
+     * Type and Charged-on selects use for their own restrictions.
+     */
+    public function productRestriction(): ?string
+    {
+        $products = $this->products();
+
+        if (count($products) === count(BookingProduct::cases())) {
+            return null;
+        }
+
+        return implode(' and ', array_map(
+            fn (BookingProduct $product): string => Str::plural(strtolower($product->label())),
+            $products,
+        )).' only';
+    }
+
+    /**
+     * @return array<string, string> value => label, for one product's select
+     */
+    public static function optionsForProduct(string $product): array
+    {
+        return array_reduce(
+            array_filter(self::cases(), fn (self $supplier): bool => $supplier->appliesToProduct($product)),
+            fn (array $carry, self $supplier): array => $carry + [$supplier->value => $supplier->label()],
+            [],
+        );
+    }
+
+    /**
+     * Every product's suppliers, for a form that switches between them without a round
+     * trip.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function optionsByProduct(): array
+    {
+        return array_reduce(
+            array_merge(['*'], BookingProduct::values()),
+            fn (array $carry, string $product): array => $carry + [$product => self::optionsForProduct($product)],
+            [],
+        );
     }
 
     /**

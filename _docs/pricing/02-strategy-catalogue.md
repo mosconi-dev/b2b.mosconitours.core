@@ -310,7 +310,9 @@ alone.
 
 - Four calculators: `percentage_margin`, `per_pax`, `per_room_night`, `none`. Each is a class, a
   registry line and an entry in `implemented()`.
-- `CalcType::forProduct()` gating the select, so `per_pax` cannot be chosen for a hotel (§5.1).
+- `CalcType::forProduct()` gating the select, so `per_pax` cannot be chosen for a hotel (§5.1). The
+  same gate on `applies_to` (base fare is flights-only) and on `supplier` — a flight rule narrowed to
+  TBO Hotel passes `matchesProduct()`, fails `matchesSupplier()`, and charges nothing forever.
 - Surface `matchers`, `valid_from`/`valid_to` and `applies_to` in both forms, and the floor/cap pair in
   the agency form (§1).
 

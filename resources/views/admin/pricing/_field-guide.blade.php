@@ -38,7 +38,13 @@
         @if ($audience === 'office')
             <div>
                 <dt class="font-semibold text-brand-900">Supplier</dt>
-                <dd>Limits the rule to one supplier's inventory. <em>Any supplier</em> matches all of them.</dd>
+                <dd>
+                    Limits the rule to one supplier's inventory. <em>Any supplier</em> matches all of them,
+                    and is almost always what you want: each product is bought from one source today, so
+                    naming it narrows nothing. Choosing a product greys out the suppliers that product is
+                    never bought from — a flight rule pinned to the hotel supplier would match no booking
+                    at all.
+                </dd>
             </div>
         @endif
 

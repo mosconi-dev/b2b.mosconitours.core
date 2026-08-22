@@ -160,6 +160,21 @@ class StorePricingRuleRequest extends FormRequest
                 );
             }
 
+            // Same failure as a mistyped matcher, one field earlier. A flight is bought
+            // from TBO Air and a hotel from TBO Hotel, so a flight rule narrowed to the
+            // hotel supplier passes matchesProduct(), fails matchesSupplier(), and
+            // charges nothing on every booking there will ever be. Refused here rather
+            // than discovered in a margin report.
+            $supplier = Supplier::tryFrom((string) $this->input('supplier'));
+
+            if ($supplier !== null && $product !== '' && ! $supplier->appliesToProduct($product)) {
+                $validator->errors()->add(
+                    'supplier',
+                    "{$supplier->label()} sells {$supplier->productRestriction()}, so this rule would "
+                    .'never match. Change the product, or leave the supplier as Any supplier.'
+                );
+            }
+
             // A matcher key the context never emits reads as null, the comparison fails,
             // and the rule quietly never fires. A rule that charges nothing because of a
             // typo is indistinguishable from one nobody wrote, so the typo is caught here

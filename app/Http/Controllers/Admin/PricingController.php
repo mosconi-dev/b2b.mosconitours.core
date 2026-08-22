@@ -239,6 +239,8 @@ class PricingController extends Controller
      */
     private function formOptions(): array
     {
+        $anySupplier = ['' => 'Any supplier'];
+
         return [
             'calcTypes' => CalcType::options(),
             // Every product's allowed types, so the form can narrow the select without a
@@ -257,7 +259,15 @@ class PricingController extends Controller
                 fn (array $c, BookingProduct $p): array => $c + [$p->value => $p->label()],
                 [],
             ),
-            'suppliers' => ['' => 'Any supplier'] + Supplier::options(),
+            'suppliers' => $anySupplier + Supplier::options(),
+            // Which supplier each product can actually be bought from. A flight rule
+            // narrowed to TBO Hotel matches nothing, ever; the select greys it out and
+            // StorePricingRuleRequest refuses it. The wildcard survives on every
+            // product — "any supplier" is never the wrong answer.
+            'suppliersByProduct' => array_map(
+                fn (array $options): array => $anySupplier + $options,
+                Supplier::optionsByProduct(),
+            ),
             'scopes' => ['any' => 'Domestic and international'] + array_reduce(
                 TravelScope::cases(),
                 fn (array $c, TravelScope $s): array => $c + [$s->value => $s->label()],
