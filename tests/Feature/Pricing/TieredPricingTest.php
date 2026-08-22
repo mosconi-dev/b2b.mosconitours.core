@@ -78,12 +78,12 @@ class TieredPricingTest extends TestCase
             ->create();
     }
 
-    private function sell(float $net, int $pax = 1): string
+    private function sell(float $net, int $pax = 1, TravelScope $scope = TravelScope::Domestic): string
     {
         return $this->quote(new PricingContext(
             product: BookingProduct::Flight,
             supplier: Supplier::TboAir,
-            scope: TravelScope::Domestic,
+            scope: $scope,
             net: NetPrice::of($net),
             paxCount: $pax,
         ));
@@ -293,6 +293,51 @@ class TieredPricingTest extends TestCase
         );
 
         $this->assertStringContainsString('the whole booking or one unit of it', $problems[0]);
+    }
+
+    // ---------------------------------------------- a real handling-fee table ----
+
+    public function test_a_handling_fee_table_per_service_line(): void
+    {
+        // The live system's "Service Lines Handling Fees": a flat fee per ticket, banded
+        // by fare, with a separate table for domestic and international. One rule per
+        // service line, three bands each — no new concept, and no rule left over.
+        $strategy = PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id]);
+
+        PricingRule::factory()->for($strategy, 'strategy')->forProduct('flight')->scoped('domestic')
+            ->tiered([
+                [10000, CalcType::Fixed, 300],
+                [30000, CalcType::Fixed, 500],
+                [null, CalcType::Fixed, 1000],
+            ], TierMode::Whole, TierUnit::Passenger)
+            ->create(['description' => 'Domestic flight handling fee']);
+
+        PricingRule::factory()->for($strategy, 'strategy')->forProduct('flight')->scoped('international')
+            ->tiered([
+                [20000, CalcType::Fixed, 750],
+                [50000, CalcType::Fixed, 1500],
+                [null, CalcType::Fixed, 3000],
+            ], TierMode::Whole, TierUnit::Passenger)
+            ->create(['description' => 'International flight handling fee']);
+
+        // Domestic, one ticket, one band each.
+        $this->assertSame('8300.00', $this->sell(8000), 'class 1');
+        $this->assertSame('25500.00', $this->sell(25000), 'class 2');
+        $this->assertSame('51000.00', $this->sell(50000), 'class 3');
+
+        // International is its own table on the same fares.
+        $this->assertSame('8750.00', $this->sell(8000, 1, TravelScope::International), 'class 1');
+        $this->assertSame('26500.00', $this->sell(25000, 1, TravelScope::International), 'class 2');
+        $this->assertSame('63000.00', $this->sell(60000, 1, TravelScope::International), 'class 3');
+
+        // The limit belongs to the band that names it, which is what the live table's
+        // "20,001" and "50,001" lower bounds mean: 50,000 is still class 2.
+        $this->assertSame('51500.00', $this->sell(50000, 1, TravelScope::International));
+        $this->assertSame('53001.00', $this->sell(50001, 1, TravelScope::International));
+
+        // And the fee is per ticket: three seats at 8,000 are three class-1 tickets, not
+        // one 24,000 booking that has climbed into class 2.
+        $this->assertSame('24900.00', $this->sell(24000, 3), '300 a ticket, three times');
     }
 
     // ------------------------------------------------------------- the audit trail ----
