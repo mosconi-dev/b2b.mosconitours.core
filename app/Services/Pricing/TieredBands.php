@@ -265,6 +265,37 @@ final class TieredBands
         return $this->bands[$this->indexFor($basis)];
     }
 
+    /**
+     * The table as a rate sheet: one row per band with BOTH bounds spelled out.
+     *
+     * A band stores only its upper limit, because storing the lower one too is storing
+     * the same boundary twice and inviting the two to disagree. A screen showing the
+     * table still wants both columns, so they are derived here rather than in a view.
+     *
+     * `from` on the second band is a centavo above the first band's limit — the smallest
+     * fare that is genuinely in it, and the honest version of a rate sheet's "10,001".
+     *
+     * @return array<int, array{tier: int, from: Money, to: ?Money, charge: string}>
+     */
+    public function grid(): array
+    {
+        $rows = [];
+        $previous = null;
+
+        foreach ($this->bands as $index => $band) {
+            $rows[] = [
+                'tier' => $index + 1,
+                'from' => $previous === null ? Money::zero() : $previous->plus(Money::of('0.01')),
+                'to' => $band->upTo,
+                'charge' => $band->amountLabel(),
+            ];
+
+            $previous = $band->upTo;
+        }
+
+        return $rows;
+    }
+
     /** @return array<int, TieredBand> */
     public function all(): array
     {

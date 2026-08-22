@@ -293,14 +293,20 @@
                         </select>
                     </div>
 
+                    {{-- `rule` explicitly null: the rules table above is a @foreach over
+                         $rule, and Blade compiles that to a plain PHP loop whose variable
+                         outlives it. Without this the add form would populate itself from
+                         whichever rule happened to be listed last. --}}
                     @include('admin.pricing._calc-type-help', [
                         'span' => 'sm:col-span-3 lg:col-span-5',
                         'calcTypeGuide' => $options['calcTypeGuide'],
+                        'rule' => null,
                     ])
 
                     @include('admin.pricing._tier-bands', [
                         'span' => 'sm:col-span-3 lg:col-span-5',
                         'idPrefix' => 'ag-',
+                        'rule' => null,
                         'tierModes' => $options['tierModes'],
                         'tierUnits' => $options['tierUnits'],
                         'tierUnitsByProduct' => $options['tierUnitsByProduct'],

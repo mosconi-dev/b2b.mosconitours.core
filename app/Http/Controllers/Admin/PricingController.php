@@ -14,6 +14,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StorePricingRuleRequest;
 use App\Models\Agency;
 use App\Models\PricingRule;
+use App\Models\PricingStrategy;
 use App\Services\Pricing\CalcTypeGuide;
 use App\Services\Pricing\Exceptions\PricingException;
 use App\Services\Pricing\NetPrice;
@@ -58,8 +59,44 @@ class PricingController extends Controller
             // visible here rather than discovered in a margin report.
             'ladder' => $configured ? $this->ladder($mainOffice, $sample) : collect(),
             'sample' => $sample,
+            'serviceLines' => $this->serviceLines($strategy),
             ...$this->formOptions(),
         ]);
+    }
+
+    /**
+     * The strategy's rules grouped by the line of business they price.
+     *
+     * "What do we charge on domestic flights" is the question somebody arrives with, and
+     * the answer is however many rules share that product and scope — which is not how a
+     * flat list ordered by nothing in particular reads. Ordered products first, then
+     * scopes, with the wildcards last, so the specific lines are what the eye lands on.
+     *
+     * @return Collection<int, array{key: string, label: string, product: string, scope: string, rules: Collection<int, PricingRule>}>
+     */
+    private function serviceLines(?PricingStrategy $strategy): Collection
+    {
+        if ($strategy === null) {
+            return collect();
+        }
+
+        $products = array_flip([...BookingProduct::values(), PricingRule::ANY]);
+        $scopes = array_flip([...TravelScope::values(), 'any']);
+
+        return $strategy->rules
+            ->groupBy(fn (PricingRule $rule): string => $rule->serviceLineKey())
+            ->map(fn (Collection $rules): array => [
+                'key' => $rules->first()->serviceLineKey(),
+                'label' => $rules->first()->serviceLine(),
+                'product' => $rules->first()->product,
+                'scope' => $rules->first()->scope,
+                'rules' => $rules->values(),
+            ])
+            ->sortBy([
+                fn (array $line): int => $products[$line['product']] ?? PHP_INT_MAX,
+                fn (array $line): int => $scopes[$line['scope']] ?? PHP_INT_MAX,
+            ])
+            ->values();
     }
 
     /**
@@ -88,18 +125,57 @@ class PricingController extends Controller
         return back()->with('status', 'Rule added. It applies to the next search.');
     }
 
+    /**
+     * The edit form for one rule — its own page rather than a row that unfolds.
+     *
+     * The field set is large enough that rendering it per row would put a dozen copies
+     * of the tier editor and the type help on a screen to show one, and a full page also
+     * keeps validation errors and old() working without a line of JavaScript.
+     */
+    public function editRule(PricingRule $rule): View
+    {
+        $this->guardIsOffice($rule);
+
+        return view('admin.pricing.edit', [
+            'mainOffice' => $this->resolver->mainOffice(),
+            'rule' => $rule,
+            ...$this->formOptions(),
+        ]);
+    }
+
     public function updateRule(StorePricingRuleRequest $request, PricingRule $rule): RedirectResponse
     {
+        $this->guardIsOffice($rule);
+
         $this->admin->updateRule($rule, $request->validated());
 
-        return back()->with('status', 'Rule updated.');
+        return redirect()->route('admin.pricing.index')
+            ->with('status', 'Rule updated. It applies to the next search.');
     }
 
     public function destroyRule(PricingRule $rule): RedirectResponse
     {
+        $this->guardIsOffice($rule);
+
         $this->admin->deleteRule($rule);
 
         return back()->with('status', 'Rule removed.');
+    }
+
+    /**
+     * This screen edits the Main Office's rules and nothing else.
+     *
+     * `markup.office.edit` says a user may price the level every agency sits on top of.
+     * It does not say they may reach into an agency's own strategy, and without this
+     * every one of these actions would take any rule id at all. 404 rather than 403:
+     * whether another agency's rule exists is not this screen's business.
+     */
+    private function guardIsOffice(PricingRule $rule): void
+    {
+        abort_unless(
+            (int) $rule->strategy->agency_id === (int) $this->resolver->mainOffice()->getKey(),
+            404,
+        );
     }
 
     public function toggleStrategy(): RedirectResponse

@@ -5,6 +5,8 @@ namespace Tests\Feature\Pricing;
 use App\Enums\AppliesTo;
 use App\Enums\BookingProduct;
 use App\Enums\CalcType;
+use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Models\Agency;
 use App\Models\PricingRule;
 use App\Models\PricingStrategy;
@@ -621,6 +623,219 @@ class PricingAdminTest extends TestCase
             // Gated by product like Type is, and starting where the product says.
             ->assertSee('in unitByProduct[product]', false)
             ->assertSee('unit = unitDefaults[product]', false);
+    }
+
+    // ---------------------------------------------------- service lines ----
+
+    private function officeStrategy(): PricingStrategy
+    {
+        return PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id]);
+    }
+
+    private function handlingFeeRule(PricingStrategy $strategy, string $scope, array $bands, string $note): PricingRule
+    {
+        return PricingRule::factory()->for($strategy, 'strategy')
+            ->forProduct('flight')->scoped($scope)
+            ->tiered($bands, TierMode::Whole, TierUnit::Passenger)
+            ->create(['description' => $note]);
+    }
+
+    public function test_rules_are_grouped_by_the_line_of_business_they_price(): void
+    {
+        $this->configureRoot();
+        $strategy = $this->officeStrategy();
+
+        $this->handlingFeeRule($strategy, 'domestic', [[10000, CalcType::Fixed, 300], [null, CalcType::Fixed, 500]], 'Domestic handling');
+        $this->handlingFeeRule($strategy, 'international', [[20000, CalcType::Fixed, 750], [null, CalcType::Fixed, 1500]], 'International handling');
+        PricingRule::factory()->for($strategy, 'strategy')->percentage(5)->forProduct('hotel')
+            ->create(['description' => 'Hotel base markup']);
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            // Flights before hotels, domestic before international.
+            ->assertSeeInOrder(['Domestic Flight', 'International Flight', 'Hotel'])
+            ->assertSee('Domestic handling')
+            ->assertSee('Hotel base markup');
+    }
+
+    public function test_a_service_line_says_how_many_of_its_rules_a_booking_pays(): void
+    {
+        // Every rule that matches is charged, and a line holding three of them is exactly
+        // where somebody forgets that.
+        $this->configureRoot();
+        $strategy = $this->officeStrategy();
+
+        PricingRule::factory(2)->for($strategy, 'strategy')->fixed(100)->forProduct('flight')->scoped('domestic')->create();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('2 rules')
+            ->assertSee('a booking they all match pays every one');
+    }
+
+    public function test_a_tier_table_is_shown_as_a_rate_sheet(): void
+    {
+        // Folded into "Tiered: 300.00 / 500.00" a table cannot be checked against the one
+        // it was copied from, which is the only thing anybody wants to do with it.
+        $this->configureRoot();
+
+        $this->handlingFeeRule(
+            $this->officeStrategy(),
+            'domestic',
+            [[10000, CalcType::Fixed, 300], [30000, CalcType::Fixed, 500], [null, CalcType::Fixed, 1000]],
+            'Domestic handling',
+        );
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSeeInOrder(['Class 1', '0.00', '10,000.00', '300.00'])
+            // The lower bound is derived from the band below, a centavo above its limit.
+            ->assertSeeInOrder(['Class 2', '10,000.01', '30,000.00', '500.00'])
+            ->assertSeeInOrder(['Class 3', '30,000.01', 'No limit', '1,000.00'])
+            // How the table is read, which the rows alone do not say.
+            ->assertSee('Read at each passenger&#039;s share', false)
+            ->assertSee('one band charging the whole amount', false);
+    }
+
+    public function test_each_line_can_prefill_the_one_add_form(): void
+    {
+        // One form and one set of validation, rather than a form per line to keep in step.
+        $this->configureRoot();
+        $this->handlingFeeRule($this->officeStrategy(), 'domestic', [[10000, CalcType::Fixed, 300], [null, CalcType::Fixed, 500]], 'Domestic');
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('id="add-rule"', false)
+            ->assertSee('$dispatch(\'pricing-line\'', false)
+            ->assertSee('x-on:pricing-line.window', false);
+    }
+
+    // ------------------------------------------------------------ editing a rule ----
+
+    public function test_the_edit_form_is_filled_in_from_the_rule(): void
+    {
+        $this->configureRoot();
+
+        $rule = PricingRule::factory()->for($this->officeStrategy(), 'strategy')
+            ->percentage('12.5')->forProduct('flight')->scoped('international')
+            ->create([
+                'description' => 'International base markup',
+                'min_markup' => '500.00',
+                'max_markup' => '3000.00',
+                'applies_to' => 'base_fare',
+                'matchers' => ['airline' => ['PR', '5J']],
+                'valid_from' => '2026-12-01',
+                'valid_to' => '2027-01-15',
+            ]);
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.rules.edit', $rule))
+            ->assertOk()
+            ->assertSee('International base markup')
+            ->assertSee('value="12.5"', false)
+            ->assertSee('value="500.00"', false)
+            ->assertSee('value="3000.00"', false)
+            ->assertSee('value="2026-12-01"', false)
+            ->assertSee('value="2027-01-15"', false)
+            ->assertSee('{&quot;airline&quot;:[&quot;PR&quot;,&quot;5J&quot;]}', false)
+            ->assertSee('selected>Percentage markup', false)
+            ->assertSee('selected>International', false);
+    }
+
+    public function test_a_tier_table_comes_back_into_the_band_editor(): void
+    {
+        // A table you can only delete and retype is not a table you can edit.
+        $this->configureRoot();
+
+        $rule = $this->handlingFeeRule(
+            $this->officeStrategy(),
+            'domestic',
+            [[10000, CalcType::Fixed, 300], [null, CalcType::Fixed, 500]],
+            'Domestic handling',
+        );
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.rules.edit', $rule))
+            ->assertOk()
+            ->assertSee('10000', false)
+            ->assertSee('selected>Tiered by amount', false)
+            // The mode and the unit come back too, not just the rows.
+            ->assertSee('selected>The band the fare lands in charges the whole fare', false)
+            ->assertSee('passenger', false);
+    }
+
+    public function test_saving_an_edit_changes_the_rule(): void
+    {
+        $this->configureRoot();
+
+        $rule = PricingRule::factory()->for($this->officeStrategy(), 'strategy')->fixed(500)->create();
+        $version = $rule->version;
+
+        $this->actingAs($this->editor())
+            ->put(route('admin.pricing.rules.update', $rule), $this->ruleData([
+                'calc_type' => 'percentage_markup', 'value' => '8', 'description' => 'Now a percentage',
+            ]))
+            ->assertRedirect(route('admin.pricing.index'));
+
+        $rule->refresh();
+
+        $this->assertSame('percentage_markup', $rule->calc_type->value);
+        $this->assertSame('8.0000', $rule->value);
+        $this->assertSame('Now a percentage', $rule->description);
+        // A quote can tell whether the rule moved under it between search and booking.
+        $this->assertGreaterThan($version, $rule->version);
+    }
+
+    public function test_an_edit_is_held_to_every_rule_the_add_form_is(): void
+    {
+        $this->configureRoot();
+
+        $rule = PricingRule::factory()->for($this->officeStrategy(), 'strategy')->fixed(500)->create();
+
+        $this->actingAs($this->editor())
+            ->put(route('admin.pricing.rules.update', $rule), $this->ruleData([
+                'product' => 'hotel', 'calc_type' => 'per_pax', 'value' => '350',
+            ]))
+            ->assertSessionHasErrors('calc_type');
+
+        $this->assertSame('fixed', $rule->refresh()->calc_type->value);
+    }
+
+    public function test_editing_a_paused_rule_leaves_it_paused(): void
+    {
+        // There is no switch on the screen, so saving must not be one.
+        $this->configureRoot();
+
+        $rule = PricingRule::factory()->for($this->officeStrategy(), 'strategy')->fixed(500)
+            ->create(['is_active' => false]);
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.rules.edit', $rule))
+            ->assertOk()
+            ->assertSee('name="is_active" value="0"', false);
+    }
+
+    public function test_this_screen_will_not_touch_an_agency_rule(): void
+    {
+        // `markup.office.edit` says a user may price the level every agency sits on top
+        // of. It does not say they may reach into an agency's own strategy — and until
+        // the edit form existed, nothing stopped these three routes taking any rule id.
+        $this->configureRoot();
+
+        $agency = Agency::factory()->create();
+        $theirs = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $agency->id])->id,
+        ]);
+
+        $this->actingAs($this->editor())->get(route('admin.pricing.rules.edit', $theirs))->assertNotFound();
+        $this->actingAs($this->editor())->put(route('admin.pricing.rules.update', $theirs), $this->ruleData())->assertNotFound();
+        $this->actingAs($this->editor())->delete(route('admin.pricing.rules.destroy', $theirs))->assertNotFound();
+
+        $this->assertSame('200.0000', $theirs->refresh()->value);
     }
 
     // ------------------------------------------------- supplier, gated by product ----

@@ -9,9 +9,10 @@
     So without Alpine the form still explains the type it defaults to, rather than
     explaining nothing.
 
-    Expects: $calcTypeGuide, $span, and an `calcType` property on the surrounding x-data.
+    Expects: $calcTypeGuide, $span, an optional $rule being edited, and a `calcType`
+    property on the surrounding x-data.
 --}}
-@php $initialType = old('calc_type', 'fixed'); @endphp
+@php $initialType = old('calc_type', ($rule ?? null)?->calc_type->value ?? 'fixed'); @endphp
 
 <div class="{{ $span }}">
     @foreach ($calcTypeGuide as $example)

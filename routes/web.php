@@ -241,6 +241,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             ->middleware('can:markup.office.edit');
         Route::post('/rules', [PricingController::class, 'storeRule'])->name('rules.store')
             ->middleware('can:markup.office.edit');
+        Route::get('/rules/{rule}/edit', [PricingController::class, 'editRule'])->name('rules.edit')
+            ->middleware('can:markup.office.edit');
         Route::put('/rules/{rule}', [PricingController::class, 'updateRule'])->name('rules.update')
             ->middleware('can:markup.office.edit');
         Route::delete('/rules/{rule}', [PricingController::class, 'destroyRule'])->name('rules.destroy')

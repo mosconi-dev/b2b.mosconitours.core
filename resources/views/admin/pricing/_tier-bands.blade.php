@@ -12,12 +12,14 @@
     Expects: $tierModes, $tierUnits, $tierUnitsByProduct, $tierUnitDefaults,
     $bandCalcTypes, and `calcType` and `product` properties on the surrounding x-data.
     $span sets the grid width; $idPrefix keeps the field ids unique on a screen that
-    carries more than one of these.
+    carries more than one of these; $rule is the rule being edited, or null when adding.
 --}}
 @php
+    $editing = $rule ?? null;
+
     // Two rows, because a one-band table is just that band — and a blank third row to
     // type into is added by the button rather than shipped, so the count means something.
-    $tierRows = collect(old('params.bands', [
+    $tierRows = collect(old('params.bands', $editing?->params['bands'] ?? [
         ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => ''],
         ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => ''],
     ]))->values()->map(fn ($row, $i) => [
@@ -30,12 +32,12 @@
 
 <div class="{{ $span }}"
      x-show="calcType === 'tiered'"
-     @if (old('calc_type', 'fixed') !== 'tiered') x-cloak @endif
+     @if (old('calc_type', $editing?->calc_type->value ?? 'fixed') !== 'tiered') x-cloak @endif
      x-data="{
          bands: @js($tierRows),
-         mode: @js(old('params.mode', 'whole')),
-         unit: @js(old('params.bands_on', $tierUnitDefaults[old('product', '*')] ?? 'booking')),
-         unitChosen: @js(filled(old('params.bands_on'))),
+         mode: @js(old('params.mode', $editing?->params['mode'] ?? 'whole')),
+         unit: @js(old('params.bands_on', $editing?->params['bands_on'] ?? ($tierUnitDefaults[old('product', $editing?->product ?? '*')] ?? 'booking'))),
+         unitChosen: @js(filled(old('params.bands_on', $editing?->params['bands_on'] ?? null))),
          unitByProduct: @js($tierUnitsByProduct),
          unitDefaults: @js($tierUnitDefaults),
          nextUid: {{ count($tierRows) }},
@@ -58,14 +60,14 @@
             <select id="{{ $idPrefix ?? '' }}tier_mode" name="params[mode]" x-model="mode"
                     class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                 @foreach ($tierModes as $value => $text)
-                    <option value="{{ $value }}" @selected(old('params.mode', 'whole') === (string) $value)>{{ $text }}</option>
+                    <option value="{{ $value }}" @selected(old('params.mode', $editing?->params['mode'] ?? 'whole') === (string) $value)>{{ $text }}</option>
                 @endforeach
             </select>
 
             @foreach ($tierModes as $value => $text)
                 <p class="mt-1 text-[11px] leading-relaxed text-gray-500"
                    x-show="mode === @js($value)"
-                   @if (old('params.mode', 'whole') !== (string) $value) x-cloak @endif>
+                   @if (old('params.mode', $editing?->params['mode'] ?? 'whole') !== (string) $value) x-cloak @endif>
                     {{ \App\Enums\TierMode::from($value)->guidance() }}
                 </p>
             @endforeach

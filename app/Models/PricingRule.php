@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\TravelScope;
@@ -219,6 +220,38 @@ class PricingRule extends Model
      * are the same three characters otherwise, and the second one costs a family of five
      * five times the first.
      */
+    /**
+     * The service line this rule prices — its product and its scope, as one phrase.
+     *
+     * "Domestic Flight", "International Hotel", "All products". A pricing screen groups
+     * by this because a rule is written for a line of business, not for a column: the
+     * question somebody arrives with is "what do we charge on domestic flights", and the
+     * answer is however many rules share that pair.
+     */
+    public function serviceLine(): string
+    {
+        $product = $this->product === self::ANY
+            ? 'All products'
+            : BookingProduct::from($this->product)->label();
+
+        if ($this->scope === 'any') {
+            return $product;
+        }
+
+        $scope = TravelScope::from($this->scope)->label();
+
+        return $this->product === self::ANY ? "{$scope}, all products" : "{$scope} {$product}";
+    }
+
+    /**
+     * What groups a rule with its siblings. The label is a presentation of this pair, not
+     * the other way round — two lines that read alike must never merge by accident.
+     */
+    public function serviceLineKey(): string
+    {
+        return $this->product.'|'.$this->scope;
+    }
+
     public function amountLabel(): string
     {
         // A tiered rule has no single amount — its numbers are all in its bands.
