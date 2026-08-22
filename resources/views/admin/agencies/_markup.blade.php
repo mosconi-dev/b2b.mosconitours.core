@@ -257,6 +257,7 @@
                          byProduct: @js($options['calcTypesByProduct']),
                          chargedOnByProduct: @js($options['appliesToByProduct']),
                          matchable: @js($options['matchableKeys']),
+                         get hasAmount() { return this.calcType !== 'tiered' && this.calcType !== 'none' },
                      }"
                      x-effect="
                          if (! (calcType in byProduct[product])) calcType = 'fixed';
@@ -297,9 +298,19 @@
                         'calcTypeGuide' => $options['calcTypeGuide'],
                     ])
 
-                    <div>
+                    @include('admin.pricing._tier-bands', [
+                        'span' => 'sm:col-span-3 lg:col-span-5',
+                        'idPrefix' => 'ag-',
+                        'tierModes' => $options['tierModes'],
+                        'bandCalcTypes' => $options['bandCalcTypes'],
+                    ])
+
+                    {{-- Two types have no amount to give: `none` takes nothing and
+                         `tiered` keeps its numbers in its bands. --}}
+                    <div x-show="hasAmount" @if (in_array(old('calc_type', 'fixed'), ['tiered', 'none'], true)) x-cloak @endif>
                         <label for="ag-value" class="mb-1 block text-xs font-medium text-gray-600">Amount or %</label>
-                        <input id="ag-value" name="value" type="number" step="0.01" value="{{ old('value') }}" required
+                        <input id="ag-value" name="value" type="number" step="0.01" value="{{ old('value') }}"
+                               :required="hasAmount"
                                class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                     </div>
                     {{-- Floor and cap: "10%, at least 500" and "10%, at most 3,000" are

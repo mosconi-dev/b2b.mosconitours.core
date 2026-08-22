@@ -60,7 +60,31 @@
             <dt class="font-semibold text-brand-900">Amount or %</dt>
             <dd>
                 The number the type works with — pesos for a flat or per-unit fee, a percentage for the two
-                percentage types. It can never be negative: a rule only ever adds.
+                percentage types. It can never be negative: a rule only ever adds. Two types do not ask for
+                one at all and hide the box: <em>No markup</em> takes nothing, and <em>Tiered by amount</em>
+                keeps its numbers in its table.
+            </dd>
+        </div>
+
+        <div>
+            <dt class="font-semibold text-brand-900">The tier table</dt>
+            <dd>
+                Only for <em>Tiered by amount</em>. Each row is a band: everything up to the limit you type
+                is charged the way that row says. The last row's limit stays <strong>empty</strong> — it
+                prices every fare above the table.
+                <ul class="mt-1 space-y-1">
+                    @foreach (\App\Enums\TierMode::cases() as $case)
+                        <li>
+                            <span class="font-medium text-gray-700">{{ $case->label() }}</span>
+                            — {{ $case->guidance() }}
+                        </li>
+                    @endforeach
+                </ul>
+                <p class="mt-1">
+                    Watch the boundaries. A table charging the whole fare 12% up to 10,000 and 8% above it
+                    pays 1,200 on a 10,000 fare and 800 on a 10,001 one, so the dearer booking sells for
+                    less — the form refuses that, and charging by slice is usually the answer.
+                </p>
             </dd>
         </div>
 

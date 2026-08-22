@@ -135,7 +135,11 @@ final readonly class PricingLayer
             'agencyName' => $this->agency->name,
             'calcType' => $this->ruleSnapshot['calc_type'] ?? null,
             'value' => $this->ruleSnapshot['value'] ?? null,
-            // Derived from the two lines above and discloses nothing they do not.
+            // Derived from the snapshot. For a tiered rule that means its band table, so
+            // this is the one field here that says more than calcType and value do —
+            // safely, because toViewerArray() is only ever called on an agency's OWN
+            // rungs, and those are its own rules. The office's are redacted whole by
+            // AgencyPriceView, band table included.
             'label' => $this->amountLabel(),
             'markup' => (string) $this->markup,
             // Which of their own rules fired, why it exists, and what it matched on.

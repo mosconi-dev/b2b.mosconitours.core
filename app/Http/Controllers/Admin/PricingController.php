@@ -7,6 +7,7 @@ use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\Supplier;
+use App\Enums\TierMode;
 use App\Enums\TravelScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StorePricingRuleRequest;
@@ -20,6 +21,7 @@ use App\Services\Pricing\PricingContext;
 use App\Services\Pricing\PricingContextFactory;
 use App\Services\Pricing\PricingEngine;
 use App\Services\Pricing\StrategyResolver;
+use App\Services\Pricing\TieredBand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -251,6 +253,14 @@ class PricingController extends Controller
             // What a rule may narrow on, per product. The factory owns this list because
             // it is the only class that knows what a product's context carries.
             'matchableKeys' => PricingContextFactory::matchableKeysByProduct(),
+            // A tier table's own vocabulary: the modes it can be charged in, and the
+            // subset of types a band may use (context-free ones only — see TieredBand).
+            'tierModes' => TierMode::options(),
+            'bandCalcTypes' => array_reduce(
+                TieredBand::allowedTypes(),
+                fn (array $c, CalcType $t): array => $c + [$t->value => $t->label()],
+                [],
+            ),
             'appliesTo' => AppliesTo::options(),
             'appliesToByProduct' => AppliesTo::optionsByProduct(),
             'bases' => PricingBasis::options(),

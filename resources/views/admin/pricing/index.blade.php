@@ -173,6 +173,7 @@
                                  chargedOnByProduct: @js($appliesToByProduct),
                                  supplierByProduct: @js($suppliersByProduct),
                                  matchable: @js($matchableKeys),
+                                 get hasAmount() { return this.calcType !== 'tiered' && this.calcType !== 'none' },
                              }"
                              x-effect="
                                  if (! (calcType in byProduct[product])) calcType = 'fixed';
@@ -228,14 +229,26 @@
 
                             @include('admin.pricing._calc-type-help', ['span' => 'sm:col-span-2 lg:col-span-4'])
 
+                            @include('admin.pricing._tier-bands', ['span' => 'sm:col-span-3 lg:col-span-4'])
+
+                            {{-- Two types have no amount to give: `none` takes nothing and
+                                 `tiered` keeps its numbers in its bands. Asking for one
+                                 anyway leaves a required box whose only legal answer is
+                                 the one the type already implies. --}}
+                            <div x-show="hasAmount" @if (in_array(old('calc_type', 'fixed'), ['tiered', 'none'], true)) x-cloak @endif>
+                                <label for="value" class="mb-1 block text-xs font-medium text-gray-600">Amount or %</label>
+                                <input id="value" name="value" type="number" step="0.01" value="{{ old('value') }}"
+                                       :required="hasAmount"
+                                       class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
+                            </div>
+
                             @foreach ([
-                                ['value', 'Amount or %', 'number', old('value'), 'required'],
-                                ['min_markup', 'Floor', 'number', old('min_markup'), ''],
-                                ['max_markup', 'Cap', 'number', old('max_markup'), ''],
-                            ] as [$field, $label, $type, $value, $required])
+                                ['min_markup', 'Floor', old('min_markup')],
+                                ['max_markup', 'Cap', old('max_markup')],
+                            ] as [$field, $label, $value])
                                 <div>
                                     <label for="{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">{{ $label }}</label>
-                                    <input id="{{ $field }}" name="{{ $field }}" type="{{ $type }}" step="0.01" value="{{ $value }}" {{ $required }}
+                                    <input id="{{ $field }}" name="{{ $field }}" type="number" step="0.01" value="{{ $value }}"
                                            class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
                                 </div>
                             @endforeach

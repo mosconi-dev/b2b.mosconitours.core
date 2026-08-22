@@ -4,6 +4,7 @@ namespace Tests\Feature\Pricing;
 
 use App\Enums\AppliesTo;
 use App\Enums\BookingProduct;
+use App\Enums\CalcType;
 use App\Models\Agency;
 use App\Models\PricingRule;
 use App\Models\PricingStrategy;
@@ -512,6 +513,39 @@ class PricingAdminTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertNull(PricingRule::firstOrFail()->params);
+    }
+
+    public function test_the_form_carries_a_band_editor_for_a_tier_table(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            // Shown only for the one type that has a table.
+            ->assertSee('x-show="calcType === \'tiered\'"', false)
+            ->assertSee('name="params[mode]"', false)
+            ->assertSee('params[bands][', false)
+            // Both modes, each with the sentence that explains it.
+            ->assertSee('The band the fare lands in charges the whole fare')
+            ->assertSee('Each band charges only its own slice of the fare')
+            // And the amount box stands down for the types that have no amount.
+            ->assertSee(':required="hasAmount"', false);
+    }
+
+    public function test_the_rule_list_prints_the_table_rather_than_one_number(): void
+    {
+        $this->configureRoot();
+
+        PricingRule::factory()
+            ->for(PricingStrategy::factory()->create(['agency_id' => $this->mainOffice->id]), 'strategy')
+            ->tiered([[10000, CalcType::Fixed, 800], [null, CalcType::PercentageMarkup, 10]])
+            ->create();
+
+        $this->actingAs($this->editor())
+            ->get(route('admin.pricing.index'))
+            ->assertOk()
+            ->assertSee('Tiered: 800.00 / 10%');
     }
 
     // ------------------------------------------------- supplier, gated by product ----
