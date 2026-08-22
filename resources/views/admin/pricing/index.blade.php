@@ -230,7 +230,7 @@
 
                         @include('admin.pricing._field-guide', ['audience' => 'office'])
 
-                        @include('admin.pricing._rule-fields', ['rule' => null])
+                        @include('admin.pricing._rule-fields', ['rule' => null, 'audience' => 'office', 'idPrefix' => ''])
 
                         @if ($errors->any())
                             <ul class="mt-3 space-y-1 text-sm font-medium text-red-700">

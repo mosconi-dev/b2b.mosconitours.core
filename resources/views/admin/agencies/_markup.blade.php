@@ -221,9 +221,11 @@
                                         <span class="ml-1 text-xs font-normal text-gray-400">of the supplier rate</span>
                                     @endif
                                 </td>
-                                <td class="px-6 py-3 text-right">
+                                <td class="px-6 py-3 text-right whitespace-nowrap">
                                     @if ($editable)
-                                        <form method="POST" action="{{ route('admin.agencies.markup.rules.destroy', [$agency, $rule]) }}"
+                                        <a href="{{ route('admin.agencies.markup.rules.edit', [$agency, $rule]) }}"
+                                           class="text-xs font-medium text-brand-700 hover:text-brand-900">Edit</a>
+                                        <form method="POST" action="{{ route('admin.agencies.markup.rules.destroy', [$agency, $rule]) }}" class="ml-2 inline"
                                               onsubmit="return confirm('Remove this rule? Your selling prices change on the next search.')">
                                             @csrf @method('DELETE')
                                             <button type="submit" class="text-xs font-medium text-red-600 hover:text-red-700">Remove</button>
@@ -231,6 +233,40 @@
                                     @endif
                                 </td>
                             </tr>
+
+                            {{-- A tier table is a rate sheet, so it is shown as one here
+                                 too rather than folded into "Tiered: 300.00 / 500.00". --}}
+                            @if ($rule->calc_type === \App\Enums\CalcType::Tiered)
+                                @php $table = \App\Services\Pricing\TieredBands::fromParams($rule->params); @endphp
+                                <tr class="{{ $rule->is_active ? '' : 'opacity-50' }}">
+                                    <td colspan="3" class="px-6 pb-3">
+                                        <table class="min-w-full rounded-lg bg-gray-50 text-xs">
+                                            <thead class="text-left uppercase tracking-wide text-gray-400">
+                                                <tr>
+                                                    <th class="px-3 py-1.5 font-medium">Tier</th>
+                                                    <th class="px-3 py-1.5 font-medium">Min amount</th>
+                                                    <th class="px-3 py-1.5 font-medium">Max amount</th>
+                                                    <th class="px-3 py-1.5 font-medium">You add</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach ($table->grid() as $band)
+                                                    <tr class="border-t border-gray-200/70">
+                                                        <td class="px-3 py-1.5 text-gray-500">Class {{ $band['tier'] }}</td>
+                                                        <td class="px-3 py-1.5 tabular-nums text-gray-700">{{ $band['from']->formatted() }}</td>
+                                                        <td class="px-3 py-1.5 tabular-nums text-gray-700">{{ $band['to']?->formatted() ?? 'No limit' }}</td>
+                                                        <td class="px-3 py-1.5 font-medium text-brand-900">{{ $band['charge'] }}</td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                        <p class="mt-1 px-3 text-[11px] text-gray-400">
+                                            Read at {{ strtolower($table->unit()->label()) }},
+                                            {{ $table->mode() === \App\Enums\TierMode::Marginal ? 'each band charging only its own slice' : 'one band charging the whole amount' }}.
+                                        </p>
+                                    </td>
+                                </tr>
+                            @endif
                         @endforeach
                     </tbody>
                 </table>
@@ -244,164 +280,18 @@
 
                 @include('admin.pricing._field-guide', ['audience' => 'agency'])
 
-                {{-- Product and Type are bound together: a per-passenger fee is
-                     meaningless on a hotel and a per-room-night one on a flight, so
-                     choosing a product narrows the types on offer. Alpine only greys the
-                     wrong ones out — StoreAgencyPricingRuleRequest is what refuses them,
-                     so a form posted without JavaScript is held to the same rule. --}}
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-                     x-data="{
-                         product: @js(old('product', '*')),
-                         calcType: @js(old('calc_type', 'fixed')),
-                         chargedOn: @js(old('applies_to', 'total')),
-                         byProduct: @js($options['calcTypesByProduct']),
-                         chargedOnByProduct: @js($options['appliesToByProduct']),
-                         matchable: @js($options['matchableKeys']),
-                         get hasAmount() { return this.calcType !== 'tiered' && this.calcType !== 'none' },
-                     }"
-                     x-effect="
-                         if (! (calcType in byProduct[product])) calcType = 'fixed';
-                         if (! (chargedOn in chargedOnByProduct[product])) chargedOn = 'total';
-                     ">
-                    <div>
-                        <label for="ag-product" class="mb-1 block text-xs font-medium text-gray-600">Product</label>
-                        <select id="ag-product" name="product" x-model="product" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                            @foreach ($options['products'] as $value => $text)
-                                <option value="{{ $value }}" @selected(old('product', '*') === (string) $value)>{{ $text }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div>
-                        <label for="ag-scope" class="mb-1 block text-xs font-medium text-gray-600">Scope</label>
-                        <select id="ag-scope" name="scope" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                            @foreach ($options['scopes'] as $value => $text)
-                                <option value="{{ $value }}" @selected(old('scope', 'any') === (string) $value)>{{ $text }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div>
-                        <label for="ag-calc_type" class="mb-1 block text-xs font-medium text-gray-600">Type</label>
-                        <select id="ag-calc_type" name="calc_type" x-model="calcType" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                            @foreach ($options['calcTypes'] as $value => $text)
-                                @php $restriction = \App\Enums\CalcType::from($value)->productRestriction(); @endphp
-                                <option value="{{ $value }}"
-                                        :disabled="! (@js($value) in byProduct[product])"
-                                        @selected(old('calc_type', 'fixed') === (string) $value)>{{ $text }}@if ($restriction) — {{ $restriction }}@endif</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    {{-- `rule` explicitly null: the rules table above is a @foreach over
-                         $rule, and Blade compiles that to a plain PHP loop whose variable
-                         outlives it. Without this the add form would populate itself from
-                         whichever rule happened to be listed last. --}}
-                    @include('admin.pricing._calc-type-help', [
-                        'span' => 'sm:col-span-3 lg:col-span-5',
-                        'calcTypeGuide' => $options['calcTypeGuide'],
-                        'rule' => null,
-                    ])
-
-                    @include('admin.pricing._tier-bands', [
-                        'span' => 'sm:col-span-3 lg:col-span-5',
-                        'idPrefix' => 'ag-',
-                        'rule' => null,
-                        'tierModes' => $options['tierModes'],
-                        'tierUnits' => $options['tierUnits'],
-                        'tierUnitsByProduct' => $options['tierUnitsByProduct'],
-                        'tierUnitDefaults' => $options['tierUnitDefaults'],
-                        'bandCalcTypes' => $options['bandCalcTypes'],
-                    ])
-
-                    {{-- Two types have no amount to give: `none` takes nothing and
-                         `tiered` keeps its numbers in its bands. --}}
-                    <div x-show="hasAmount" @if (in_array(old('calc_type', 'fixed'), ['tiered', 'none'], true)) x-cloak @endif>
-                        <label for="ag-value" class="mb-1 block text-xs font-medium text-gray-600">Amount or %</label>
-                        <input id="ag-value" name="value" type="number" step="0.01" value="{{ old('value') }}"
-                               :required="hasAmount"
-                               class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                    </div>
-                    {{-- Floor and cap: "10%, at least 500" and "10%, at most 3,000" are
-                         the two shapes most often asked for, and both are one clamp the
-                         engine already applies. --}}
-                    @foreach ([
-                        ['min_markup', 'Floor'],
-                        ['max_markup', 'Cap'],
-                    ] as [$field, $label])
-                        <div>
-                            <label for="ag-{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">
-                                {{ $label }} <span class="font-normal text-gray-400">— optional</span>
-                            </label>
-                            <input id="ag-{{ $field }}" name="{{ $field }}" type="number" step="0.01" value="{{ old($field) }}"
-                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                        </div>
-                    @endforeach
-
-                    <div>
-                        <label for="ag-applies_to" class="mb-1 block text-xs font-medium text-gray-600">Charged on</label>
-                        <select id="ag-applies_to" name="applies_to" x-model="chargedOn" class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                            @foreach ($options['appliesTo'] as $value => $text)
-                                @php $chargedOnRestriction = \App\Enums\AppliesTo::from($value)->productRestriction(); @endphp
-                                <option value="{{ $value }}"
-                                        :disabled="! (@js($value) in chargedOnByProduct[product])"
-                                        @selected(old('applies_to', 'total') === (string) $value)>{{ $text }}@if ($chargedOnRestriction) — {{ $chargedOnRestriction }}@endif</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    {{-- Measured against the TRAVEL date when the context knows one: a
-                         December peak-season rule is about when the guest flies, not when
-                         the agent happened to book. --}}
-                    @foreach ([
-                        ['valid_from', 'Travelling from'],
-                        ['valid_to', 'Travelling until'],
-                    ] as [$field, $label])
-                        <div>
-                            <label for="ag-{{ $field }}" class="mb-1 block text-xs font-medium text-gray-600">
-                                {{ $label }} <span class="font-normal text-gray-400">— optional</span>
-                            </label>
-                            <input id="ag-{{ $field }}" name="{{ $field }}" type="date" value="{{ old($field) }}"
-                                   class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                        </div>
-                    @endforeach
-
-                    <div class="sm:col-span-2 lg:col-span-3">
-                        <label for="ag-matchers" class="mb-1 block text-xs font-medium text-gray-600">
-                            Narrow it further <span class="font-normal text-gray-400">— optional, JSON</span>
-                        </label>
-                        <input id="ag-matchers" name="matchers" type="text" value="{{ old('matchers') }}"
-                               placeholder='{"airline": ["PR", "5J"]}'
-                               class="w-full rounded-lg border-gray-300 font-mono text-sm focus:border-brand-500 focus:ring-brand-500">
-                        <p class="mt-1 text-xs text-gray-400">
-                            A list means any of them. This product carries:
-                            <span class="font-mono" x-text="matchable[product].join(', ')"></span>
-                        </p>
-                    </div>
-
-                    <div class="sm:col-span-2 lg:col-span-3">
-                        <label for="ag-description" class="mb-1 block text-xs font-medium text-gray-600">
-                            Note <span class="font-normal text-gray-400">— optional, why this rule exists</span>
-                        </label>
-                        <input id="ag-description" name="description" type="text" maxlength="255"
-                               value="{{ old('description') }}"
-                               placeholder="e.g. Peak season surcharge agreed with the office"
-                               class="w-full rounded-lg border-gray-300 text-sm focus:border-brand-500 focus:ring-brand-500">
-                    </div>
-                    {{-- No order field here, deliberately. Every rule of an agency's is
-                         pinned to the supplier net, so their contributions are all of the
-                         same figure and addition commutes — the order they run in cannot
-                         change the total. It is only load-bearing for a rule that
-                         compounds, which is the Main Office screen's to offer. --}}
-
-                    {{-- A percentage here is of the supplier rate, so the levels do not
-                         compound — see StoreAgencyPricingRuleRequest. The server pins it
-                         either way; this field only keeps the form honest. --}}
-                    <input type="hidden" name="basis" value="net">
-                    <input type="hidden" name="supplier" value="">
-                    <input type="hidden" name="rounding" value="none">
-                    <input type="hidden" name="is_active" value="1">
-                </div>
+                {{-- The same fields the Main Office screen writes a rule with, from the
+                     same partial. They drifted once — floor and cap were missing here for
+                     months — and one copy is the only thing that stops it happening
+                     again. `rule` is null explicitly: the rules table above is a @foreach
+                     over $rule, and Blade compiles that to a plain PHP loop whose
+                     variable outlives it. --}}
+                @include('admin.pricing._rule-fields', [
+                    ...$options,
+                    'rule' => null,
+                    'audience' => 'agency',
+                    'idPrefix' => 'ag-',
+                ])
 
                 @if ($errors->any())
                     <ul class="mt-3 space-y-1 text-sm font-medium text-red-700">

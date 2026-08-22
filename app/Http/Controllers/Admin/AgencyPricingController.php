@@ -27,6 +27,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\View\View;
 
 /**
  * An agency's own markup — the rung it adds on top of the Main Office's.
@@ -54,6 +55,25 @@ class AgencyPricingController extends Controller
         return back()->with('status', 'Markup rule added. It applies to your next search.');
     }
 
+    /**
+     * The edit form for one of this agency's rules — its own page, for the reason the
+     * Main Office screen's is: the field set is large enough that a copy per row would
+     * put a dozen tier editors on a screen to show one.
+     */
+    public function editRule(Agency $agency, PricingRule $rule): View
+    {
+        // Ownership first: authorizing against another agency's strategy answers 403,
+        // which confirms the rule exists. Whether it does is not this agency's business.
+        $this->guardBelongs($rule, $agency);
+        Gate::authorize('update', $rule->strategy);
+
+        return view('admin.agencies.markup-edit', [
+            'agency' => $agency,
+            'rule' => $rule,
+            'options' => self::formOptions(),
+        ]);
+    }
+
     public function updateRule(StoreAgencyPricingRuleRequest $request, Agency $agency, PricingRule $rule): RedirectResponse
     {
         // Ownership first: authorizing against another agency's strategy answers 403,
@@ -63,7 +83,8 @@ class AgencyPricingController extends Controller
 
         $this->admin->updateRule($rule, $request->validated());
 
-        return back()->with('status', 'Markup rule updated.');
+        return redirect()->route('admin.agencies.show', $agency)
+            ->with('status', 'Markup rule updated. It applies to your next search.');
     }
 
     public function destroyRule(Agency $agency, PricingRule $rule): RedirectResponse
@@ -160,6 +181,8 @@ class AgencyPricingController extends Controller
      */
     public static function formOptions(): array
     {
+        $anySupplier = ['' => 'Any supplier'];
+
         return [
             'calcTypes' => CalcType::options(),
             // Every product's allowed types, so the form can narrow the select without a
@@ -187,7 +210,14 @@ class AgencyPricingController extends Controller
                 fn (array $c, BookingProduct $p): array => $c + [$p->value => $p->label()],
                 [],
             ),
-            'suppliers' => ['' => 'Any supplier'] + Supplier::options(),
+            // An agency never chooses a supplier — its rules are its own margin on
+            // whatever it sold — but the shared field partial reads both, and a map the
+            // form does not render costs nothing.
+            'suppliers' => $anySupplier + Supplier::options(),
+            'suppliersByProduct' => array_map(
+                fn (array $options): array => $anySupplier + $options,
+                Supplier::optionsByProduct(),
+            ),
             'scopes' => ['any' => 'Domestic and international'] + array_reduce(
                 TravelScope::cases(),
                 fn (array $c, TravelScope $s): array => $c + [$s->value => $s->label()],

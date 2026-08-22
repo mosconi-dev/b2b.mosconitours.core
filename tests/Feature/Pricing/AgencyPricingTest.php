@@ -4,6 +4,7 @@ namespace Tests\Feature\Pricing;
 
 use App\Enums\CalcType;
 use App\Enums\TierMode;
+use App\Enums\TierUnit;
 use App\Http\Requests\Admin\StoreAgencyPricingRuleRequest;
 use App\Models\Agency;
 use App\Models\Booking;
@@ -70,6 +71,130 @@ class AgencyPricingTest extends TestCase
             'priority' => 100,
             'is_active' => 1,
         ], $overrides);
+    }
+
+    // ----------------------------------------------------------- editing a rule ----
+
+    public function test_an_agency_can_edit_its_own_rule(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $rule = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            'description' => 'Booking fee',
+        ]);
+        $version = $rule->version;
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.markup.rules.edit', [$this->agency, $rule]))
+            ->assertOk()
+            ->assertSee('Booking fee')
+            ->assertSee('value="200"', false);
+
+        $this->actingAs($user)
+            ->put(route('admin.agencies.markup.rules.update', [$this->agency, $rule]), $this->ruleData([
+                'calc_type' => 'percentage_markup', 'value' => '6', 'description' => 'Now a percentage',
+            ]))
+            ->assertRedirect(route('admin.agencies.show', $this->agency));
+
+        $rule->refresh();
+
+        $this->assertSame('percentage_markup', $rule->calc_type->value);
+        $this->assertSame('6.0000', $rule->value);
+        $this->assertGreaterThan($version, $rule->version);
+    }
+
+    public function test_an_agency_cannot_edit_another_agencys_rule(): void
+    {
+        // 404 rather than 403: whether the rival's rule exists is not this agency's
+        // business, and confirming it would answer a question nobody may ask.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $theirs = PricingRule::factory()->fixed(999)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->rival->id])->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.markup.rules.edit', [$this->agency, $theirs]))
+            ->assertNotFound();
+
+        $this->actingAs($user)
+            ->put(route('admin.agencies.markup.rules.update', [$this->agency, $theirs]), $this->ruleData())
+            ->assertNotFound();
+
+        $this->assertSame('999.0000', $theirs->refresh()->value);
+    }
+
+    public function test_editing_needs_more_than_permission_to_look(): void
+    {
+        $viewer = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view']);
+
+        $rule = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.agencies.markup.rules.edit', [$this->agency, $rule]))
+            ->assertForbidden();
+    }
+
+    public function test_an_agency_edit_is_held_to_every_rule_its_add_form_is(): void
+    {
+        // Same request class, so the cliff check and the product gates apply either way.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $rule = PricingRule::factory()->fixed(200)->create([
+            'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('admin.agencies.markup.rules.update', [$this->agency, $rule]), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => ['mode' => 'whole', 'bands' => [
+                    ['up_to' => '10000', 'calc_type' => 'percentage_markup', 'value' => '12'],
+                    ['up_to' => '', 'calc_type' => 'percentage_markup', 'value' => '8'],
+                ]],
+            ]))
+            ->assertSessionHasErrors('params');
+
+        $this->assertSame('fixed', $rule->refresh()->calc_type->value);
+    }
+
+    public function test_the_agency_rules_table_offers_an_edit_and_a_rate_sheet(): void
+    {
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $rule = PricingRule::factory()
+            ->tiered([[10000, CalcType::Fixed, 300], [null, CalcType::Fixed, 500]], TierMode::Whole, TierUnit::Booking)
+            ->create([
+                'pricing_strategy_id' => PricingStrategy::factory()->create(['agency_id' => $this->agency->id])->id,
+            ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', $this->agency))
+            ->assertOk()
+            ->assertSee(route('admin.agencies.markup.rules.edit', [$this->agency, $rule]), false)
+            ->assertSeeInOrder(['Class 1', '0.00', '10,000.00', '300.00'])
+            ->assertSeeInOrder(['Class 2', '10,000.01', 'No limit', '500.00']);
+    }
+
+    public function test_both_screens_write_a_rule_with_the_same_fields(): void
+    {
+        // They drifted once — floor and cap were missing here for months. One partial is
+        // what stops it happening again, so this is what says the partial is shared.
+        $user = $this->memberOf($this->agency, ['admin.access', 'agency.view', 'markup.view', 'markup.edit']);
+
+        $this->actingAs($user)
+            ->get(route('admin.agencies.show', $this->agency))
+            ->assertOk()
+            ->assertSee('name="min_markup"', false)
+            ->assertSee('name="max_markup"', false)
+            ->assertSee('name="applies_to"', false)
+            ->assertSee('name="matchers"', false)
+            ->assertSee('name="params[bands_on]"', false)
+            // ...and the one field it deliberately does not offer.
+            ->assertSee('<input type="hidden" name="supplier" value="">', false)
+            ->assertDontSee('id="ag-supplier"', false);
     }
 
     // ------------------------------------------------------------- tier tables ----
