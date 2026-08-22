@@ -61,6 +61,12 @@ final readonly class PricingLayer
     {
         $type = CalcType::tryFrom((string) ($this->ruleSnapshot['calc_type'] ?? ''));
 
+        // A tiered rung names the band it actually landed in, which is the only thing
+        // that explains its number — the table alone would not.
+        if ($type === CalcType::Tiered) {
+            return TieredBands::labelFor($this->ruleSnapshot['params'] ?? null, $this->basis);
+        }
+
         return $type?->describeAmount($this->ruleSnapshot['value'] ?? null) ?? '';
     }
 

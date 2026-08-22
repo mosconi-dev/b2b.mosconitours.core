@@ -28,6 +28,7 @@ class CalculatorRegistry
         $this->register(CalcType::PercentageMargin, new PercentageMarginCalculator);
         $this->register(CalcType::PerPax, new PerPaxCalculator);
         $this->register(CalcType::PerRoomNight, new PerRoomNightCalculator);
+        $this->register(CalcType::Tiered, new TieredCalculator);
         $this->register(CalcType::None, new NoneCalculator);
     }
 

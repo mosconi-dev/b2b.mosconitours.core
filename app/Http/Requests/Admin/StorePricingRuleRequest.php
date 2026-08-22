@@ -7,9 +7,11 @@ use App\Enums\BookingProduct;
 use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\Supplier;
+use App\Enums\TierMode;
 use App\Enums\TravelScope;
 use App\Models\PricingRule;
 use App\Services\Pricing\PricingContextFactory;
+use App\Services\Pricing\TieredBands;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -51,9 +53,23 @@ class StorePricingRuleRequest extends FormRequest
         // `none` has no amount to give, and `value` is NOT NULL. Supplying the zero here
         // rather than asking for it keeps the form from demanding a number whose only
         // legal answer is the one the type already implies.
-        if ($this->input('calc_type') === CalcType::None->value) {
+        // `none` has no amount to give and `tiered` keeps all of its numbers in its
+        // bands, but `value` is NOT NULL. Supplying the zero here rather than asking for
+        // it keeps the form from demanding a number whose only legal answer is the one
+        // the type already implies.
+        if (in_array($this->input('calc_type'), [CalcType::None->value, CalcType::Tiered->value], true)) {
             $this->merge(['value' => 0]);
         }
+
+        // The band editor posts its rows whatever the type, so a rule switched back to a
+        // percentage would otherwise save a tier table it never reads — and a stored
+        // table that nothing computes is exactly the sort of thing somebody later
+        // mistakes for the reason a price came out wrong.
+        $this->merge([
+            'params' => $this->input('calc_type') === CalcType::Tiered->value
+                ? self::tierParams($this->input('params'))
+                : null,
+        ]);
 
         // The form posts matchers as JSON text, because the matchable set differs per
         // product and grows with each one — which is why the column is JSON too.
@@ -68,6 +84,47 @@ class StorePricingRuleRequest extends FormRequest
                 'matchers' => $trimmed === '' ? null : (json_decode($trimmed, true) ?? $raw),
             ]);
         }
+    }
+
+    /**
+     * A tier table out of what the editor posted: the mode it chose, and the band rows
+     * that have anything in them, keys renumbered.
+     *
+     * The editor keeps a blank row at the bottom to type into. Counting it would fail
+     * every table for a band that does not exist yet.
+     *
+     * A missing mode is filled in, so a stored table always says how it is charged rather
+     * than leaning on a default that could later move under a booking that has already
+     * been priced. A mode that is present but nonsense is passed through untouched —
+     * TieredBands is what decides whether a mode is a mode, and it refuses one that is not.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function tierParams(mixed $params): ?array
+    {
+        $bands = is_array($params) ? ($params['bands'] ?? null) : null;
+
+        if (! is_array($bands)) {
+            return null;
+        }
+
+        // Judged on the two fields somebody types, not on the whole row: the type select
+        // always posts something, so "has any value" would count every blank row. A row
+        // with a limit and no amount is kept deliberately — it is a half-filled band, and
+        // TieredBands should say so rather than this quietly dropping it.
+        $filled = array_values(array_filter(
+            $bands,
+            fn (mixed $row): bool => is_array($row)
+                && (filled($row['up_to'] ?? null) || filled($row['value'] ?? null)),
+        ));
+
+        if ($filled === []) {
+            return null;
+        }
+
+        $mode = is_array($params) ? ($params['mode'] ?? null) : null;
+
+        return ['mode' => blank($mode) ? TierMode::default()->value : $mode, 'bands' => $filled];
     }
 
     /**
@@ -100,6 +157,11 @@ class StorePricingRuleRequest extends FormRequest
 
             // Free-form narrowing — airline, cabin, isLcc, rating, city…
             'matchers' => ['nullable', 'array'],
+
+            // The tier table. Shape is checked by TieredBands, not by rules(): the
+            // things that make a table wrong are relationships between rows, not the
+            // rows themselves.
+            'params' => ['nullable', 'array'],
         ];
     }
 
@@ -194,6 +256,17 @@ class StorePricingRuleRequest extends FormRequest
                         "\"{$key}\" is not something this product carries, so the rule would never fire. "
                         .'Use one of: '.implode(', ', $allowed).'.'
                     );
+                }
+            }
+
+            // A tier table is wrong in ways no field rule can see: bands that do not
+            // climb, a middle band left open-ended, and above all a boundary where the
+            // markup FALLS, so a fare one peso more expensive sells for less. TieredBands
+            // owns all of it, so the engine and this form can never disagree about what
+            // a usable table is.
+            if ($type === CalcType::Tiered->value) {
+                foreach (TieredBands::problems($this->input('params')) as $problem) {
+                    $validator->errors()->add('params', ucfirst($problem));
                 }
             }
 

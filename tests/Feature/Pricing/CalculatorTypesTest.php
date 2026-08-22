@@ -86,11 +86,11 @@ class CalculatorTypesTest extends TestCase
         }
     }
 
-    public function test_tiered_is_declared_but_not_offered(): void
+    public function test_tiered_is_offered_now_that_params_can_hold_its_bands(): void
     {
-        // It carries bands rather than one number and has nowhere to put them yet.
-        $this->assertNotContains(CalcType::Tiered, CalcType::implemented());
-        $this->assertArrayNotHasKey('tiered', CalcType::options());
+        // It carries a table rather than one number, which is what `params` is for.
+        $this->assertContains(CalcType::Tiered, CalcType::implemented());
+        $this->assertArrayHasKey('tiered', CalcType::options());
     }
 
     // ------------------------------------------------------- the product gate ----

@@ -121,11 +121,13 @@ class PricingAdminTest extends TestCase
 
     public function test_a_calculator_that_does_not_exist_is_refused_at_the_form(): void
     {
-        // Better refused here than discovered mid-quote on a live search.
+        // Better refused here than discovered mid-quote on a live search. Every declared
+        // type has a calculator now, so what this guards against is a value that was
+        // never a type at all.
         $this->configureRoot();
 
         $this->actingAs($this->editor())
-            ->post(route('admin.pricing.rules.store'), $this->ruleData(['calc_type' => 'tiered']))
+            ->post(route('admin.pricing.rules.store'), $this->ruleData(['calc_type' => 'sliding_scale']))
             ->assertSessionHasErrors('calc_type');
     }
 
@@ -410,6 +412,106 @@ class PricingAdminTest extends TestCase
             ->assertSee('Base fare only, before tax')
             // The same phrasing the Type select uses for its own restrictions.
             ->assertSeeInOrder(['Base fare only, before tax', 'flights only'], false);
+    }
+
+    // ------------------------------------------------------------- tier tables ----
+
+    public function test_a_tier_table_is_saved_against_the_rule(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => $this->bands([['10000', 'fixed', '800'], ['', 'percentage_markup', '10']]),
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $rule = PricingRule::firstOrFail();
+
+        $this->assertSame('tiered', $rule->calc_type->value);
+        $this->assertCount(2, $rule->params['bands']);
+        $this->assertSame('whole', $rule->params['mode']);
+        // A tiered rule keeps its numbers in its bands, and `value` is NOT NULL.
+        $this->assertSame('0.0000', $rule->value);
+    }
+
+    public function test_a_tier_table_that_pays_less_on_a_dearer_fare_is_refused(): void
+    {
+        // The one that catches people: 12% of 10,000 is 1,200 and 8% of 10,001 is 800.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => $this->bands([['10000', 'percentage_markup', '12'], ['', 'percentage_markup', '8']]),
+            ]))
+            ->assertSessionHasErrors('params');
+
+        $this->assertDatabaseCount('pricing_rules', 0);
+    }
+
+    public function test_the_same_table_is_accepted_once_it_is_charged_by_slice(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => $this->bands(
+                    [['10000', 'percentage_markup', '12'], ['', 'percentage_markup', '8']],
+                    'marginal',
+                ),
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('marginal', PricingRule::firstOrFail()->params['mode']);
+    }
+
+    public function test_a_tiered_rule_needs_a_table(): void
+    {
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData(['calc_type' => 'tiered']))
+            ->assertSessionHasErrors('params');
+    }
+
+    public function test_the_blank_row_at_the_bottom_of_the_editor_is_not_a_band(): void
+    {
+        // The editor keeps an empty row to type into. Counting it would fail every table
+        // for a band nobody has written yet.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'tiered',
+                'params' => $this->bands([
+                    ['10000', 'fixed', '800'],
+                    ['', 'percentage_markup', '10'],
+                    ['', 'fixed', ''],
+                ]),
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertCount(2, PricingRule::firstOrFail()->params['bands']);
+    }
+
+    public function test_a_rule_that_is_not_tiered_keeps_no_table(): void
+    {
+        // The editor posts its rows whatever the type. A stored table nothing computes is
+        // exactly what somebody later blames a wrong price on.
+        $this->configureRoot();
+
+        $this->actingAs($this->editor())
+            ->post(route('admin.pricing.rules.store'), $this->ruleData([
+                'calc_type' => 'percentage_markup',
+                'value' => '10',
+                'params' => $this->bands([['10000', 'fixed', '800'], ['', 'percentage_markup', '10']]),
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull(PricingRule::firstOrFail()->params);
     }
 
     // ------------------------------------------------- supplier, gated by product ----
@@ -885,6 +987,20 @@ class PricingAdminTest extends TestCase
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
+    /**
+     * Band rows shaped the way the editor posts them — strings throughout, blank for the
+     * open-ended limit.
+     *
+     * @param  array<int, array{0: string, 1: string, 2: string}>  $bands
+     * @return array<string, mixed>
+     */
+    private function bands(array $bands, string $mode = 'whole'): array
+    {
+        return ['mode' => $mode, 'bands' => array_map(fn (array $band): array => [
+            'up_to' => $band[0], 'calc_type' => $band[1], 'value' => $band[2],
+        ], $bands)];
+    }
+
     private function ruleData(array $overrides = []): array
     {
         return array_merge([

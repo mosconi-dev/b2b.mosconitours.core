@@ -6,6 +6,7 @@ use App\Enums\CalcType;
 use App\Enums\PricingBasis;
 use App\Enums\TravelScope;
 use App\Services\Pricing\PricingContext;
+use App\Services\Pricing\TieredBands;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'pricing_strategy_id', 'description', 'product', 'supplier', 'scope', 'matchers',
-    'calc_type', 'value', 'basis', 'applies_to',
+    'calc_type', 'value', 'params', 'basis', 'applies_to',
     'min_markup', 'max_markup', 'rounding', 'priority',
     'valid_from', 'valid_to', 'is_active',
 ])]
@@ -42,6 +43,7 @@ class PricingRule extends Model
             'calc_type' => CalcType::class,
             'basis' => PricingBasis::class,
             'value' => 'decimal:4',
+            'params' => 'array',
             'min_markup' => 'decimal:2',
             'max_markup' => 'decimal:2',
             'priority' => 'integer',
@@ -184,6 +186,10 @@ class PricingRule extends Model
             'matchers' => $this->matchers,
             'calc_type' => $this->calc_type->value,
             'value' => (string) $this->value,
+            // Copied, not referenced. A booking priced on the 10k/50k bands cannot
+            // account for itself a year later if the bands have since moved and only
+            // `value` — which a tiered rule does not even use — was kept.
+            'params' => $this->params,
             'basis' => $this->basis->value,
             'applies_to' => $this->applies_to,
             'min_markup' => $this->min_markup,
@@ -215,6 +221,9 @@ class PricingRule extends Model
      */
     public function amountLabel(): string
     {
-        return $this->calc_type->describeAmount($this->value);
+        // A tiered rule has no single amount — its numbers are all in its bands.
+        return $this->calc_type === CalcType::Tiered
+            ? TieredBands::label($this->params)
+            : $this->calc_type->describeAmount($this->value);
     }
 }

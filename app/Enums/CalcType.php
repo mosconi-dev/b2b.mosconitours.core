@@ -9,12 +9,10 @@ namespace App\Enums;
  * CalculatorRegistry, so adding a type is registering a class — not editing the engine,
  * the resolver, the matcher or the layers table.
  *
- * Every case but Tiered has a calculator. Tiered stays declared and unimplemented
- * because it carries bands rather than a single number, and `pricing_rules.value` is one
- * `decimal(12,4)` — it needs a `params` column before it can be anything but an enum
- * case. The case is kept regardless: the shape of the set is a business decision already
- * taken, and a half-declared enum invites someone to invent a seventh spelling of
- * "percentage".
+ * Every case has a calculator. Tiered is the one that carries bands rather than a single
+ * number, so it reads `pricing_rules.params` and ignores `value` entirely — see
+ * TieredBands, which owns the table, its arithmetic and the check that refuses a table
+ * where a more expensive fare would sell for less.
  */
 enum CalcType: string
 {
@@ -107,7 +105,7 @@ enum CalcType: string
     /** Whether the rule's `value` means anything. It does not for an explicit zero. */
     public function usesValue(): bool
     {
-        return $this !== self::None;
+        return ! in_array($this, [self::None, self::Tiered], true);
     }
 
     /**
@@ -141,7 +139,12 @@ enum CalcType: string
                 .'The axis a hotel rate actually moves on: two rooms for three nights is six of these. '
                 .'Head count is deliberately not a factor, because the supplier does not charge on it.',
 
-            self::Tiered => 'A different percentage for each band of supplier rate. Not yet available.',
+            self::Tiered => 'A different charge for each band of supplier rate, so the margin is protected '
+                .'on cheap fares without pricing long-haul out of the market. Choose whether the band a fare '
+                .'lands in charges the whole fare, or whether each band charges only its own slice the way '
+                .'tax brackets do. Rates that FALL as the fare climbs — 12%, then 8%, then 5% — are only '
+                .'writable by slice: on the whole fare they would make a dearer booking sell for less, and '
+                .'that is refused. Bands read the whole booking, never per passenger.',
 
             self::None => 'Takes nothing, on purpose. '
                 .'Use it for a negotiated corporate rate or a staff booking, so the list says somebody '
@@ -249,6 +252,7 @@ enum CalcType: string
             self::PercentageMargin,
             self::PerPax,
             self::PerRoomNight,
+            self::Tiered,
             self::None,
         ];
     }
