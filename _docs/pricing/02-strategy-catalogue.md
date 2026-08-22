@@ -115,10 +115,11 @@ hotel rule is excluding something.
 
 ### 2.1 The five already declared
 
-**[BUILT — increment 1]** Four of these five now have calculators; `tiered` does not, for the reason
-in §2.3. Each cost exactly what this section predicted: one implementation of `Calculator::compute()`,
-one registry line, one entry in `implemented()`. The engine, the matcher, the resolver and the layers
-table were not touched.
+**[BUILT — increments 1 and 3]** All five have calculators. Four cost exactly what this section
+predicted — one implementation of `Calculator::compute()`, one registry line, one entry in
+`implemented()`. `tiered` cost that plus the `params` column of §2.3, and one thing this section did
+not predict at all: see §2.4. The engine, the matcher, the resolver and the layers table were not
+touched by any of them.
 
 | Type | Arithmetic | Where it earns its place |
 | --- | --- | --- |
@@ -126,7 +127,7 @@ table were not touched.
 | **`per_pax`** | `v × paxCount` | The air-trade norm: a transaction fee per ticket issued. `paxCount` is on the context (`PricingContext.php:33`) and no calculator reads it. |
 | **`per_room_night`** | `v × roomCount × nights` | The correct axis for hotels. `roomCount` and `nights` are on the context (`:34-35`) and likewise unread. |
 | **`none`** | `0` | An **explicit** zero for negotiated corporate and staff rates, so nobody wonders whether a rule was missing. Also the honest way to say "this supplier is pass-through". |
-| **`tiered`** | band lookup on the basis | 12% under ₱10k, 8% to ₱50k, 5% above. Protects the margin on cheap fares without making long-haul uncompetitive, and it is the single most requested shape in travel retail. **Cost: class + column** — see §2.3. |
+| **`tiered`** | band lookup on the basis, or a sum over slices | 12% under ₱10k, 8% to ₱50k, 5% above. Protects the margin on cheap fares without making long-haul uncompetitive, and it is the single most requested shape in travel retail. **Built** on `params` (§2.3) — and the table in this cell is only writable one of the two ways, which §2.4 is about. |
 
 ### 2.2 Three worth adding
 
@@ -140,7 +141,7 @@ table were not touched.
 
 ### 2.3 One migration, once: a `params` column
 
-**[RECOMMENDED]** `value` is a single `decimal(12,4)`
+**[BUILT — increment 3]** `value` is a single `decimal(12,4)`
 (`2026_08_14_000003_create_pricing_tables.php:52`). Any type carrying more than one number — tier
 bands, a price-point ending, a rate table — needs somewhere to put them.
 
@@ -151,6 +152,41 @@ Two requirements come with it:
    ₱10k/₱50k bands cannot explain itself a year later if the bands moved and only `value` was copied.
 2. **Do not reuse `matchers` for it.** That column answers *does this rule apply*; `params` answers
    *what does it compute*. Fusing them makes `matchesAttributes()` walk keys that are not matchers.
+
+Both were honoured: `2026_08_22_000001_add_params_to_pricing_rules_table.php`, and `params` is in
+`PricingRule::snapshot()` beside `value`. `StorePricingRuleRequest` nulls it for every type that is
+not `tiered`, so a rule switched back to a percentage cannot leave a table behind that nothing
+computes.
+
+### 2.4 The cliff — and why `tiered` has two modes
+
+**[CONFIRMED — found while building it]** The table quoted throughout this document is **broken**.
+
+12% of ₱10,000 is ₱1,200. 8% of ₱10,001 is ₱800. A fare **one peso more expensive sells ₱399
+cheaper**, at every boundary in the table. Nothing about this is exotic — it is what a declining-rate
+band table does when each band charges the whole fare — and nobody notices until a margin report
+looks wrong months later. The first test written against the canonical table failed, which is what
+it was for.
+
+So `params.mode`, an enum of two (`App\Enums\TierMode`):
+
+| Mode | What a band charges | The cliff |
+| --- | --- | --- |
+| **`whole`** | the band a fare lands in charges the **whole** fare | present at every boundary; `TieredBands::inversions()` computes the markup on both sides of each one and the form **refuses** a table that falls, naming both numbers and the fix |
+| **`marginal`** | each band charges only **its own slice**, the way tax brackets do | impossible by construction — every extra peso adds a non-negative amount — so the check is a no-op and declining rates are only writable this way |
+
+`whole` is the default because it is the plain reading of the words somebody types. The refusal is
+what teaches the difference, at the moment it matters, to the person who can fix it.
+
+**Bands are deliberately a subset of the calculation types**: `fixed`, `percentage_markup`,
+`percentage_margin` and `none`. `per_pax` and `per_room_night` are refused inside a band because they
+depend on the booking, and a table using them could not be checked for the cliff when somebody wrote
+it — an unverifiable tier table being the thing the check exists to prevent. Charge per passenger
+with a second rule; contributions are cumulative, so it adds on top.
+
+`TieredBands` owns the table, its arithmetic, its checks and its labels, so the engine and the form
+can never disagree about what a usable table is. A priced rung names the band it landed in
+(`8% (10,000.00–50,000.00)`), which is the only thing that explains its number.
 
 ---
 
@@ -302,7 +338,8 @@ so each needs a business answer before it becomes code.
 ## 7. Recommended order
 
 **[RECOMMENDED]** Four increments, ordered by value per unit of risk, each shippable and testable
-alone.
+alone. Increment 1 is done; increment 3 is done but for `price_point`; increments 2 and 4 are
+untouched, and 4 still waits on §8.
 
 ### Increment 1 — Finish the declared enum, open the forms ✅
 
@@ -325,14 +362,18 @@ alone.
   office charges outlets and ITPs differently from a single strategy.
 - Add `agencies.tier` here if partner grades are wanted; the factory change is the same one.
 
-### Increment 3 — `params`, then the multi-number types
+### Increment 3 — `params`, then the multi-number types ⚠️ Half built
 
-*One column.*
+**`params` and `tiered` are built.** `price_point` is not, and is the whole of what is left here.
 
-- Add `params` JSON to `pricing_rules` and to `PricingRule::snapshot()` (§2.3).
-- `tiered`, then `price_point`. Both are pure calculators once the column exists.
-- The ladder preview runs the real engine, so tier boundaries can be checked against a sample net
-  before a rule goes live.
+- ✅ `params` JSON on `pricing_rules`, carried into `PricingRule::snapshot()` (§2.3).
+- ✅ `tiered`, with the two modes and the boundary check that §2.4 is about — the one part of this
+  plan that turned out to be more than a calculator.
+- ✅ A band editor on both admin forms, and a worked example computed by the real calculator like
+  every other type's.
+- ⬜ `price_point`. Still a pure calculator now that the column exists.
+- The ladder preview runs the real engine, so a tier table can be checked against a sample net
+  before a rule goes live — and, since increment 1, against a chosen passenger count too.
 
 ### Increment 4 — Pick one office-to-ITP model
 

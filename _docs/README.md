@@ -24,4 +24,5 @@ Project documentation for `b2b.mosconitours.core`.
   [`01-architecture.md`](pricing/01-architecture.md) is the domain model, schema, resolution
   algorithm and the open business questions;
   [`02-strategy-catalogue.md`](pricing/02-strategy-catalogue.md) catalogues the calculation types and
-  office-to-ITP models the engine could carry next, each costed against the code as built.
+  office-to-ITP models the engine could carry next, each costed against the code as built — and
+  records, in §2.4, why a tier table has two modes and what happens to the one everybody quotes.
